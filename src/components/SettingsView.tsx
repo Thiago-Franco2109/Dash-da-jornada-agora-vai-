@@ -2,14 +2,15 @@ import { DATA_SOURCE } from '../config/dataSource';
 import { GA4_CONFIG } from '../config/ga4Config';
 
 export default function SettingsView() {
-    const isGoogleSheetsConfigured = DATA_SOURCE.url && DATA_SOURCE.url !== 'YOUR_PUBLIC_CSV_OR_JSON_ENDPOINT' && !DATA_SOURCE.url.includes('docs.google.com/spreadsheets/d/e/2PACX-.../pub');
-    const isGA4Configured = GA4_CONFIG.enabled && GA4_CONFIG.propertyId && GA4_CONFIG.propertyId !== 'YOUR_GA4_PROPERTY_ID';
+    // Verifica se as configurações do Google Sheets via Gateway parecem válidas
+    const isGoogleSheetsConfigured = !!DATA_SOURCE.sheetId && DATA_SOURCE.sheetId !== 'YOUR_GOOGLE_SHEET_ID' && DATA_SOURCE.sheetId.trim() !== '';
+    const isGA4Configured = GA4_CONFIG.enabled && !!GA4_CONFIG.propertyId && GA4_CONFIG.propertyId !== 'YOUR_GA4_PROPERTY_ID';
 
     return (
         <div className="p-8 max-w-4xl mx-auto w-full">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Configurações & Integrações</h1>
             <p className="text-slate-500 dark:text-slate-400 mb-8">
-                Consulte o status das suas conexões com fontes de dados e veja instruções de como configurá-las corretamente no código fonte.
+                Visualize de forma rápida as planilhas conectadas e os endpoints ativados neste sistema.
             </p>
 
             <div className="space-y-8">
@@ -21,8 +22,8 @@ export default function SettingsView() {
                                 <span className="material-symbols-outlined">table_chart</span>
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Google Sheets (Daily Sync)</h2>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">Sincronize a base de clientes do Onboarding via CSV ou Apps Script JSON.</p>
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Google Sheets (Bigou Gateway API)</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Planilha principal de dados dos parceiros. A sincronização automática ocorre pela API do Gateway.</p>
                             </div>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${isGoogleSheetsConfigured ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -31,17 +32,29 @@ export default function SettingsView() {
                         </span>
                     </div>
                     <div className="p-6">
-                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Como Configurar</h3>
+                        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex flex-col gap-1 border border-slate-200 dark:border-slate-700/50">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">ID da Planilha (sheetId)</span>
+                                <span className="text-sm font-mono text-slate-800 dark:text-slate-200 truncate">{DATA_SOURCE.sheetId || '—'}</span>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex flex-col gap-1 border border-slate-200 dark:border-slate-700/50">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Aba da Planilha (range)</span>
+                                <span className="text-sm font-mono text-slate-800 dark:text-slate-200 truncate">{DATA_SOURCE.range || '—'}</span>
+                            </div>
+                        </div>
+
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Como Trocar a Planilha</h3>
                         <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                            <li>Publique sua planilha do Google Sheets para a web no formato <strong>CSV</strong> (Arquivo &gt; Compartilhar &gt; Publicar na Web).</li>
-                            <li>Copie a URL pública gerada.</li>
-                            <li>Abra o arquivo <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">src/config/dataSource.ts</code> no seu editor de código.</li>
-                            <li>Substitua a propriedade <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">url</code> pela sua nova URL do Google Sheets.</li>
+                            <li>Copie o ID da sua nova planilha do Google Sheets pela URL (o texto que fica entre <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded">/d/</code> e <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded">/edit</code>).</li>
+                            <li>Verifique como se chama a aba onde os dados estão formatados.</li>
+                            <li>Abra o arquivo <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">src/config/dataSource.ts</code> no seu editor.</li>
+                            <li>Altere os valores de <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">sheetId</code> e <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">range</code>.</li>
                         </ol>
+
                         <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-lg text-sm font-mono text-slate-800 dark:text-slate-300">
                             export const DATA_SOURCE = {'{'}<br />
-                            &nbsp;&nbsp;type: 'csv',<br />
-                            &nbsp;&nbsp;url: '<strong>{DATA_SOURCE.url}</strong>',<br />
+                            &nbsp;&nbsp;sheetId: '<strong>{DATA_SOURCE.sheetId}</strong>',<br />
+                            &nbsp;&nbsp;range: '<strong>{DATA_SOURCE.range}</strong>',<br />
                             {'}'};
                         </div>
                     </div>
@@ -65,17 +78,26 @@ export default function SettingsView() {
                         </span>
                     </div>
                     <div className="p-6">
+                        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex flex-col gap-1 border border-slate-200 dark:border-slate-700/50">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Property ID</span>
+                                <span className="text-sm font-mono text-slate-800 dark:text-slate-200 truncate">{GA4_CONFIG.propertyId || '—'}</span>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg flex flex-col gap-1 border border-slate-200 dark:border-slate-700/50">
+                                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Identifier Mode</span>
+                                <span className="text-sm font-mono text-slate-800 dark:text-slate-200 truncate">{GA4_CONFIG.identifierMode || '—'}</span>
+                            </div>
+                        </div>
+
                         <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-3">Como Configurar</h3>
                         <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
-                            <li>Crie uma <strong>Service Account</strong> no Google Cloud e conceda a permissão "Analytics Data API Viewer" para o seu GA4.</li>
-                            <li>Gere um token JWT (Bearer Token) através da sua chave JSON da Service Account.</li>
+                            <li>Crie uma <strong>Service Account</strong> no Google Cloud e conceda a permissão "Analytics Data API Viewer".</li>
                             <li>Abra o arquivo <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">src/config/ga4Config.ts</code>.</li>
                             <li>Preencha as opções com seu <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">propertyId</code> e seu token gerado (<code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">apiKey</code>).</li>
-                            <li>Garanta que os eventos do seu GA4 estão enviando a Custom Dimension <code className="bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded text-pink-600">partner_id</code> ou configure corretamente o mapeamento de slugs.</li>
                         </ol>
                         <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-lg text-sm font-mono text-slate-800 dark:text-slate-300">
                             export const GA4_CONFIG = {'{'}<br />
-                            &nbsp;&nbsp;enabled: true,<br />
+                            &nbsp;&nbsp;enabled: {GA4_CONFIG.enabled ? 'true' : 'false'},<br />
                             &nbsp;&nbsp;propertyId: '<strong>{GA4_CONFIG.propertyId}</strong>',<br />
                             &nbsp;&nbsp;identifierMode: '{GA4_CONFIG.identifierMode}',<br />
                             {'}'};
@@ -86,3 +108,4 @@ export default function SettingsView() {
         </div>
     );
 }
+
