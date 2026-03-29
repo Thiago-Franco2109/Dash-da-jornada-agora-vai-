@@ -4,6 +4,7 @@ import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { WeekOverride } from '../hooks/useManualOverrides';
 import type { StoreAnalytics } from '../hooks/useAnalyticsOverrides';
 import StoreAccessImport from './StoreAccessImport';
+import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
@@ -16,13 +17,15 @@ interface PartnerDetailsViewProps {
     override?: WeekOverride;
     /** Real analytics data for this partner (if imported) */
     storeAnalytics?: StoreAnalytics;
+    /** Live data from the unique daily accesses API */
+    dailyAccessData?: StoreAccessData;
     /** Callback to save imported analytics for this store */
     onSaveAnalytics: (rows: { estabelecimento: string; data: Omit<StoreAnalytics, 'imported_at'> }[]) => void;
     /** Callback to clear analytics for this store */
     onClearAnalytics: (estabelecimento: string) => void;
 }
 
-export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onClearOrders, override, storeAnalytics, onSaveAnalytics, onClearAnalytics }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onClearOrders, override, storeAnalytics, dailyAccessData, onSaveAnalytics, onClearAnalytics }: PartnerDetailsViewProps) {
     const interpretation = getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
 
@@ -69,6 +72,8 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
 
     // If real analytics data was imported, use it for the funnel
     const hasRealAnalytics = !!storeAnalytics;
+    const hasLiveAPI = !!dailyAccessData && dailyAccessData.acessosUnicos > 0;
+    
     const funnel: FunnelStep[] = (() => {
         if (hasRealAnalytics && storeAnalytics!.sessoes > 0) {
             // Build funnel steps from real imported data
@@ -83,15 +88,17 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                 { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: concluidos, pctOfFirst: pctOf(concluidos), competitorPct: 20.64, deltaVsCompetitor: pctOf(concluidos) - 20.64 },
             ];
         }
-        // Fallback: estimated from orders
-        const estimatedVisits = orders > 0 ? Math.round(orders / 0.20) : 0;
+        
+        // Use live daily access API if available!
+        const estimatedVisits = hasLiveAPI ? dailyAccessData.acessosUnicos : (orders > 0 ? Math.round(orders / 0.20) : 0);
+        
         if (estimatedVisits === 0) return [];
         return [
-            { label: 'Visitas', description: 'visitaram seu cardápio', icon: 'visibility', value: estimatedVisits, pctOfFirst: 100, competitorPct: 100, deltaVsCompetitor: 454.05 },
+            { label: 'Acessos Únicos', description: hasLiveAPI ? 'buscado em tempo real' : 'visitaram seu cardápio (estimado)', icon: 'visibility', value: estimatedVisits, pctOfFirst: 100, competitorPct: 100, deltaVsCompetitor: 454.05 },
             { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: Math.round(estimatedVisits * 0.4985), pctOfFirst: 49.85, competitorPct: 51.81, deltaVsCompetitor: 433.12 },
             { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: Math.round(estimatedVisits * 0.2706), pctOfFirst: 27.06, competitorPct: 29.12, deltaVsCompetitor: 414.89 },
             { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: Math.round(estimatedVisits * 0.2676), pctOfFirst: 26.76, competitorPct: 28.69, deltaVsCompetitor: 416.78 },
-            { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: orders, pctOfFirst: 20.04, competitorPct: 20.64, deltaVsCompetitor: orders === 0 ? -100 : 438.11 },
+            { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: orders, pctOfFirst: estimatedVisits > 0 ? parseFloat(((orders / estimatedVisits)*100).toFixed(2)) : 0, competitorPct: 20.64, deltaVsCompetitor: orders === 0 ? -100 : 438.11 },
         ];
     })();
     // ---------------------------------------------------------------------------

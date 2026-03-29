@@ -14,6 +14,7 @@ import { useAnalyticsOverrides } from './hooks/useAnalyticsOverrides';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
+import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -29,6 +30,9 @@ function App() {
     sheetId: DATA_SOURCE.sheetId,
     range: DATA_SOURCE.range
   });
+
+  // -- Live API Access Data (Unique Store Accesses) ---------------------------
+  const { accessData, loadingAccess, refreshAccessData } = useDailyAccessSync();
 
   // -- Manual overrides (persisted in localStorage) --------------------------
   const { overrides, saveOverride, clearOverride } = useManualOverrides();
@@ -153,6 +157,7 @@ function App() {
                 onClearOrders={(name) => clearOverride(name)}
                 override={overrides[currentSelectedRow.estabelecimento]}
                 storeAnalytics={analytics[currentSelectedRow.estabelecimento]}
+                dailyAccessData={accessData[currentSelectedRow.estabelecimento]}
                 onSaveAnalytics={bulkSaveAnalytics}
                 onClearAnalytics={clearAnalytics}
               />
@@ -166,12 +171,12 @@ function App() {
                     </div>
                     <div className="flex flex-col items-end shrink-0">
                       <button
-                        onClick={() => refreshData()}
-                        disabled={loadingSync}
+                        onClick={() => { refreshData(); refreshAccessData(); }}
+                        disabled={loadingSync || loadingAccess}
                         className="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-medium px-4 py-2 rounded-lg transition-colors focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <span className={`material-symbols-outlined text-lg ${loadingSync ? 'animate-spin text-primary' : ''}`}>sync</span>
-                        {loadingSync ? 'Atualizando...' : 'Atualizar agora'}
+                        <span className={`material-symbols-outlined text-lg ${(loadingSync || loadingAccess) ? 'animate-spin text-primary' : ''}`}>sync</span>
+                        {(loadingSync || loadingAccess) ? 'Atualizando...' : 'Atualizar agora'}
                       </button>
 
                       {lastSyncTime && (

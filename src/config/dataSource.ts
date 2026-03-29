@@ -7,3 +7,8 @@ export const DATA_SOURCE = {
     // Nome da aba (o Gateway adiciona o range automaticamente)
     range: 'novos formatado',
 };
+
+export const ACCESS_DATA_SOURCE = {
+    sheetId: '1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA',
+    range: 'novo relatório final',
+};
