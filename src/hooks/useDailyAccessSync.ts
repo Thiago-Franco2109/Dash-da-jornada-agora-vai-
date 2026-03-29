@@ -8,10 +8,18 @@ function apiUrl(path: string) {
     return `${API_ORIGIN}${path}`;
 }
 
+// Detecta se uma string é uma coluna de data no formato "YYYY-M-D" ou "YYYY-MM-DD"
+function isDateColumn(key: string): boolean {
+    return /^\d{4}-\d{1,2}-\d{1,2}$/.test(key.trim());
+}
+
 export interface StoreAccessData {
     estabelecimento: string;
-    acessosUnicos: number; // fallback numeric representation of total visits
-    raw: Record<string, any>; // other columns
+    acessosUnicos: number;    // soma total de todos os dias disponíveis
+    mediaDiaria: number;       // média de acessos por dia
+    lastDayAcessos: number;    // valor do último dia disponível
+    totalDias: number;         // quantos dias têm dados
+    raw: Record<string, any>;  // linha completa da planilha
 }
 
 export function useDailyAccessSync() {
@@ -31,52 +39,61 @@ export function useDailyAccessSync() {
             setIsLoading(true);
             setError(null);
 
-            // Fetch exactly as requested by user
             const url = apiUrl(`/api/sheets/${ACCESS_DATA_SOURCE.sheetId}/${encodeURIComponent(ACCESS_DATA_SOURCE.range)}`);
-            const res = await fetch(url, {
-                credentials: "include"
-            });
+            const res = await fetch(url, { credentials: "include" });
 
             if (!res.ok) {
                 throw new Error(`Failed to fetch access data: ${res.status} ${res.statusText}`);
             }
 
             const json = await res.json();
-            
-            const rows = json.data?.rows || (Array.isArray(json) ? json : json.values || []);
+            const rows: Record<string, any>[] = json.data?.rows || (Array.isArray(json) ? json : json.values || []);
             const parsedData: Record<string, StoreAccessData> = {};
 
             rows.forEach((row: any) => {
                 if (!row) return;
 
-                // Attempt to auto-detect the store identifier column
                 const keys = Object.keys(row);
-                let storeNameKey = keys.find(k => /estabelecimento|loja|parceiro|nome/i.test(k)) || keys[0];
-                let storeName = row[storeNameKey];
-                
+
+                // A coluna "Loja" (ou similar) identifica o estabelecimento
+                const storeNameKey = keys.find(k => /^loja$|^estabelecimento$|^parceiro$|^nome$/i.test(k.trim())) || keys[0];
+                const storeName = row[storeNameKey];
+
                 if (typeof storeName !== 'string' || !storeName.trim()) return;
 
-                // Try to find the "accesses" column
-                let accessCount = 0;
-                let accessesKey = keys.find(k => /acesso|sessão|sessoes|visita|unico|único/i.test(k));
-                if (accessesKey && row[accessesKey] != null) {
-                    const parsed = parseInt(String(row[accessesKey]).replace(/\D/g, ''), 10);
-                    if (!isNaN(parsed)) accessCount = parsed;
-                } else {
-                    // Try to guess by finding the largest numeric column that could be visits
-                    for (const k of keys) {
-                        if (k === storeNameKey) continue;
-                        const parsed = parseInt(String(row[k]).replace(/\D/g, ''), 10);
-                        if (!isNaN(parsed) && parsed > accessCount) {
-                            accessCount = parsed;
-                        }
+                // Todas as outras colunas com formato YYYY-M-D ou YYYY-MM-DD são acessos diários
+                const dateKeys = keys.filter(k => k !== storeNameKey && isDateColumn(k));
+
+                // Ordena as datas para pegar o dia mais recente
+                const sortedDates = [...dateKeys].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+                let totalAcessos = 0;
+                let diasComDados = 0;
+                let lastDayAcessos = 0;
+
+                for (const dateKey of dateKeys) {
+                    const val = parseInt(String(row[dateKey] ?? '').replace(/\D/g, ''), 10);
+                    if (!isNaN(val) && val > 0) {
+                        totalAcessos += val;
+                        diasComDados++;
                     }
                 }
 
-                parsedData[storeName.trim()] = {
+                if (sortedDates.length > 0) {
+                    const lastKey = sortedDates[sortedDates.length - 1];
+                    lastDayAcessos = parseInt(String(row[lastKey] ?? '').replace(/\D/g, ''), 10) || 0;
+                }
+
+                const mediaDiaria = diasComDados > 0 ? Math.round(totalAcessos / diasComDados) : 0;
+
+                // Indexa pela chave em lowercase para matching case-insensitive
+                parsedData[storeName.trim().toLowerCase()] = {
                     estabelecimento: storeName.trim(),
-                    acessosUnicos: accessCount,
-                    raw: row
+                    acessosUnicos: totalAcessos,
+                    mediaDiaria,
+                    lastDayAcessos,
+                    totalDias: diasComDados,
+                    raw: row,
                 };
             });
 

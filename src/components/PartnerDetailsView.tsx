@@ -73,32 +73,39 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
     // If real analytics data was imported, use it for the funnel
     const hasRealAnalytics = !!storeAnalytics;
     const hasLiveAPI = !!dailyAccessData && dailyAccessData.acessosUnicos > 0;
-    
+
+    // Para o funil, usamos a média diária de acessos projetada para 28 dias
+    // Isso é comparável com os pedidos que também são contados em um período fixo
+    const funnelVisits = (() => {
+        if (hasLiveAPI) {
+            // Projeta a média diária para o período de 28 dias do onboarding
+            return dailyAccessData!.mediaDiaria * 28;
+        }
+        return 0;
+    })();
+
     const funnel: FunnelStep[] = (() => {
         if (hasRealAnalytics && storeAnalytics!.sessoes > 0) {
-            // Build funnel steps from real imported data
             const { sessoes, visualizacoes, sacola, revisao, concluidos } = storeAnalytics!;
             const pctOf = (v: number) => sessoes > 0 ? parseFloat(((v / sessoes) * 100).toFixed(2)) : 0;
-            // Competitor benchmarks are still placeholder until GA4 is connected
             return [
-                { label: 'Visitas', description: 'visitaram seu cardápio', icon: 'visibility', value: sessoes, pctOfFirst: 100, competitorPct: 100, deltaVsCompetitor: 0 },
-                { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: visualizacoes, pctOfFirst: pctOf(visualizacoes), competitorPct: 51.81, deltaVsCompetitor: pctOf(visualizacoes) - 51.81 },
-                { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: sacola, pctOfFirst: pctOf(sacola), competitorPct: 29.12, deltaVsCompetitor: pctOf(sacola) - 29.12 },
-                { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: revisao, pctOfFirst: pctOf(revisao), competitorPct: 28.69, deltaVsCompetitor: pctOf(revisao) - 28.69 },
-                { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: concluidos, pctOfFirst: pctOf(concluidos), competitorPct: 20.64, deltaVsCompetitor: pctOf(concluidos) - 20.64 },
+                { label: 'Visitas', description: 'visitaram seu cardápio', icon: 'visibility', value: sessoes, pctOfFirst: 100 },
+                { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: visualizacoes, pctOfFirst: pctOf(visualizacoes) },
+                { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: sacola, pctOfFirst: pctOf(sacola) },
+                { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: revisao, pctOfFirst: pctOf(revisao) },
+                { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: concluidos, pctOfFirst: pctOf(concluidos) },
             ];
         }
-        
-        // Use live daily access API if available!
-        const estimatedVisits = hasLiveAPI ? dailyAccessData.acessosUnicos : (orders > 0 ? Math.round(orders / 0.20) : 0);
-        
-        if (estimatedVisits === 0) return [];
+
+        if (funnelVisits === 0) return [];
+        const label = 'Acessos (proj. 28d)';
+        const desc = `${dailyAccessData!.mediaDiaria}/dia × 28 dias`;
         return [
-            { label: 'Acessos Únicos', description: hasLiveAPI ? 'buscado em tempo real' : 'visitaram seu cardápio (estimado)', icon: 'visibility', value: estimatedVisits, pctOfFirst: 100, competitorPct: 100, deltaVsCompetitor: 454.05 },
-            { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: Math.round(estimatedVisits * 0.4985), pctOfFirst: 49.85, competitorPct: 51.81, deltaVsCompetitor: 433.12 },
-            { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: Math.round(estimatedVisits * 0.2706), pctOfFirst: 27.06, competitorPct: 29.12, deltaVsCompetitor: 414.89 },
-            { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: Math.round(estimatedVisits * 0.2676), pctOfFirst: 26.76, competitorPct: 28.69, deltaVsCompetitor: 416.78 },
-            { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: orders, pctOfFirst: estimatedVisits > 0 ? parseFloat(((orders / estimatedVisits)*100).toFixed(2)) : 0, competitorPct: 20.64, deltaVsCompetitor: orders === 0 ? -100 : 438.11 },
+            { label, description: desc, icon: 'visibility', value: funnelVisits, pctOfFirst: 100 },
+            { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: Math.round(funnelVisits * 0.4985), pctOfFirst: 49.85 },
+            { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: Math.round(funnelVisits * 0.2706), pctOfFirst: 27.06 },
+            { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: Math.round(funnelVisits * 0.2676), pctOfFirst: 26.76 },
+            { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: orders, pctOfFirst: funnelVisits > 0 ? parseFloat(((orders / funnelVisits) * 100).toFixed(2)) : 0 },
         ];
     })();
     // ---------------------------------------------------------------------------
@@ -183,6 +190,33 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                                 <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.indice_desempenho.toFixed(2)}</p>
                             </div>
                         </div>
+
+                        {/* Acessos ao Cardápio (Live API) */}
+                        {hasLiveAPI && (
+                            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="size-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_6px_rgb(99,102,241)]"></span>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Acessos ao Cardápio <span className="text-xs text-indigo-500 font-semibold">(tempo real)</span></h4>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800/30">
+                                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mb-1">Total no Período</p>
+                                        <p className="text-xl font-bold text-indigo-700 dark:text-indigo-300">{dailyAccessData!.acessosUnicos.toLocaleString('pt-BR')}</p>
+                                        <p className="text-[10px] text-indigo-500 mt-0.5">{dailyAccessData!.totalDias} dias com dados</p>
+                                    </div>
+                                    <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                                        <p className="text-xs text-slate-500 font-semibold mb-1">Média / Dia</p>
+                                        <p className="text-xl font-bold text-slate-800 dark:text-white">{dailyAccessData!.mediaDiaria}</p>
+                                        <p className="text-[10px] text-slate-400 mt-0.5">acessos únicos</p>
+                                    </div>
+                                    <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                                        <p className="text-xs text-slate-500 font-semibold mb-1">Último Dia</p>
+                                        <p className="text-xl font-bold text-slate-800 dark:text-white">{dailyAccessData!.lastDayAcessos}</p>
+                                        <p className="text-[10px] text-slate-400 mt-0.5">acessos</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Progress Towards 30 */}
                         <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
@@ -345,7 +379,7 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                             <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-5xl">analytics</span>
                             <h3 className="font-semibold text-slate-700 dark:text-slate-300">Análise do Cardápio indisponível</h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-                                Sem pedidos confirmados, não é possível estimar o funil de conversão. Quando o parceiro realizar pedidos, esta seção será preenchida.
+                                Nenhuma integração de acessos (Planilha GA4 ou Sessões) foi detectada para esta loja. Importe um CSV abaixo ou verifique a planilha de acessos em tempo real.
                             </p>
                         </div>
                     )}

@@ -157,7 +157,7 @@ function App() {
                 onClearOrders={(name) => clearOverride(name)}
                 override={overrides[currentSelectedRow.estabelecimento]}
                 storeAnalytics={analytics[currentSelectedRow.estabelecimento]}
-                dailyAccessData={accessData[currentSelectedRow.estabelecimento]}
+                dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
                 onSaveAnalytics={bulkSaveAnalytics}
                 onClearAnalytics={clearAnalytics}
               />
