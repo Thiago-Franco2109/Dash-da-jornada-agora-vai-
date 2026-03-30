@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { type EnrichedPerformanceRow, getInterpretationBox, getStarColor } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { WeekOverride } from '../hooks/useManualOverrides';
-import type { StoreAnalytics } from '../hooks/useAnalyticsOverrides';
-import StoreAccessImport from './StoreAccessImport';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 
 interface PartnerDetailsViewProps {
@@ -15,17 +13,11 @@ interface PartnerDetailsViewProps {
     onClearOrders: (estabelecimento: string) => void;
     /** The current override entry for this partner (if any) */
     override?: WeekOverride;
-    /** Real analytics data for this partner (if imported) */
-    storeAnalytics?: StoreAnalytics;
     /** Live data from the unique daily accesses API */
     dailyAccessData?: StoreAccessData;
-    /** Callback to save imported analytics for this store */
-    onSaveAnalytics: (rows: { estabelecimento: string; data: Omit<StoreAnalytics, 'imported_at'> }[]) => void;
-    /** Callback to clear analytics for this store */
-    onClearAnalytics: (estabelecimento: string) => void;
 }
 
-export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onClearOrders, override, storeAnalytics, dailyAccessData, onSaveAnalytics, onClearAnalytics }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onClearOrders, override, dailyAccessData }: PartnerDetailsViewProps) {
     const interpretation = getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
 
@@ -63,52 +55,46 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
 
     const hasOverride = !!override;
 
-    // ---- Funnel data generation ------------------------------------------------
-    // We derive a plausible funnel from the confirmed orders.
-    // Assumption: confirmed orders represent ~20% conversion from visits.
-    // The intermediate steps are scaled accordingly.
-    // These are simulated; replace with GA4 real data when available.
+    // ---- Funil: apenas dados reais das planilhas integradas (acessos + pedidos) ----
     const orders = partner.total_pedidos;
-
-    // If real analytics data was imported, use it for the funnel
-    const hasRealAnalytics = !!storeAnalytics;
     const hasLiveAPI = !!dailyAccessData && dailyAccessData.acessosUnicos > 0;
 
-    // Para o funil, usamos a média diária de acessos projetada para 28 dias
-    // Isso é comparável com os pedidos que também são contados em um período fixo
-    const funnelVisits = (() => {
-        if (hasLiveAPI) {
-            // Projeta a média diária para o período de 28 dias do onboarding
-            return dailyAccessData!.mediaDiaria * 28;
-        }
-        return 0;
-    })();
-
     const funnel: FunnelStep[] = (() => {
-        if (hasRealAnalytics && storeAnalytics!.sessoes > 0) {
-            const { sessoes, visualizacoes, sacola, revisao, concluidos } = storeAnalytics!;
-            const pctOf = (v: number) => sessoes > 0 ? parseFloat(((v / sessoes) * 100).toFixed(2)) : 0;
+        if (hasLiveAPI && dailyAccessData) {
+            const acessos = dailyAccessData.acessosUnicos;
+            const pctCompras = acessos > 0 ? parseFloat(((orders / acessos) * 100).toFixed(2)) : 0;
             return [
-                { label: 'Visitas', description: 'visitaram seu cardápio', icon: 'visibility', value: sessoes, pctOfFirst: 100 },
-                { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: visualizacoes, pctOfFirst: pctOf(visualizacoes) },
-                { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: sacola, pctOfFirst: pctOf(sacola) },
-                { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: revisao, pctOfFirst: pctOf(revisao) },
-                { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: concluidos, pctOfFirst: pctOf(concluidos) },
+                {
+                    label: 'Acessos',
+                    description: 'acessos únicos (planilha integrada)',
+                    icon: 'visibility',
+                    value: acessos,
+                    pctOfFirst: 100,
+                },
+                {
+                    label: 'Compras',
+                    description: 'pedidos confirmados (onboarding)',
+                    icon: 'shopping_cart',
+                    value: orders,
+                    pctOfFirst: pctCompras,
+                },
             ];
         }
-
-        if (funnelVisits === 0) return [];
-        const label = 'Acessos (proj. 28d)';
-        const desc = `${dailyAccessData!.mediaDiaria}/dia × 28 dias`;
-        return [
-            { label, description: desc, icon: 'visibility', value: funnelVisits, pctOfFirst: 100 },
-            { label: 'Visualizações', description: 'visualizaram algum item', icon: 'menu_book', value: Math.round(funnelVisits * 0.4985), pctOfFirst: 49.85 },
-            { label: 'Sacola', description: 'adicionaram itens', icon: 'shopping_bag', value: Math.round(funnelVisits * 0.2706), pctOfFirst: 27.06 },
-            { label: 'Revisão', description: 'revisaram o pedido', icon: 'fact_check', value: Math.round(funnelVisits * 0.2676), pctOfFirst: 26.76 },
-            { label: 'Concluídos', description: 'concluíram o pedido', icon: 'check_circle', value: orders, pctOfFirst: funnelVisits > 0 ? parseFloat(((orders / funnelVisits) * 100).toFixed(2)) : 0 },
-        ];
+        // Sem planilha de acessos: exibe só pedidos confirmados vindos da planilha principal
+        if (orders > 0) {
+            return [
+                {
+                    label: 'Compras',
+                    description: 'pedidos confirmados (onboarding)',
+                    icon: 'shopping_cart',
+                    value: orders,
+                    pctOfFirst: 100,
+                },
+            ];
+        }
+        return [];
     })();
-    // ---------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------
 
     return (
         <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 overflow-y-auto">
@@ -370,8 +356,7 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                 </div>
 
                 {/* Análise do Cardápio – full width funnel */}
-                <div className="lg:col-span-3 mt-2 space-y-4">
-                    {/* Funnel section – shows real or simulated data */}
+                <div className="lg:col-span-3 mt-2">
                     {funnel.length > 0 ? (
                         <MenuFunnel steps={funnel} />
                     ) : (
@@ -379,39 +364,10 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                             <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-5xl">analytics</span>
                             <h3 className="font-semibold text-slate-700 dark:text-slate-300">Análise do Cardápio indisponível</h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-                                Nenhuma integração de acessos (Planilha GA4 ou Sessões) foi detectada para esta loja. Importe um CSV abaixo ou verifique a planilha de acessos em tempo real.
+                                Nenhum dado de acessos (planilha integrada) nem pedidos confirmados para montar o funil. Verifique a planilha de acessos em tempo real ou os pedidos desta loja.
                             </p>
                         </div>
                     )}
-
-                    {/* Import panel – always visible so user can load/clear access data */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
-                            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                <span className="material-symbols-outlined text-blue-500 text-2xl">upload_file</span>
-                            </div>
-                            <div className="flex-1">
-                                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Importar Dados de Acesso</h2>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    CSV com Sessões, Visualizações, Sacola, Revisão e Concluídos para esta loja
-                                </p>
-                            </div>
-                            {hasRealAnalytics && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400">
-                                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                                    Dados reais importados
-                                </span>
-                            )}
-                        </div>
-                        <div className="p-6">
-                            <StoreAccessImport
-                                filterEstabelecimento={partner.estabelecimento}
-                                onImport={onSaveAnalytics}
-                                lastImportedAt={storeAnalytics?.imported_at}
-                                onClear={() => onClearAnalytics(partner.estabelecimento)}
-                            />
-                        </div>
-                    </div>
                 </div>
 
             </div>

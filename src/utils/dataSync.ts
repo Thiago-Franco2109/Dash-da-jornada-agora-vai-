@@ -68,7 +68,7 @@ export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "
 /**
  * Encontra um valor num objeto de row, testando múltiplos nomes de chave
  */
-function findValue(row: Record<string, any>, ...candidates: string[]): any {
+export function findValue(row: Record<string, any>, ...candidates: string[]): any {
     for (const key of candidates) {
         if (key in row && row[key] !== undefined) return row[key];
     }
@@ -92,6 +92,9 @@ function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): Perf
     if (headers && headers.length >= 7) {
         return dataRows.map(row => {
             const vals = headers.map(h => row[h]);
+            const logoRaw = findValue(row, 'logo_url', 'Logo_URL', 'Logo');
+            const logo_url = logoRaw != null && String(logoRaw).trim() ? String(logoRaw).trim() : '';
+            const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel') || 'Desconhecido';
             return {
                 cidade: String(vals[0] || '').trim(),
                 estabelecimento: String(vals[2] || '').trim(),
@@ -102,6 +105,8 @@ function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): Perf
                 week_2: parseWeekValue(vals[7]),
                 week_3: parseWeekValue(vals[8]),
                 week_4: parseWeekValue(vals[9]),
+                analista,
+                ...(logo_url ? { logo_url } : {}),
             };
         }).filter(row => row.estabelecimento && row.estabelecimento.length > 1);
     }
@@ -168,4 +173,152 @@ export function loadFromCache(): SyncResult | null {
         console.warn("Failed to load data from local storage cache", error);
         return null;
     }
+}
+
+/** Chave estável para casar nome do parceiro (planilha principal × planilha de logos). */
+export function normalizePartnerLookupKey(name: string): string {
+    return String(name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function extractLogoSheetStoreName(row: Record<string, any>): string {
+    const v = findValue(
+        row,
+        'parceiro_nome',
+        'Parceiro_Nome',
+        'estabelecimento',
+        'Estabelecimento',
+        'Loja',
+        'loja',
+        'Parceiro',
+        'parceiro',
+        'Nome',
+        'nome',
+        'Parceiros',
+        'Fantasia',
+        'fantasia'
+    );
+    return v != null ? String(v).trim() : '';
+}
+
+function normalizeLogoUrlCandidate(raw: unknown): string {
+    if (raw == null) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('//')) return `https:${s}`;
+    return '';
+}
+
+function extractLogoSheetUrl(row: Record<string, any>): string {
+    const fromLogo = normalizeLogoUrlCandidate(findValue(row, 'logo_url', 'Logo_URL', 'Logo', 'logo'));
+    if (fromLogo) return fromLogo;
+
+    const fromCms = normalizeLogoUrlCandidate(findValue(row, 'cms_arte_url', 'CMS_Arte_URL', 'cms_arte'));
+    if (fromCms) return fromCms;
+
+    const arquivo = findValue(row, 'logo_arquivo', 'Logo_Arquivo', 'logo_arquivo');
+    return normalizeLogoUrlCandidate(arquivo);
+}
+
+/** Extrai linhas da planilha de logos quando o JSON do gateway varia levemente. */
+function extractLogoSheetRows(json: any): Record<string, any>[] {
+    if (json?.data?.rows && Array.isArray(json.data.rows)) return json.data.rows;
+    if (Array.isArray(json?.rows)) return json.rows;
+
+    const values = Array.isArray(json) ? json : json?.values;
+    if (!values?.length || !Array.isArray(values[0])) return [];
+
+    const header = (values[0] as any[]).map((h) => String(h ?? '').trim());
+    const lower = header.map((h) => h.toLowerCase());
+
+    const idxNome =
+        lower.indexOf('parceiro_nome') >= 0
+            ? lower.indexOf('parceiro_nome')
+            : lower.indexOf('estabelecimento') >= 0
+              ? lower.indexOf('estabelecimento')
+              : lower.indexOf('loja') >= 0
+                ? lower.indexOf('loja')
+                : lower.indexOf('nome') >= 0
+                  ? lower.indexOf('nome')
+                  : -1;
+    if (idxNome < 0) return [];
+
+    const idxLogoUrl = lower.indexOf('logo_url') >= 0 ? lower.indexOf('logo_url') : lower.indexOf('logo');
+    const idxCms = lower.indexOf('cms_arte_url');
+    const idxArq = lower.indexOf('logo_arquivo');
+
+    const objects: Record<string, any>[] = [];
+    for (let r = 1; r < values.length; r++) {
+        const line = values[r] as any[];
+        if (!line?.length) continue;
+        const o: Record<string, any> = {
+            parceiro_nome: line[idxNome],
+        };
+        if (idxLogoUrl >= 0) o.logo_url = line[idxLogoUrl];
+        if (idxCms >= 0) o.cms_arte_url = line[idxCms];
+        if (idxArq >= 0) o.logo_arquivo = line[idxArq];
+        objects.push(o);
+    }
+    return objects;
+}
+
+/**
+ * GET /api/sheets/{sheetId}/{tabName} — mesma rota do gateway (ex.: aba "dados").
+ * Retorna mapa nome normalizado → URL. Nova sincronização pega logos adicionados no dia seguinte.
+ */
+export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (!sheetId?.trim() || !tabName?.trim()) return out;
+
+    const fetchOptions: RequestInit = { credentials: 'include' as RequestCredentials };
+    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName)}`);
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+        throw new Error(`Logo sheet: ${response.status} ${response.statusText}`);
+    }
+
+    const json = await response.json();
+
+    let rows: Record<string, any>[] = [];
+    if (json?.data?.rows && Array.isArray(json.data.rows)) {
+        rows = json.data.rows;
+    } else {
+        rows = extractLogoSheetRows(json);
+    }
+
+    if (import.meta.env.DEV && rows.length === 0) {
+        console.warn('[fetchPartnerLogoMap] Nenhuma linha parseada. Chaves do JSON:', json && typeof json === 'object' ? Object.keys(json) : typeof json);
+    }
+
+    for (const row of rows) {
+        const storeName = extractLogoSheetStoreName(row);
+        const logoUrl = extractLogoSheetUrl(row);
+        if (!storeName || !logoUrl) continue;
+        const key = normalizePartnerLookupKey(storeName);
+        if (!key) continue;
+        out[key] = logoUrl;
+    }
+
+    return out;
+}
+
+/**
+ * Prioriza URL da planilha de logos; se ainda vazia, mantém coluna da planilha principal.
+ * Assim, logo preenchida no dia seguinte passa a aparecer no próximo refresh.
+ */
+export function mergeLogoMapIntoRows(rows: PerformanceRow[], logoMap: Record<string, string>): PerformanceRow[] {
+    return rows.map((row) => {
+        const key = normalizePartnerLookupKey(row.estabelecimento);
+        const fromRepo = key && logoMap[key] ? logoMap[key].trim() : '';
+        const fromMain = row.logo_url?.trim() || '';
+        const merged = fromRepo || fromMain;
+        if (merged) return { ...row, logo_url: merged };
+        const { logo_url: _omit, ...rest } = row;
+        return rest as PerformanceRow;
+    });
 }

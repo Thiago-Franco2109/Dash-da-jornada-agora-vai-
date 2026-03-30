@@ -10,7 +10,6 @@ import SettingsView from './components/SettingsView';
 import { DATA_SOURCE } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useManualOverrides } from './hooks/useManualOverrides';
-import { useAnalyticsOverrides } from './hooks/useAnalyticsOverrides';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
@@ -36,9 +35,6 @@ function App() {
 
   // -- Manual overrides (persisted in localStorage) --------------------------
   const { overrides, saveOverride, clearOverride } = useManualOverrides();
-
-  // -- Analytics overrides (store access CSV imports) -------------------------
-  const { analytics, bulkSaveAnalytics, clearAnalytics } = useAnalyticsOverrides();
 
   // Enrich Data – apply manual overrides before enriching
   const enrichedData = useMemo(() =>
@@ -156,10 +152,7 @@ function App() {
                 onSaveOrders={(name, vals) => saveOverride(name, vals)}
                 onClearOrders={(name) => clearOverride(name)}
                 override={overrides[currentSelectedRow.estabelecimento]}
-                storeAnalytics={analytics[currentSelectedRow.estabelecimento]}
                 dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
-                onSaveAnalytics={bulkSaveAnalytics}
-                onClearAnalytics={clearAnalytics}
               />
             ) : (
               <>

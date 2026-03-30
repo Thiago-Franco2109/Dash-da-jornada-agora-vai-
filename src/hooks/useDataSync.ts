@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type PerformanceRow } from '../components/PerformanceTable';
-import { fetchGoogleSheetsData, saveToCache, loadFromCache, type SyncResult } from '../utils/dataSync';
+import { LOGO_SHEET_SOURCE } from '../config/dataSource';
+import {
+    fetchGoogleSheetsData,
+    fetchPartnerLogoMap,
+    mergeLogoMapIntoRows,
+    saveToCache,
+    loadFromCache,
+    type SyncResult,
+} from '../utils/dataSync';
 
 interface UseDataSyncOptions {
     sheetId: string;
@@ -27,10 +35,18 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
             setError(null);
             setIsUsingCache(false);
 
-            const fetchedData = await fetchGoogleSheetsData(sheetId, range);
+            const [fetchedData, logoMap] = await Promise.all([
+                fetchGoogleSheetsData(sheetId, range),
+                fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
+                    console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
+                    return {} as Record<string, string>;
+                }),
+            ]);
+
+            const mergedData = mergeLogoMapIntoRows(fetchedData, logoMap);
 
             const syncResult: SyncResult = {
-                data: fetchedData,
+                data: mergedData,
                 lastSyncTime: new Date(),
             };
 

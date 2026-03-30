@@ -1,230 +1,388 @@
-import { DATA_SOURCE, ACCESS_DATA_SOURCE } from '../config/dataSource';
+import { DATA_SOURCE, ACCESS_DATA_SOURCE, LOGO_SHEET_SOURCE } from '../config/dataSource';
 import { GA4_CONFIG } from '../config/ga4Config';
 
-export default function SettingsView() {
-    // Verifica se as configurações do Google Sheets via Gateway parecem válidas
-    const isGoogleSheetsConfigured = !!DATA_SOURCE.sheetId && DATA_SOURCE.sheetId !== 'YOUR_GOOGLE_SHEET_ID' && DATA_SOURCE.sheetId.trim() !== '';
-    const isAccessSheetConfigured = !!ACCESS_DATA_SOURCE.sheetId && ACCESS_DATA_SOURCE.sheetId.trim() !== '';
-    const isGA4Configured = GA4_CONFIG.enabled && !!GA4_CONFIG.propertyId && GA4_CONFIG.propertyId !== 'YOUR_GA4_PROPERTY_ID';
+const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? 'https://bigou-sheets-api.netlify.app';
 
-    // Link direto para a planilha
+type LineageStatus = 'connected' | 'conditional' | 'computed' | 'none' | 'planned';
+
+const statusMeta: Record<
+    LineageStatus,
+    { label: string; className: string; dot: string }
+> = {
+    connected: {
+        label: 'Fonte ativa',
+        className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400',
+        dot: 'bg-emerald-500 shadow-[0_0_8px_rgb(16,185,129)]',
+    },
+    conditional: {
+        label: 'Depende dos dados',
+        className: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300',
+        dot: 'bg-amber-500',
+    },
+    computed: {
+        label: 'Calculado no app',
+        className: 'bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-300',
+        dot: 'bg-sky-500',
+    },
+    none: {
+        label: 'Sem fonte no sistema',
+        className: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+        dot: 'bg-slate-400',
+    },
+    planned: {
+        label: 'Planejado / não usado',
+        className: 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300',
+        dot: 'bg-violet-500',
+    },
+};
+
+export default function SettingsView() {
+    const isMainSheetOk =
+        !!DATA_SOURCE.sheetId &&
+        DATA_SOURCE.sheetId !== 'YOUR_GOOGLE_SHEET_ID' &&
+        DATA_SOURCE.sheetId.trim() !== '';
+    const isAccessSheetOk = !!ACCESS_DATA_SOURCE.sheetId && ACCESS_DATA_SOURCE.sheetId.trim() !== '';
+    const isLogoSheetOk = !!LOGO_SHEET_SOURCE.sheetId && LOGO_SHEET_SOURCE.sheetId.trim() !== '';
+    const isGA4Placeholder =
+        !GA4_CONFIG.propertyId || GA4_CONFIG.propertyId === 'YOUR_GA4_PROPERTY_ID';
+
     const sheetUrl = `https://docs.google.com/spreadsheets/d/${DATA_SOURCE.sheetId}/edit`;
     const accessSheetUrl = `https://docs.google.com/spreadsheets/d/${ACCESS_DATA_SOURCE.sheetId}/edit`;
-    
-    const logoSheetId = '1Y5_TXSIi2RFyd_uUMXcWLQTQ52Oy8kCwYZrnlj6a5Xk'; // ID vindo do syncSheets.js legado, mantido para referência
-    const logoSheetUrl = `https://docs.google.com/spreadsheets/d/${logoSheetId}/edit`;
+    const logoSheetUrl = `https://docs.google.com/spreadsheets/d/${LOGO_SHEET_SOURCE.sheetId}/edit`;
+
+    const lineageRows: Array<{
+        title: string;
+        where: string;
+        source: string;
+        status: LineageStatus;
+        detail: string;
+    }> = [
+        {
+            title: 'Login e sessão',
+            where: 'Toda a aplicação',
+            source: `Bigou Gateway · ${API_ORIGIN}`,
+            status: 'connected',
+            detail: 'Google OAuth e cookies httpOnly. Sem backend próprio no dashboard.',
+        },
+        {
+            title: 'Parceiros, pedidos por semana, status, lançamento, analista',
+            where: 'Tabela principal, filtros, tela da loja (bloco onboarding)',
+            source: `Planilha principal · aba “${DATA_SOURCE.range}”`,
+            status: isMainSheetOk ? 'connected' : 'none',
+            detail:
+                'Colunas mapeadas pelo cabeçalho da linha 1. Valores errados ou vazios geram NaN ou campos em branco.',
+        },
+        {
+            title: 'Logos dos parceiros',
+            where: 'Lista (avatar) e cabeçalho da tela da loja',
+            source: `Planilha de logos · aba “${LOGO_SHEET_SOURCE.range}” (GET /api/sheets/{id}/{aba}) · fallback: colunas logo_url / Logo na planilha principal`,
+            status: isLogoSheetOk ? 'connected' : 'none',
+            detail:
+                'A cada sincronização o app busca o mapa Estabelecimento → URL na aba de logos. Se a URL for preenchida no dia seguinte, o próximo “Atualizar” ou o refresh agendado passa a exibir. A URL da planilha de logos tem prioridade sobre a coluna da planilha principal.',
+        },
+        {
+            title: 'Acessos únicos (totais, média, último dia)',
+            where: 'Tela da loja · bloco “Acessos ao Cardápio (tempo real)”',
+            source: `Planilha de acessos · aba “${ACCESS_DATA_SOURCE.range}”`,
+            status: isAccessSheetOk ? 'connected' : 'none',
+            detail:
+                'Cabeçalhos de coluna no formato de data (YYYY-M-D). Nome da loja alinhado por texto (case/acentos normalizados).',
+        },
+        {
+            title: 'Funil Acessos → Compras (e % na barra)',
+            where: 'Tela da loja · “Análise do Cardápio”',
+            source: 'Derivação: pedidos (planilha principal) + acessos únicos (planilha de acessos)',
+            status: 'conditional',
+            detail:
+                'Compras = soma das semanas da planilha principal. Acessos = total único da planilha de acessos. Se faltar uma das duas fontes, o funil mostra só o que existir ou fica indisponível.',
+        },
+        {
+            title: 'Índice de desempenho e prioridade (estrelas)',
+            where: 'Coluna Índice e Prioridade na lista',
+            source: 'Calculado no navegador a partir de pedidos vs. meta proporcional aos dias',
+            status: 'computed',
+            detail:
+                'Não é taxa de conversão de acessos; é desempenho frente à meta de onboarding (30 pedidos em 28 dias).',
+        },
+        {
+            title: 'Taxa de conversão / GMV / item mais vendido / fotos no cardápio',
+            where: 'Painel “Métricas detalhadas” na tela da loja',
+            source: 'Nenhuma integração implementada',
+            status: 'none',
+            detail:
+                'Exibidos como “Em breve”. Para dados reais será preciso nova coluna, aba ou API.',
+        },
+        {
+            title: 'Google Analytics 4 (GA4)',
+            where: '— (nenhuma tela consome hoje)',
+            source: 'Arquivo ga4Config.ts',
+            status: 'planned',
+            detail: [
+                'A configuração existe no repositório, mas o app não chama a Data API do GA4 nesta versão.',
+                isGA4Placeholder ? 'O propertyId ainda está como placeholder.' : 'Mesmo com propertyId preenchido, nada no UI consome até haver integração no código.',
+                !GA4_CONFIG.enabled ? 'Integração desativada (enabled: false) em ga4Config.' : '',
+            ]
+                .filter(Boolean)
+                .join(' '),
+        },
+    ];
 
     return (
-        <div className="p-4 md:p-8 max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <header className="mb-10">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined text-3xl">settings_input_component</span>
+        <div className="p-4 md:p-8 max-w-6xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <header className="mb-8 md:mb-10">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4 mb-4">
+                    <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                        <span className="material-symbols-outlined text-3xl">hub</span>
                     </div>
-                    <div>
-                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Status de Monitoramento</h1>
-                        <p className="text-slate-500 dark:text-slate-400 font-medium italic">
-                            Painel de controle técnico das integrações ativas
+                    <div className="min-w-0">
+                        <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                            Fontes de dados
+                        </h1>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1 text-sm md:text-base leading-relaxed">
+                            Mapa do que cada parte do dashboard consome: integrações ativas, dados calculados e lacunas onde
+                            a interface ainda não tem fonte real.
                         </p>
                     </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className={`size-1.5 rounded-full ${statusMeta.connected.dot}`} />
+                        Fonte ativa
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className={`size-1.5 rounded-full ${statusMeta.conditional.dot}`} />
+                        Depende dos dados
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className={`size-1.5 rounded-full ${statusMeta.computed.dot}`} />
+                        Calculado no app
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className={`size-1.5 rounded-full ${statusMeta.none.dot}`} />
+                        Sem fonte
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className={`size-1.5 rounded-full ${statusMeta.planned.dot}`} />
+                        Planejado
+                    </span>
+                </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Coluna Principal: Fontes de Dados */}
-                <div className="lg:col-span-2 space-y-8">
-                    
-                    {/* Fonte Principal: Google Sheets */}
-                    <section className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none overflow-hidden hover:border-primary/30 transition-all duration-300">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className="size-10 bg-green-500 text-white rounded-xl shadow-lg shadow-green-500/20 flex items-center justify-center">
-                                    <span className="material-symbols-outlined">table_view</span>
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-none mb-1">Coração de Dados</h2>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Google Sheets API Gateway</p>
-                                </div>
-                            </div>
-                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isGoogleSheetsConfigured ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'}`}>
-                                <span className={`size-2 rounded-full animate-pulse ${isGoogleSheetsConfigured ? 'bg-green-500 shadow-[0_0_8px_rgb(34,197,94)]' : 'bg-slate-400'}`}></span>
-                                {isGoogleSheetsConfigured ? 'Live & Sincronizado' : 'Inativo'}
-                            </div>
-                        </div>
-
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                                <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/50 group hover:border-primary/30 transition-colors">
-                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">ID da Planilha Ativa</label>
-                                    <p className="font-mono text-sm text-slate-800 dark:text-slate-200 truncate select-all">{DATA_SOURCE.sheetId || 'Nenhum'}</p>
-                                    <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline transition-all">
-                                        Abrir Planilha no Google <span className="material-symbols-outlined text-sm">open_in_new</span>
-                                    </a>
-                                </div>
-                                <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/50 group hover:border-primary/30 transition-colors">
-                                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Aba de Dados (Sheet Name)</label>
-                                    <p className="font-mono text-sm text-slate-800 dark:text-slate-200">{DATA_SOURCE.range || 'Nenhuma'}</p>
-                                    <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-slate-400">
-                                        <span className="material-symbols-outlined text-sm">filter_none</span> Mapeamento Dinâmico
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
-                                    <h4 className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-400 mb-3">
-                                        <span className="material-symbols-outlined text-lg">priority_high</span> 
-                                        Ação Crítica de Estrutura
-                                    </h4>
-                                    <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed mb-4">
-                                        O Gateway mapeia as colunas pela <strong>LINHA 1</strong> da aba <code>{DATA_SOURCE.range}</code>. 
-                                        Se nomes não baterem exatamente, os dados aparecerão como <code className="bg-amber-200/50 dark:bg-amber-500/20 px-1 rounded italic font-bold">NaN</code> ou em branco.
-                                    </p>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                                        {['Cidade', 'ID', 'Estabelecimento', 'Status', 'Lancamento'].map((h, i) => (
-                                            <div key={h} className="bg-white/60 dark:bg-black/20 p-2 rounded-lg text-center border border-amber-200 dark:border-amber-500/10">
-                                                <span className="text-[10px] font-bold block text-amber-900/40 dark:text-amber-400/30 uppercase leading-none mb-1">Col {String.fromCharCode(65+i)}1</span>
-                                                <span className="text-[11px] font-black text-amber-900 dark:text-amber-400 truncate">{h}</span>
+            {/* Mapa principal */}
+            <section className="mb-10">
+                <h2 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">
+                    O que alimenta cada área
+                </h2>
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {lineageRows.map((row) => {
+                            const sm = statusMeta[row.status];
+                            return (
+                                <div
+                                    key={row.title}
+                                    className="p-4 md:p-5 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                                >
+                                    <div className="flex flex-col lg:flex-row lg:items-start gap-3 lg:gap-6">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                <h3 className="font-bold text-slate-900 dark:text-white text-sm md:text-base">
+                                                    {row.title}
+                                                </h3>
+                                                <span
+                                                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${sm.className}`}
+                                                >
+                                                    <span className={`size-1.5 rounded-full ${sm.dot}`} />
+                                                    {sm.label}
+                                                </span>
                                             </div>
-                                        ))}
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                                                    Onde aparece:{' '}
+                                                </span>
+                                                {row.where}
+                                            </p>
+                                            <p className="text-xs text-slate-600 dark:text-slate-300">
+                                                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                                    Fonte:{' '}
+                                                </span>
+                                                {row.source}
+                                            </p>
+                                        </div>
+                                        <p className="lg:max-w-md text-xs text-slate-500 dark:text-slate-400 leading-relaxed border-l-0 lg:border-l border-slate-100 dark:border-slate-800 lg:pl-6">
+                                            {row.detail}
+                                        </p>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </section>
+                            );
+                        })}
+                    </div>
+                </div>
+            </section>
 
-                    {/* API de Acessos Únicos Rápidos (NEW) */}
-                    <section className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none overflow-hidden hover:border-primary/30 transition-all duration-300">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/80 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className="size-10 bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 flex items-center justify-center">
-                                    <span className="material-symbols-outlined">data_exploration</span>
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-none mb-1">Acessos da Loja</h2>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Gateway Analytics Dinâmico</p>
-                                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+                {/* Planilha principal */}
+                <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="size-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                                <span className="material-symbols-outlined">table_view</span>
                             </div>
-                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isAccessSheetConfigured ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'}`}>
-                                <span className={`size-2 rounded-full animate-pulse ${isAccessSheetConfigured ? 'bg-indigo-500 shadow-[0_0_8px_rgb(99,102,241)]' : 'bg-slate-400'}`}></span>
-                                {isAccessSheetConfigured ? 'Conectado' : 'Offline'}
-                            </div>
-                        </div>
-                        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/50 group hover:border-primary/30 transition-colors">
-                                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">ID Relatório Acessos</label>
-                                <p className="font-mono text-sm text-slate-800 dark:text-slate-200 truncate select-all">{ACCESS_DATA_SOURCE.sheetId || '—'}</p>
-                                <a href={accessSheetUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-500 hover:text-indigo-600 transition-all">
-                                    Ver Fonte de Acessos <span className="material-symbols-outlined text-sm">open_in_new</span>
-                                </a>
-                            </div>
-                            <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/50">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                                    Sincroniza automaticamente a quantidade de visitas estimadas no <strong>Funil de Vendas</strong> dos parceiros, melhorando a precisão da conversão.
+                            <div>
+                                <h2 className="text-base font-bold text-slate-900 dark:text-white">Planilha principal</h2>
+                                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                    Parceiros e pedidos
                                 </p>
                             </div>
                         </div>
-                    </section>
-
-                    {/* Logos Spreadsheet (Secondary Source) */}
-                    <section className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <div className="p-5 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="size-10 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl flex items-center justify-center">
-                                    <span className="material-symbols-outlined">image_search</span>
-                                </div>
-                                <div>
-                                    <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 leading-none mb-1">Repositório de Logos</h2>
-                                    <p className="text-xs text-slate-500 font-medium">Planilha de ativos visuais (Mapeamento Estabelecimento → Logo)</p>
-                                </div>
-                            </div>
-                            <a href={logoSheetUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors flex items-center gap-2">
-                                Ver Repositório <span className="material-symbols-outlined text-sm">external_link</span>
-                            </a>
+                        <span
+                            className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isMainSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
+                        >
+                            {isMainSheetOk ? 'ID configurado' : 'Revise o ID'}
+                        </span>
+                    </div>
+                    <dl className="space-y-3 text-sm">
+                        <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</dt>
+                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all select-all">
+                                {DATA_SOURCE.sheetId || '—'}
+                            </dd>
                         </div>
-                    </section>
-                </div>
+                        <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aba</dt>
+                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200">{DATA_SOURCE.range}</dd>
+                        </div>
+                    </dl>
+                    <a
+                        href={sheetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                    >
+                        Abrir no Google Sheets
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    </a>
+                    <p className="mt-4 text-[11px] text-amber-800 dark:text-amber-400/90 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-3 leading-relaxed">
+                        Cabeçalhos esperados na linha 1 (ex.: Cidade, ID, Estabelecimento, Status, Lancamento, Responsavel,
+                        Week_1…Week_4). Opcional: coluna de URL para logo (logo_url / Logo).
+                    </p>
+                </section>
 
-                {/* Coluna Lateral: Analytics & Técnicos */}
-                <div className="space-y-6">
-                    
-                    {/* Integração GA4 */}
-                    <section className="bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-1 shadow-xl shadow-orange-500/10">
-                        <div className="bg-white dark:bg-slate-900 rounded-[calc(1.5rem-2px)] p-6 h-full">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="size-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
-                                    <span className="material-symbols-outlined">analytics</span>
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Google Analytics</h3>
+                {/* Planilha de acessos */}
+                <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="size-10 bg-indigo-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                                <span className="material-symbols-outlined">data_exploration</span>
                             </div>
-                            
-                            <div className="space-y-4 mb-6">
-                                <div className="flex justify-between items-center text-sm py-2 border-b border-slate-100 dark:border-slate-800">
-                                    <span className="text-slate-500">Status da API</span>
-                                    <span className={`font-bold ${isGA4Configured ? 'text-green-500' : 'text-slate-400'}`}>
-                                        {isGA4Configured ? 'CONECTADO' : 'AGUARDANDO'}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm py-2 border-b border-slate-100 dark:border-slate-800">
-                                    <span className="text-slate-500">Property ID</span>
-                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{isGA4Configured ? GA4_CONFIG.propertyId : '—'}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm py-2 border-b border-slate-100 dark:border-slate-800">
-                                    <span className="text-slate-500">Modo de Identificação</span>
-                                    <span className="font-medium text-slate-700 dark:text-slate-300">{GA4_CONFIG.identifierMode}</span>
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-50 dark:bg-white/5 p-4 rounded-2xl">
-                                <p className="text-[11px] leading-relaxed text-slate-500 italic">
-                                    As métricas de sessões e visualizações são puxadas em tempo de execução via GA4 Data API, comparando o ID do estabelecimento no dashboard com as dimensões customizadas do Google.
+                            <div>
+                                <h2 className="text-base font-bold text-slate-900 dark:text-white">Planilha de acessos</h2>
+                                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                    Acessos únicos por dia
                                 </p>
                             </div>
                         </div>
-                    </section>
-
-                    {/* Fontes Legadas / Overrides */}
-                    <section className="bg-slate-900 dark:bg-white rounded-3xl p-6 shadow-xl dark:shadow-none">
-                        <h3 className="text-sm font-black text-white dark:text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-                            <span className="material-symbols-outlined text-lg">layers</span> Camada de Dados
-                        </h3>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-3 p-3 rounded-xl bg-white/10 dark:bg-slate-100 border border-white/5 dark:border-slate-200">
-                                <div className="size-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-sm">edit_note</span>
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-[10px] font-black text-indigo-300 dark:text-indigo-400 uppercase tracking-tighter">Manual Overrides</p>
-                                    <p className="text-[11px] text-white/70 dark:text-slate-600 leading-tight">Ajustes manuais locais salvos por você em cada parceiro.</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3 p-3 rounded-xl bg-white/10 dark:bg-slate-100 border border-white/5 dark:border-slate-200">
-                                <div className="size-8 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-sm">upload_file</span>
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-[10px] font-black text-pink-300 dark:text-pink-400 uppercase tracking-tighter">Bulk CSV Analytics</p>
-                                    <p className="text-[11px] text-white/70 dark:text-slate-600 leading-tight">Dados de acessos importados via upload de arquivo CSV.</p>
-                                </div>
-                            </div>
+                        <span
+                            className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isAccessSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
+                        >
+                            {isAccessSheetOk ? 'ID configurado' : 'Revise o ID'}
+                        </span>
+                    </div>
+                    <dl className="space-y-3 text-sm">
+                        <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</dt>
+                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all select-all">
+                                {ACCESS_DATA_SOURCE.sheetId || '—'}
+                            </dd>
                         </div>
-                    </section>
-                </div>
+                        <div>
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aba</dt>
+                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200">
+                                {ACCESS_DATA_SOURCE.range}
+                            </dd>
+                        </div>
+                    </dl>
+                    <a
+                        href={accessSheetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                        Abrir planilha de acessos
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    </a>
+                </section>
             </div>
 
-            <footer className="mt-12 pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-3">
-                    <span className="h-px w-8 bg-slate-200 dark:bg-slate-800"></span> 
-                    Arquitetura de Dados 2026 
-                    <span className="h-px w-8 bg-slate-200 dark:bg-slate-800"></span>
-                </p>
-                <div className="flex justify-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-500 uppercase">React 19</span>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-500 uppercase">Vite 7</span>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-500 uppercase">Tailwind 4</span>
+            {/* Referência logos + API + overrides */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+                <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-slate-500">image</span>
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Planilha de logos</h3>
+                        </div>
+                        <span
+                            className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isLogoSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
+                        >
+                            {isLogoSheetOk ? 'Integrada' : 'Revise'}
+                        </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
+                        Consumida junto com a lista de parceiros. Endpoint:{' '}
+                        <code className="text-[10px] bg-white dark:bg-slate-900 px-1 rounded break-all">
+                            {`/api/sheets/${LOGO_SHEET_SOURCE.sheetId}/${encodeURIComponent(LOGO_SHEET_SOURCE.range)}`}
+                        </code>
+                    </p>
+                    <dl className="text-[11px] space-y-1 mb-3 font-mono text-slate-600 dark:text-slate-400 break-all">
+                        <div>
+                            <dt className="font-bold text-slate-500 uppercase tracking-wider">ID</dt>
+                            <dd>{LOGO_SHEET_SOURCE.sheetId}</dd>
+                        </div>
+                        <div>
+                            <dt className="font-bold text-slate-500 uppercase tracking-wider">Aba</dt>
+                            <dd>{LOGO_SHEET_SOURCE.range}</dd>
+                        </div>
+                    </dl>
+                    <a
+                        href={logoSheetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1"
+                    >
+                        Abrir no Google Sheets
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    </a>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5 md:col-span-2">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="material-symbols-outlined text-slate-500">cloud</span>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">Gateway (API)</h3>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                        Variável de ambiente <code className="text-[11px] bg-white dark:bg-slate-900 px-1 rounded">VITE_API_ORIGIN</code>
+                        . Se não estiver definida, usa o padrão abaixo.
+                    </p>
+                    <p className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all select-all">{API_ORIGIN}</p>
+                </section>
+            </div>
+
+            <section className="rounded-2xl border border-slate-200 dark:border-violet-900/40 bg-violet-50/40 dark:bg-violet-950/20 p-6 mb-8">
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined text-violet-600 dark:text-violet-400">edit_note</span>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Ajustes locais (não são planilha)</h3>
                 </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Valores de pedidos editados manualmente na tela da loja ficam no <strong>localStorage</strong> do seu
+                    navegador. Eles sobrescrevem temporariamente os números vindos da planilha principal só para você,
+                    até restaurar o original.
+                </p>
+            </section>
+
+            <footer className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center text-[11px] text-slate-400">
+                Partner Journey Dashboard · mapa de dados e integrações
             </footer>
         </div>
     );
 }
-

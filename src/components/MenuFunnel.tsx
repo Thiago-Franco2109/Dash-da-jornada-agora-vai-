@@ -25,14 +25,20 @@ export default function MenuFunnel({ steps }: MenuFunnelProps) {
                 <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30 text-sm">
                     <span className="material-symbols-outlined text-blue-500 text-[20px] mt-0.5">info</span>
                     <span className="text-blue-800 dark:text-blue-300">
-                        <strong>Métricas Reais:</strong> Os dados abaixo refletem a performance real coletada via integração em tempo real ou arquivos importados.
+                        <strong>Apenas dados integrados:</strong> acessos únicos vêm da planilha conectada ao gateway; compras são os pedidos confirmados do onboarding desta loja. Não há etapas intermediárias nem estimativas.
                     </span>
                 </div>
             </div>
 
             {/* ───── Funnel cards ───── */}
             <div className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div
+                    className={
+                        steps.length <= 2
+                            ? 'grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto'
+                            : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3'
+                    }
+                >
                     {steps.map((step, i) => {
                         // Altura da barra baseada no % real (com um mínimo para visibilidade)
                         const barH = i === 0 ? 100 : Math.max(10, step.pctOfFirst);
@@ -74,7 +80,7 @@ export default function MenuFunnel({ steps }: MenuFunnelProps) {
                 </div>
 
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
-                    * Métricas coletadas em tempo real via integração com Google Sheets / GA4.
+                    * Funil limitado aos dados disponíveis nas planilhas integradas (sem comparativo com concorrentes ou etapas estimadas).
                 </p>
             </div>
         </div>
