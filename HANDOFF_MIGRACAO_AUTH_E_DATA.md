@@ -13,7 +13,8 @@
 ### 2. Fonte de Dados (Bigou Sheets Gateway)
 - **O QUE MUDOU**: Os dados deixaram de ser baixados no "build" para serem buscados em tempo real (runtime) do Gateway.
 - **CONFIGURAÇÃO**:
-  - `dataSource.ts`: Atualizado para o ID da nova planilha `1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU` e aba `NOVOS`.
+  - `dataSource.ts`: Atualizado para o ID da nova planilha `[REDACTED]` e aba `NOVOS`.
+
   - `dataSync.ts`: Motor de tratamento de dados foi refatorado para ler objetos JSON do Gateway e pular metadados das linhas 2-5 da planilha.
 - **LIMPEZA**: Removidos os scripts `syncSheets.js` e o arquivo `remoteData.json`.
 
