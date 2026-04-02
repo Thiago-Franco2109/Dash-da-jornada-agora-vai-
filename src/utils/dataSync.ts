@@ -33,7 +33,10 @@ export async function fetchGoogleSheetsData(sheetType: string, tabName: string =
 
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
+        const errorJson = await response.json().catch(() => ({}));
+        const message = errorJson.error || `Erro ${response.status}: ${response.statusText}`;
+        const tentative = errorJson.tentativa ? ` (Attempted: ${errorJson.tentativa})` : "";
+        throw new Error(`${message}${tentative}`);
     }
 
     const json = await response.json();

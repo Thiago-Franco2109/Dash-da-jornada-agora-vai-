@@ -67,8 +67,9 @@ const handler: Handler = async (event, _context) => {
             return {
                 statusCode: response.status,
                 body: JSON.stringify({
-                    error: `Gateway API responded with ${response.status}`,
-                    details: errorText
+                    error: `A API do Bigou Gateway retornou erro ${response.status}`,
+                    details: errorText,
+                    tentativa: url
                 })
             };
         }
