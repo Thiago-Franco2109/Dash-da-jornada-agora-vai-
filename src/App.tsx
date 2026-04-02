@@ -181,12 +181,21 @@ function App() {
                   </div>
 
                   {isUsingCache && (
-                    <div className="mt-4 flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg text-amber-800 dark:text-amber-400">
-                      <span className="material-symbols-outlined shrink-0">cloud_off</span>
-                      <div>
-                        <p className="text-sm font-semibold">Usando dados em cache</p>
-                        <p className="text-sm opacity-90">Não foi possível conectar à base de dados no momento. Mostrando as últimas informações salvas localmente.</p>
+                    <div className="mt-4 flex flex-col gap-2 p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl text-amber-800 dark:text-amber-400">
+                      <div className="flex items-start gap-3">
+                        <span className="material-symbols-outlined shrink-0 text-amber-600 dark:text-amber-500">cloud_off</span>
+                        <div>
+                          <p className="text-sm font-semibold">Usando dados em cache</p>
+                          <p className="text-sm opacity-90">Não foi possível conectar à base de dados no momento. Mostrando as últimas informações salvas localmente.</p>
+                        </div>
                       </div>
+                      
+                      {syncError && (
+                        <div className="ml-9 p-2 bg-amber-100/50 dark:bg-amber-800/20 rounded border border-amber-200/50 dark:border-amber-700/30">
+                          <p className="text-[11px] font-mono uppercase tracking-wider mb-1 opacity-70">Detalhe técnico do erro:</p>
+                          <p className="text-xs font-mono break-all">{syncError}</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
