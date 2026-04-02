@@ -22,6 +22,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [managerFilter, setManagerFilter] = useState('');
+  const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
@@ -39,11 +40,16 @@ function App() {
 
   // Enrich Data – apply manual overrides before enriching
   const enrichedData = useMemo(() =>
-    syncData.map(row => {
-      const override = overrides[row.estabelecimento];
-      const merged = override ? { ...row, ...override } : row;
-      return enrichPartnerData(merged);
-    }),
+    syncData
+      .map(row => {
+        const override = overrides[row.estabelecimento];
+        const merged = override ? { ...row, ...override } : row;
+        return enrichPartnerData(merged);
+      })
+      .filter(row => {
+        const status = row.status?.toLowerCase() || '';
+        return status !== 'desistencia' && status !== 'desistência';
+      }),
     [syncData, overrides]
   );
 
@@ -58,6 +64,14 @@ function App() {
     if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) matches = false;
     if (priorityFilter && row.priority_stars.toString() !== priorityFilter) matches = false;
     if (managerFilter && row.analista !== managerFilter) matches = false;
+
+    // Age Group Filter
+    const days = row.dias_desde_lancamento;
+    if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) matches = false;
+    if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) matches = false;
+    if (ageGroupFilter === '15-21' && (days < 15 || days > 21)) matches = false;
+    if (ageGroupFilter === '22-28' && (days < 22 || days > 28)) matches = false;
+
     return matches;
   });
 
@@ -95,24 +109,6 @@ function App() {
 
 
 
-  // Summary Metrics Calculation
-  const totalPartners = filteredTableData.length;
-  const criticalCount = filteredTableData.filter((p: EnrichedPerformanceRow) => p.priority_stars === 5).length;
-  const highRiskCount = filteredTableData.filter((p: EnrichedPerformanceRow) => p.priority_stars === 4).length;
-  const onTrackCount = filteredTableData.filter((p: EnrichedPerformanceRow) => p.priority_stars <= 2).length;
-  const avgIndice = totalPartners > 0 ? (filteredTableData.reduce((acc: number, p: EnrichedPerformanceRow) => acc + p.indice_desempenho, 0) / totalPartners) : 0;
-
-  const pctCritical = totalPartners > 0 ? Math.round((criticalCount / totalPartners) * 100) : 0;
-  const pctHighRisk = totalPartners > 0 ? Math.round((highRiskCount / totalPartners) * 100) : 0;
-  const pctOnTrack = totalPartners > 0 ? Math.round((onTrackCount / totalPartners) * 100) : 0;
-
-  const summaryCards = [
-    { label: 'Total Parceiros', value: totalPartners, icon: 'groups', color: 'text-blue-500', bg: 'bg-blue-50' },
-    { label: '% Crítico (5★)', value: `${pctCritical}%`, icon: 'error', color: 'text-red-500', bg: 'bg-red-50' },
-    { label: '% Alto Risco (4★)', value: `${pctHighRisk}%`, icon: 'warning', color: 'text-orange-500', bg: 'bg-orange-50' },
-    { label: '% Na Meta (1-2★)', value: `${pctOnTrack}%`, icon: 'check_circle', color: 'text-green-500', bg: 'bg-green-50' },
-    { label: 'Índice Médio', value: avgIndice.toFixed(2), icon: 'analytics', color: 'text-indigo-500', bg: 'bg-indigo-50' },
-  ];
 
   // Keep selectedRow in sync: recalculate whenever overrides change.
   const currentSelectedRow = selectedRow
@@ -211,6 +207,35 @@ function App() {
                   )}
                 </div>
 
+                {/* Age Group Tabs */}
+                <div className="border-b border-slate-200 dark:border-slate-800 px-6 flex gap-6 overflow-x-auto scrollbar-hide bg-slate-50/30 dark:bg-slate-900/50 pt-2">
+                    {[
+                        { id: 'all', label: 'Todos os Períodos' },
+                        { id: '1-7', label: '1 a 7 dias' },
+                        { id: '8-14', label: '8 a 14 dias' },
+                        { id: '15-21', label: '15 a 21 dias' },
+                        { id: '22-28', label: '22 a 28 dias' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setAgeGroupFilter(tab.id as any)}
+                            className={`pb-3 pt-2 px-1 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${ageGroupFilter === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                        >
+                            {tab.label}
+                            <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                                {enrichedData.filter(r => {
+                                    const d = r.dias_desde_lancamento;
+                                    if (tab.id === '1-7') return d >= 1 && d <= 7;
+                                    if (tab.id === '8-14') return d >= 8 && d <= 14;
+                                    if (tab.id === '15-21') return d >= 15 && d <= 21;
+                                    if (tab.id === '22-28') return d >= 22 && d <= 28;
+                                    return true;
+                                }).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
                 <FilterToolbar
                   cityFilter={cityFilter}
                   setCityFilter={setCityFilter}
@@ -229,18 +254,6 @@ function App() {
                   </div>
                 ) : (
                   <div className="flex flex-col flex-1 divide-y divide-slate-100 dark:divide-slate-800">
-                    {/* Summary Cards */}
-                    <div className="p-6 grid grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50/30 dark:bg-slate-900/50">
-                      {summaryCards.map((card, idx) => (
-                        <div key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 flex flex-col justify-between hover:shadow-sm transition-shadow">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{card.label}</span>
-                            <span className={`material-symbols-outlined text-[20px] ${card.color}`}>{card.icon}</span>
-                          </div>
-                          <span className="text-2xl font-bold text-slate-900 dark:text-white">{card.value}</span>
-                        </div>
-                      ))}
-                    </div>
 
                     {/* Table */}
                     <PerformanceTable

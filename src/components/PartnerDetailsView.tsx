@@ -324,9 +324,17 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                             <div>
                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center justify-between">
                                     Taxa de Conversão
-                                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Em breve</span>
+                                    {hasLiveAPI && (
+                                        <span className="inline-flex items-center rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 uppercase tracking-tight">Ativo</span>
+                                    )}
                                 </p>
-                                <p className="mt-1 text-lg font-semibold text-slate-400 dark:text-slate-500">--%</p>
+                                {hasLiveAPI && dailyAccessData ? (
+                                    <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
+                                        {((partner.total_pedidos / dailyAccessData.acessosUnicos) * 100).toFixed(2)}%
+                                    </p>
+                                ) : (
+                                    <p className="mt-1 text-lg font-semibold text-slate-400 dark:text-slate-500">Aguardando dados</p>
+                                )}
                             </div>
 
                             <div>
