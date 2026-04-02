@@ -3,6 +3,7 @@ import { getStarColor, type EnrichedPerformanceRow } from '../utils/calculations
 export type PerformanceRow = {
     cidade: string;
     estabelecimento: string;
+    estab_id?: string;  // ESTAB_ID da coluna B – chave para cruzamento com INDICADOR
     status: string;
     lancamento: string;
     desempenho: string;
@@ -12,6 +13,10 @@ export type PerformanceRow = {
     week_4: number;
     logo_url?: string;
     analista?: string;
+    /** Status da promoção: 'ativo' | 'aguardando' | 'inativo' */
+    promo_status?: 'ativo' | 'aguardando' | 'inativo';
+    /** Status do cupom: 'ativo' | 'aguardando' | 'inativo' */
+    cupom_status?: 'ativo' | 'aguardando' | 'inativo';
 };
 
 export type SortConfig = {
@@ -36,6 +41,33 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
             </div>
         );
     };
+
+    // Render promo/cupom status badge
+    const renderIndicadorBadge = (status: 'ativo' | 'aguardando' | 'inativo' | undefined) => {
+        if (status === 'ativo') {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
+                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                    Ativo
+                </span>
+            );
+        }
+        if (status === 'aguardando') {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
+                    <span className="material-symbols-outlined text-[13px]">schedule</span>
+                    Aguard.
+                </span>
+            );
+        }
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+                <span className="material-symbols-outlined text-[13px]">remove</span>
+                —
+            </span>
+        );
+    };
+
     const renderSortIcon = (key: string) => {
         if (!sortConfig || sortConfig.key !== key) return null;
         return (
@@ -74,6 +106,12 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
                                     Prioridade {renderSortIcon('priority_stars')}
+                                </th>
+                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    Promo
+                                </th>
+                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    Cupom
                                 </th>
                             </tr>
                         </thead>
@@ -124,6 +162,12 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">{row.city_weight}</td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {renderStars(row.priority_stars)}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {renderIndicadorBadge(row.promo_status)}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {renderIndicadorBadge(row.cupom_status)}
                                         </td>
                                     </tr>
                                 )

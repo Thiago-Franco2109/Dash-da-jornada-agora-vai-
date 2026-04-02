@@ -3,11 +3,13 @@ import { useAuth } from '../context/AuthContext';
 interface HeaderProps {
     currentView: 'dashboard' | 'settings';
     onNavigate: (view: 'dashboard' | 'settings') => void;
+    onToggleReports: () => void;
+    reportsOpen: boolean;
     searchQuery: string;
     setSearchQuery: (query: string) => void;
 }
 
-export default function Header({ currentView, onNavigate, searchQuery, setSearchQuery }: HeaderProps) {
+export default function Header({ currentView, onNavigate, onToggleReports, reportsOpen, searchQuery, setSearchQuery }: HeaderProps) {
     const { user, logout } = useAuth();
 
     return (
@@ -44,6 +46,12 @@ export default function Header({ currentView, onNavigate, searchQuery, setSearch
                         className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'dashboard' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
                     >
                         Dashboard
+                    </button>
+                    <button
+                        onClick={onToggleReports}
+                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${reportsOpen ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                    >
+                        Relatórios
                     </button>
                     <button
                         onClick={() => onNavigate('settings')}

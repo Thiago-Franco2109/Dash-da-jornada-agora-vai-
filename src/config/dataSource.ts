@@ -19,5 +19,11 @@ export const LOGO_SHEET_SOURCE = {
     range: 'dados',
 } as const;
 
+/** Aba INDICADOR – contém status de promoção (col E) e cupom (col F) por parceiro */
+export const INDICADOR_DATA_SOURCE = {
+    sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
+    range: 'INDICADOR',
+} as const;
+
 /** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
 export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.sheetId;

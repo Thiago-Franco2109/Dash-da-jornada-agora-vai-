@@ -40,7 +40,7 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
                     console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
                     return {} as Record<string, string>;
-                }),
+                })
             ]);
 
             const mergedData = mergeLogoMapIntoRows(fetchedData, logoMap);

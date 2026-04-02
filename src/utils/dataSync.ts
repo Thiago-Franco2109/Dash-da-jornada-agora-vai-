@@ -5,9 +5,7 @@ export interface SyncResult {
     lastSyncTime: Date;
     sourceUpdatedAt?: Date; // Optional
 }
-
-const CACHE_KEY = 'partner_journey_data_cache';
-
+const CACHE_KEY = 'partner_journey_data_cache_v5';
 
 
 const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
@@ -55,10 +53,13 @@ export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "
                 estabelecimento: row[2] || "",
                 status: (row[3] || "ativo").toLowerCase(),
                 lancamento: row[4] || "",
+                desempenho: row[5] || "",
                 week_1: row[6] || 0,
                 week_2: row[7] || 0,
                 week_3: row[8] || 0,
-                week_4: row[9] || 0
+                week_4: row[9] || 0,
+                promo: row[10] || "",
+                cupom: row[11] || ""
             }));
             return validateAndMapData(mappedData);
         }
@@ -85,7 +86,19 @@ export function findValue(row: Record<string, any>, ...candidates: string[]): an
 }
 
 /**
- * Processa as rows retornadas pelo Gateway.
+ * Normaliza o valor bruto para as métricas de Promoção e Cupom.
+ * Retorna 'ativo' para APROV, 'aguardando' para AGUAR, ou 'inativo' (vazio/ausente).
+ */
+export function normalizePromoStatus(raw: any): 'ativo' | 'aguardando' | 'inativo' {
+    if (raw == null) return 'inativo';
+    const s = String(raw).trim().toUpperCase();
+    if (s.includes('APROV') || s.includes('ATIVO')) return 'ativo';
+    if (s.includes('AGUAR')) return 'aguardando';
+    return 'inativo';
+}
+
+/**
+ * Processas as rows retornadas pelo Gateway.
  */
 function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): PerformanceRow[] {
     const dataRows = rows.slice(SKIP_METADATA_ROWS);
@@ -98,8 +111,13 @@ function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): Perf
             const logoRaw = findValue(row, 'logo_url', 'Logo_URL', 'Logo');
             const logo_url = logoRaw != null && String(logoRaw).trim() ? String(logoRaw).trim() : '';
             const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel') || 'Desconhecido';
+            
+            const rawPromo = findValue(row, 'promos', 'promo', 'promocao', 'PROMO PARC.', 'PROMO', 'promoção', 'PROMO PARC', 'PROMOCOES', 'Promoções', 'promo_status') || vals[10];
+            const rawCupom = findValue(row, 'cupons', 'cupom', 'CUPOM PARC.', 'CUPOM', 'cupom_status', 'CUPONS') || vals[11];
+
             return {
                 cidade: String(vals[0] || '').trim(),
+                estab_id: String(vals[1] || '').trim(),
                 estabelecimento: String(vals[2] || '').trim(),
                 status: (String(vals[3] || 'ativo').trim().toLowerCase()) as 'ativo' | 'suspenso',
                 lancamento: String(vals[4] || '').trim(),
@@ -109,6 +127,8 @@ function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): Perf
                 week_3: parseWeekValue(vals[8]),
                 week_4: parseWeekValue(vals[9]),
                 analista,
+                promo_status: normalizePromoStatus(rawPromo),
+                cupom_status: normalizePromoStatus(rawCupom),
                 ...(logo_url ? { logo_url } : {}),
             };
         }).filter(row => row.estabelecimento && row.estabelecimento.length > 1);
@@ -126,14 +146,18 @@ function parseWeekValue(val: any): number {
 function validateAndMapData(rawData: any[]): PerformanceRow[] {
     return rawData.map(row => {
         const cidade = findValue(row, 'cidade', 'Cidade', 'PEDIDOS_ACEITOS') || 'Desconhecida';
+        const estab_id = String(findValue(row, 'estab_id', 'ESTAB_ID', 'ID', 'Id', 'id') || '').trim();
         const estabelecimento = findValue(row, 'estabelecimento', 'Estabelecimento', 'TODAS') || 'Desconhecido';
         const status = (String(findValue(row, 'status', 'Status') || 'ativo')).toLowerCase() as 'ativo' | 'suspenso';
         const lancamento = String(findValue(row, 'lancamento', 'Lancamento', 'Lançamento') || '');
         const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel') || 'Desconhecido';
         const logo_url = findValue(row, 'logo_url', 'Logo_URL', 'Logo') || '';
+        const rawPromo = findValue(row, 'promos', 'promo', 'promocao', 'PROMO PARC.', 'PROMO', 'promoção', 'PROMO PARC', 'PROMOCOES', 'Promoções', 'promo_status');
+        const rawCupom = findValue(row, 'cupons', 'cupom', 'CUPOM PARC.', 'CUPOM', 'cupom_status', 'CUPONS');
 
         return {
             cidade,
+            estab_id,
             estabelecimento,
             status,
             lancamento,
@@ -143,6 +167,8 @@ function validateAndMapData(rawData: any[]): PerformanceRow[] {
             week_3: parseWeekValue(findValue(row, 'Week_3', 'week_3')),
             week_4: parseWeekValue(findValue(row, 'Week_4', 'week_4')),
             analista,
+            promo_status: normalizePromoStatus(rawPromo),
+            cupom_status: normalizePromoStatus(rawCupom),
             ...(logo_url ? { logo_url } : {})
         };
     }).filter(row => row.estabelecimento && row.estabelecimento !== 'Desconhecido' && row.estabelecimento.length > 1);

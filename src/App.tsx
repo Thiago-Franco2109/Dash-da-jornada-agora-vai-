@@ -7,6 +7,7 @@ import PerformanceTable from './components/PerformanceTable';
 import type { SortConfig } from './components/PerformanceTable';
 import PartnerDetailsView from './components/PartnerDetailsView';
 import SettingsView from './components/SettingsView';
+import ReportsView from './components/ReportsView';
 import { DATA_SOURCE } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useManualOverrides } from './hooks/useManualOverrides';
@@ -18,6 +19,7 @@ import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<'dashboard' | 'settings'>('dashboard');
+  const [reportsOpen, setReportsOpen] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -136,7 +138,7 @@ function App() {
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden relative bg-white dark:bg-slate-900">
-      <Header currentView={currentView} onNavigate={setCurrentView} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <Header currentView={currentView} onNavigate={setCurrentView} onToggleReports={() => setReportsOpen(o => !o)} reportsOpen={reportsOpen} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       <main className="flex flex-1 flex-col xl:flex-row h-full">
         {currentView === 'settings' ? (
           <SettingsView />
@@ -269,6 +271,33 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* Reports Drawer Overlay */}
+      {reportsOpen && (
+        <div className="fixed inset-0 z-40 flex justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity"
+            onClick={() => setReportsOpen(false)}
+          />
+          {/* Panel */}
+          <div className="relative w-full max-w-3xl bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slide-in-right">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">assessment</span>
+                Relatórios
+              </h2>
+              <button
+                onClick={() => setReportsOpen(false)}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <ReportsView data={enrichedData} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

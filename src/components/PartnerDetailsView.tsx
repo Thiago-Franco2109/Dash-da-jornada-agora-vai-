@@ -117,7 +117,7 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                             </div>
                         )}
                         <div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-3">
                                 <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight">
                                     {partner.estabelecimento}
                                 </h1>
@@ -132,8 +132,21 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                                     <span className="material-symbols-outlined text-[18px] mr-1">star</span>
                                     <span className="text-sm font-bold text-slate-800 dark:text-white">Prioridade {partner.priority_stars}</span>
                                 </div>
+                                
+                                {partner.estab_id && (
+                                    <a
+                                        href={`https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-3 py-1.5 text-sm font-medium transition-colors shadow-sm ml-2 group"
+                                        title={`ID CMS: ${partner.estab_id}`}
+                                    >
+                                        <span className="material-symbols-outlined text-[18px] mr-1.5 group-hover:scale-110 transition-transform">launch</span>
+                                        Ir para CMS
+                                    </a>
+                                )}
                             </div>
-                            <p className="text-slate-500 dark:text-slate-400 mt-1">
+                            <p className="text-slate-500 dark:text-slate-400 mt-2">
                                 <span className="material-symbols-outlined text-[16px] align-text-bottom mr-1">location_on</span>
                                 {partner.cidade}
                             </p>
@@ -309,16 +322,88 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                     </div>
                 </div>
 
-                {/* Right Column: Future Metrics Placeholders */}
+                {/* Right Column */}
                 <div className="space-y-6">
+
+                    {/* Promoções & Cupons Card */}
+                    <div className="bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+                        <div className="flex items-center mb-5">
+                            <span className="material-symbols-outlined text-violet-500 mr-2">local_offer</span>
+                            <h3 className="text-slate-900 dark:text-white font-bold text-lg">Promoções & Cupons</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Promoção */}
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700">
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-[20px] text-violet-400">percent</span>
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Promoção</p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">Desconto ativo no cardápio</p>
+                                    </div>
+                                </div>
+                                {partner.promo_status === 'ativo' && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
+                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                        Ativo
+                                    </span>
+                                )}
+                                {partner.promo_status === 'aguardando' && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
+                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                        Aguardando
+                                    </span>
+                                )}
+                                {(!partner.promo_status || partner.promo_status === 'inativo') && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+                                        <span className="material-symbols-outlined text-[14px]">remove_circle</span>
+                                        Inativo
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Cupom */}
+                            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700">
+                                <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-[20px] text-violet-400">confirmation_number</span>
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Cupom do Parceiro</p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">Cupom exclusivo cadastrado</p>
+                                    </div>
+                                </div>
+                                {partner.cupom_status === 'ativo' && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
+                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                        Ativo
+                                    </span>
+                                )}
+                                {partner.cupom_status === 'aguardando' && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
+                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                        Aguardando
+                                    </span>
+                                )}
+                                {(!partner.cupom_status || partner.cupom_status === 'inativo') && (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+                                        <span className="material-symbols-outlined text-[14px]">remove_circle</span>
+                                        Inativo
+                                    </span>
+                                )}
+                            </div>
+
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-start gap-1">
+                                <span className="material-symbols-outlined text-[13px] mt-0.5 shrink-0">info</span>
+                                "Ativo" = pelo menos 1 linha APROV na aba INDICADOR. "Aguardando" = somente AGUAR.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Métricas Detalhadas */}
                     <div className="bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-800/30 p-6">
                         <div className="flex items-center mb-4">
                             <span className="material-symbols-outlined text-indigo-500 mr-2">analytics</span>
                             <h3 className="text-slate-900 dark:text-white font-bold text-lg">Métricas Detalhadas</h3>
                         </div>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 border-b border-indigo-100 dark:border-indigo-800/30 pb-4">
-                            Métricas aprofundadas a serem integradas nas próximas atualizações.
-                        </p>
 
                         <div className="space-y-5">
                             <div>
