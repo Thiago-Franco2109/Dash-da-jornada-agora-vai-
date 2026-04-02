@@ -1,8 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ACCESS_DATA_SOURCE } from '../config/dataSource';
 
+const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? 'https://bigou-sheets-api.netlify.app';
+
 function apiUrl(path: string) {
-    return `/.netlify/functions/sheets-proxy${path}`;
+    if (!path.startsWith("/")) path = `/${path}`;
+    return `${API_ORIGIN}${path}`;
 }
 
 
@@ -27,8 +30,8 @@ export function useDailyAccessSync() {
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
     const performSync = useCallback(async () => {
-        if (!ACCESS_DATA_SOURCE.type) {
-            setError("Access Sheet type is missing.");
+        if (!ACCESS_DATA_SOURCE.sheetId) {
+            setError("Access Sheet ID is missing.");
             setIsLoading(false);
             return;
         }
@@ -37,7 +40,7 @@ export function useDailyAccessSync() {
             setIsLoading(true);
             setError(null);
 
-            const url = apiUrl(`?type=${ACCESS_DATA_SOURCE.type}&tab=${encodeURIComponent(ACCESS_DATA_SOURCE.range)}`);
+            const url = apiUrl(`/api/sheets/${ACCESS_DATA_SOURCE.sheetId}/${encodeURIComponent(ACCESS_DATA_SOURCE.range)}`);
             const res = await fetch(url, { credentials: "include" });
 
 

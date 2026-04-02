@@ -37,9 +37,9 @@ const statusMeta: Record<
 };
 
 export default function SettingsView() {
-    const isMainSheetOk = !!DATA_SOURCE.type;
-    const isAccessSheetOk = !!ACCESS_DATA_SOURCE.type;
-    const isLogoSheetOk = !!LOGO_SHEET_SOURCE.type;
+    const isMainSheetOk = !!DATA_SOURCE.sheetId;
+    const isAccessSheetOk = !!ACCESS_DATA_SOURCE.sheetId;
+    const isLogoSheetOk = !!LOGO_SHEET_SOURCE.sheetId;
     const isGA4Placeholder =
         !GA4_CONFIG.propertyId || GA4_CONFIG.propertyId === 'YOUR_GA4_PROPERTY_ID';
 
@@ -60,7 +60,7 @@ export default function SettingsView() {
         {
             title: 'Parceiros, pedidos por semana, status, lançamento, analista',
             where: 'Tabela principal, filtros, tela da loja (bloco onboarding)',
-            source: `Proxy (${DATA_SOURCE.type}) · aba “${DATA_SOURCE.range}”`,
+            source: `Direto (${DATA_SOURCE.sheetId}) · aba “${DATA_SOURCE.range}”`,
             status: isMainSheetOk ? 'connected' : 'none',
             detail:
                 'Colunas mapeadas pelo cabeçalho da linha 1. Valores errados ou vazios geram NaN ou campos em branco.',
@@ -68,7 +68,7 @@ export default function SettingsView() {
         {
             title: 'Logos dos parceiros',
             where: 'Lista (avatar) e cabeçalho da tela da loja',
-            source: `Proxy (${LOGO_SHEET_SOURCE.type}) · aba “${LOGO_SHEET_SOURCE.range}”`,
+            source: `Direto (${LOGO_SHEET_SOURCE.sheetId}) · aba “${LOGO_SHEET_SOURCE.range}”`,
             status: isLogoSheetOk ? 'connected' : 'none',
             detail:
                 'A cada sincronização o app busca o mapa Estabelecimento → URL na aba de logos via proxy seguro. A URL da planilha de logos tem prioridade sobre a coluna da planilha principal.',
@@ -76,7 +76,7 @@ export default function SettingsView() {
         {
             title: 'Acessos únicos (totais, média, último dia)',
             where: 'Tela da loja · bloco “Acessos ao Cardápio (tempo real)”',
-            source: `Proxy (${ACCESS_DATA_SOURCE.type}) · aba “${ACCESS_DATA_SOURCE.range}”`,
+            source: `Direto (${ACCESS_DATA_SOURCE.sheetId}) · aba “${ACCESS_DATA_SOURCE.range}”`,
             status: isAccessSheetOk ? 'connected' : 'none',
             detail:
                 'Cabeçalhos de coluna no formato de data (YYYY-M-D). Nome da loja alinhado por texto (case/acentos normalizados).',
@@ -237,8 +237,8 @@ export default function SettingsView() {
                     <dl className="space-y-3 text-sm">
                         <div>
                             <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
-                            <dd className="font-mono text-xs text-emerald-600 dark:text-emerald-400 italic">
-                                [Configurado no Servidor / Protegido]
+                            <dd className="font-mono text-xs text-emerald-600 dark:text-emerald-400 break-all">
+                                {DATA_SOURCE.sheetId}
                             </dd>
                         </div>
                         <div>
@@ -247,10 +247,10 @@ export default function SettingsView() {
                         </div>
                     </dl>
                     <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status do Proxy</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status da Conexão</p>
                         <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                            Ativo via chave: <code className="bg-white dark:bg-slate-900 px-1 rounded">{DATA_SOURCE.type}</code>
+                            Busca direta via navegador
                         </p>
                     </div>
 
@@ -283,8 +283,8 @@ export default function SettingsView() {
                     <dl className="space-y-3 text-sm">
                         <div>
                             <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
-                            <dd className="font-mono text-xs text-indigo-600 dark:text-indigo-400 italic">
-                                [Configurado no Servidor / Protegido]
+                            <dd className="font-mono text-xs text-indigo-600 dark:text-indigo-400 break-all">
+                                {ACCESS_DATA_SOURCE.sheetId}
                             </dd>
                         </div>
                         <div>
@@ -295,10 +295,10 @@ export default function SettingsView() {
                         </div>
                     </dl>
                     <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status do Proxy</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status da Conexão</p>
                         <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                             <span className="size-2 rounded-full bg-indigo-500 animate-pulse" />
-                            Ativo via chave: <code className="bg-white dark:bg-slate-900 px-1 rounded">{ACCESS_DATA_SOURCE.type}</code>
+                            Busca direta via navegador
                         </p>
                     </div>
                 </section>
@@ -323,8 +323,8 @@ export default function SettingsView() {
                     </p>
                     <dl className="text-[11px] space-y-1 mb-3 font-mono text-slate-600 dark:text-slate-400 break-all">
                         <div>
-                            <dt className="font-bold text-slate-500 uppercase tracking-wider">Mapeamento Proxy</dt>
-                            <dd>{LOGO_SHEET_SOURCE.type}</dd>
+                            <dt className="font-bold text-slate-500 uppercase tracking-wider">ID Real (Frontend)</dt>
+                            <dd>{LOGO_SHEET_SOURCE.sheetId}</dd>
                         </div>
                         <div>
                             <dt className="font-bold text-slate-500 uppercase tracking-wider">Aba</dt>
