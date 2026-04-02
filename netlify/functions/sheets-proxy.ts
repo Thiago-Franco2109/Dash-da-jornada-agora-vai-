@@ -22,13 +22,13 @@ const handler: Handler = async (event, _context) => {
     let sheetId = "";
     switch (type) {
         case "main":
-            sheetId = process.env.GOOGLE_SHEET_ID_MAIN || "";
+            sheetId = process.env.GOOGLE_SHEET_ID_MAIN || "1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU";
             break;
         case "access":
-            sheetId = process.env.GOOGLE_SHEET_ID_ACCESS || "";
+            sheetId = process.env.GOOGLE_SHEET_ID_ACCESS || "1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA";
             break;
         case "logo":
-            sheetId = process.env.GOOGLE_SHEET_ID_LOGO || "";
+            sheetId = process.env.GOOGLE_SHEET_ID_LOGO || "1Y5_TXSIi2RFyd_uUMXcWLQTQ52Oy8kCwYZrnlj6a5Xk";
             break;
         default:
             return {
