@@ -37,18 +37,11 @@ const statusMeta: Record<
 };
 
 export default function SettingsView() {
-    const isMainSheetOk =
-        !!DATA_SOURCE.sheetId &&
-        DATA_SOURCE.sheetId !== 'YOUR_GOOGLE_SHEET_ID' &&
-        DATA_SOURCE.sheetId.trim() !== '';
-    const isAccessSheetOk = !!ACCESS_DATA_SOURCE.sheetId && ACCESS_DATA_SOURCE.sheetId.trim() !== '';
-    const isLogoSheetOk = !!LOGO_SHEET_SOURCE.sheetId && LOGO_SHEET_SOURCE.sheetId.trim() !== '';
+    const isMainSheetOk = !!DATA_SOURCE.type;
+    const isAccessSheetOk = !!ACCESS_DATA_SOURCE.type;
+    const isLogoSheetOk = !!LOGO_SHEET_SOURCE.type;
     const isGA4Placeholder =
         !GA4_CONFIG.propertyId || GA4_CONFIG.propertyId === 'YOUR_GA4_PROPERTY_ID';
-
-    const sheetUrl = `https://docs.google.com/spreadsheets/d/${DATA_SOURCE.sheetId}/edit`;
-    const accessSheetUrl = `https://docs.google.com/spreadsheets/d/${ACCESS_DATA_SOURCE.sheetId}/edit`;
-    const logoSheetUrl = `https://docs.google.com/spreadsheets/d/${LOGO_SHEET_SOURCE.sheetId}/edit`;
 
     const lineageRows: Array<{
         title: string;
@@ -67,7 +60,7 @@ export default function SettingsView() {
         {
             title: 'Parceiros, pedidos por semana, status, lançamento, analista',
             where: 'Tabela principal, filtros, tela da loja (bloco onboarding)',
-            source: `Planilha principal · aba “${DATA_SOURCE.range}”`,
+            source: `Proxy (${DATA_SOURCE.type}) · aba “${DATA_SOURCE.range}”`,
             status: isMainSheetOk ? 'connected' : 'none',
             detail:
                 'Colunas mapeadas pelo cabeçalho da linha 1. Valores errados ou vazios geram NaN ou campos em branco.',
@@ -75,15 +68,15 @@ export default function SettingsView() {
         {
             title: 'Logos dos parceiros',
             where: 'Lista (avatar) e cabeçalho da tela da loja',
-            source: `Planilha de logos · aba “${LOGO_SHEET_SOURCE.range}” (GET /api/sheets/{id}/{aba}) · fallback: colunas logo_url / Logo na planilha principal`,
+            source: `Proxy (${LOGO_SHEET_SOURCE.type}) · aba “${LOGO_SHEET_SOURCE.range}”`,
             status: isLogoSheetOk ? 'connected' : 'none',
             detail:
-                'A cada sincronização o app busca o mapa Estabelecimento → URL na aba de logos. Se a URL for preenchida no dia seguinte, o próximo “Atualizar” ou o refresh agendado passa a exibir. A URL da planilha de logos tem prioridade sobre a coluna da planilha principal.',
+                'A cada sincronização o app busca o mapa Estabelecimento → URL na aba de logos via proxy seguro. A URL da planilha de logos tem prioridade sobre a coluna da planilha principal.',
         },
         {
             title: 'Acessos únicos (totais, média, último dia)',
             where: 'Tela da loja · bloco “Acessos ao Cardápio (tempo real)”',
-            source: `Planilha de acessos · aba “${ACCESS_DATA_SOURCE.range}”`,
+            source: `Proxy (${ACCESS_DATA_SOURCE.type}) · aba “${ACCESS_DATA_SOURCE.range}”`,
             status: isAccessSheetOk ? 'connected' : 'none',
             detail:
                 'Cabeçalhos de coluna no formato de data (YYYY-M-D). Nome da loja alinhado por texto (case/acentos normalizados).',
@@ -238,14 +231,14 @@ export default function SettingsView() {
                         <span
                             className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isMainSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
                         >
-                            {isMainSheetOk ? 'ID configurado' : 'Revise o ID'}
+                            {isMainSheetOk ? 'Configurado' : 'Pendente'}
                         </span>
                     </div>
                     <dl className="space-y-3 text-sm">
                         <div>
-                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</dt>
-                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all select-all">
-                                {DATA_SOURCE.sheetId || '—'}
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
+                            <dd className="font-mono text-xs text-emerald-600 dark:text-emerald-400 italic">
+                                [Configurado no Servidor / Protegido]
                             </dd>
                         </div>
                         <div>
@@ -253,15 +246,14 @@ export default function SettingsView() {
                             <dd className="font-mono text-xs text-slate-800 dark:text-slate-200">{DATA_SOURCE.range}</dd>
                         </div>
                     </dl>
-                    <a
-                        href={sheetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
-                    >
-                        Abrir no Google Sheets
-                        <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </a>
+                    <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status do Proxy</p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Ativo via chave: <code className="bg-white dark:bg-slate-900 px-1 rounded">{DATA_SOURCE.type}</code>
+                        </p>
+                    </div>
+
                     <p className="mt-4 text-[11px] text-amber-800 dark:text-amber-400/90 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-3 leading-relaxed">
                         Cabeçalhos esperados na linha 1 (ex.: Cidade, ID, Estabelecimento, Status, Lancamento, Responsavel,
                         Week_1…Week_4). Opcional: coluna de URL para logo (logo_url / Logo).
@@ -285,14 +277,14 @@ export default function SettingsView() {
                         <span
                             className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isAccessSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
                         >
-                            {isAccessSheetOk ? 'ID configurado' : 'Revise o ID'}
+                            {isAccessSheetOk ? 'Configurado' : 'Pendente'}
                         </span>
                     </div>
                     <dl className="space-y-3 text-sm">
                         <div>
-                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</dt>
-                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all select-all">
-                                {ACCESS_DATA_SOURCE.sheetId || '—'}
+                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
+                            <dd className="font-mono text-xs text-indigo-600 dark:text-indigo-400 italic">
+                                [Configurado no Servidor / Protegido]
                             </dd>
                         </div>
                         <div>
@@ -302,15 +294,13 @@ export default function SettingsView() {
                             </dd>
                         </div>
                     </dl>
-                    <a
-                        href={accessSheetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                    >
-                        Abrir planilha de acessos
-                        <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </a>
+                    <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status do Proxy</p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-indigo-500 animate-pulse" />
+                            Ativo via chave: <code className="bg-white dark:bg-slate-900 px-1 rounded">{ACCESS_DATA_SOURCE.type}</code>
+                        </p>
+                    </div>
                 </section>
             </div>
 
@@ -325,34 +315,22 @@ export default function SettingsView() {
                         <span
                             className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${isLogoSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
                         >
-                            {isLogoSheetOk ? 'Integrada' : 'Revise'}
+                            {isLogoSheetOk ? 'Ativa' : 'Inativa'}
                         </span>
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
-                        Consumida junto com a lista de parceiros. Endpoint:{' '}
-                        <code className="text-[10px] bg-white dark:bg-slate-900 px-1 rounded break-all">
-                            {`/api/sheets/${LOGO_SHEET_SOURCE.sheetId}/${encodeURIComponent(LOGO_SHEET_SOURCE.range)}`}
-                        </code>
+                        Consumida através de proxy seguro para proteger o acesso aos dados.
                     </p>
                     <dl className="text-[11px] space-y-1 mb-3 font-mono text-slate-600 dark:text-slate-400 break-all">
                         <div>
-                            <dt className="font-bold text-slate-500 uppercase tracking-wider">ID</dt>
-                            <dd>{LOGO_SHEET_SOURCE.sheetId}</dd>
+                            <dt className="font-bold text-slate-500 uppercase tracking-wider">Mapeamento Proxy</dt>
+                            <dd>{LOGO_SHEET_SOURCE.type}</dd>
                         </div>
                         <div>
                             <dt className="font-bold text-slate-500 uppercase tracking-wider">Aba</dt>
                             <dd>{LOGO_SHEET_SOURCE.range}</dd>
                         </div>
                     </dl>
-                    <a
-                        href={logoSheetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                        Abrir no Google Sheets
-                        <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </a>
                 </section>
 
                 <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-5 md:col-span-2">

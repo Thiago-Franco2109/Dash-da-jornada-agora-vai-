@@ -26,9 +26,10 @@ function App() {
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
   const { data: syncData, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
-    sheetId: DATA_SOURCE.sheetId,
+    sheetType: DATA_SOURCE.type,
     range: DATA_SOURCE.range
   });
+
 
   // -- Live API Access Data (Unique Store Accesses) ---------------------------
   const { accessData, loadingAccess, refreshAccessData } = useDailyAccessSync();

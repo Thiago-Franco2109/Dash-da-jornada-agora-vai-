@@ -13,7 +13,8 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const LOGOS_CSV_URL =
     process.env.LOGOS_SHEET_CSV_URL ||
-    "https://docs.google.com/spreadsheets/d/1Y5_TXSIi2RFyd_uUMXcWLQTQ52Oy8kCwYZrnlj6a5Xk/export?format=csv";
+    (process.env.GOOGLE_SHEET_ID_LOGO ? `https://docs.google.com/spreadsheets/d/${process.env.GOOGLE_SHEET_ID_LOGO}/export?format=csv` : "");
+
 
 // ---------- Auth (using drive.readonly scope – does NOT require Sheets API enabled) ----------
 const auth = new GoogleAuth({

@@ -8,11 +8,11 @@ export interface SyncResult {
 
 const CACHE_KEY = 'partner_journey_data_cache';
 
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
+
 
 function apiUrl(path: string) {
-    if (!path.startsWith("/")) path = `/${path}`;
-    return `${API_ORIGIN}${path}`;
+    // We now use the relative path for the Netlify function
+    return `/.netlify/functions/sheets-proxy${path}`;
 }
 
 // O Gateway usa a Linha 1 como header.
@@ -20,13 +20,16 @@ function apiUrl(path: string) {
 const SKIP_METADATA_ROWS = 0;
 
 /**
- * Busca os dados da planilha via Bigou Sheets Gateway.
+ * Busca os dados da planilha via Proxy (Netlify Functions).
+ * @param sheetType - O tipo mapeado no servidor (ex: 'main', 'access', 'logo')
+ * @param tabName - Nome da aba
  */
-export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
+export async function fetchGoogleSheetsData(sheetType: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
     const fetchOptions: RequestInit = { credentials: "include" as RequestCredentials };
 
-    // Construir a URL do Gateway API (apenas o nome da aba, sem range)
-    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName)}`);
+    // Construir a URL do Proxy com parâmetros query (?type=...&tab=...)
+    const url = apiUrl(`?type=${sheetType}&tab=${encodeURIComponent(tabName)}`);
+
 
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
@@ -271,12 +274,13 @@ function extractLogoSheetRows(json: any): Record<string, any>[] {
  * GET /api/sheets/{sheetId}/{tabName} — mesma rota do gateway (ex.: aba "dados").
  * Retorna mapa nome normalizado → URL. Nova sincronização pega logos adicionados no dia seguinte.
  */
-export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Promise<Record<string, string>> {
+export async function fetchPartnerLogoMap(sheetType: string, tabName: string): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
-    if (!sheetId?.trim() || !tabName?.trim()) return out;
+    if (!sheetType?.trim() || !tabName?.trim()) return out;
 
     const fetchOptions: RequestInit = { credentials: 'include' as RequestCredentials };
-    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName)}`);
+    const url = apiUrl(`?type=${sheetType}&tab=${encodeURIComponent(tabName)}`);
+
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
         throw new Error(`Logo sheet: ${response.status} ${response.statusText}`);
