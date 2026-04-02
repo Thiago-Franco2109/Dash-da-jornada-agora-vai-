@@ -11,12 +11,12 @@ import {
 } from '../utils/dataSync';
 
 interface UseDataSyncOptions {
-    sheetType: string;
+    sheetId: string;
     range?: string;
     autoRefreshIntervalMs?: number; // fallback interval, e.g., 60 * 60 * 1000 for 1 hour
 }
 
-export function useDataSync({ sheetType, range = 'NOVOS!A6:Z100', autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
+export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
     const [data, setData] = useState<PerformanceRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -24,8 +24,8 @@ export function useDataSync({ sheetType, range = 'NOVOS!A6:Z100', autoRefreshInt
     const [isUsingCache, setIsUsingCache] = useState(false);
 
     const performSync = useCallback(async () => {
-        if (!sheetType) {
-            setError("Sheet type is missing.");
+        if (!sheetId) {
+            setError("Sheet ID is missing.");
             setIsLoading(false);
             return;
         }
@@ -36,9 +36,8 @@ export function useDataSync({ sheetType, range = 'NOVOS!A6:Z100', autoRefreshInt
             setIsUsingCache(false);
 
             const [fetchedData, logoMap] = await Promise.all([
-                fetchGoogleSheetsData(sheetType, range),
-                fetchPartnerLogoMap(LOGO_SHEET_SOURCE.type, LOGO_SHEET_SOURCE.range).catch((err) => {
-
+                fetchGoogleSheetsData(sheetId, range),
+                fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
                     console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
                     return {} as Record<string, string>;
                 }),
@@ -69,7 +68,7 @@ export function useDataSync({ sheetType, range = 'NOVOS!A6:Z100', autoRefreshInt
         } finally {
             setIsLoading(false);
         }
-    }, [sheetType, range]);
+    }, [sheetId, range]);
 
 
     // Initial load

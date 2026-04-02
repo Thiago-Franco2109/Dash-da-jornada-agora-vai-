@@ -26,7 +26,7 @@ function App() {
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
   const { data: syncData, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
-    sheetType: DATA_SOURCE.type,
+    sheetId: DATA_SOURCE.sheetId,
     range: DATA_SOURCE.range
   });
 

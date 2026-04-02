@@ -1,31 +1,23 @@
 // Configuration for data source
-// Uses a Netlify Function proxy to hide sheet IDs from the frontend
-// The proxy calls the Bigou Sheets Gateway API via cookie httpOnly authentication
-
-/** 
- * Tipos de planilhas suportadas pelo proxy (Netlify Function: /api/sheets-proxy)
- * Essas chaves são mapeadas para IDs reais no servidor via variáveis de ambiente.
- */
-export type SheetType = 'main' | 'access' | 'logo';
+// Calls the Bigou Sheets Gateway API directly via browser credentials (cookies)
 
 export const DATA_SOURCE = {
-    // ID simbólico mapeado no servidor para a planilha principal
-    type: 'main' as SheetType,
-    // Nome da aba (o Gateway adiciona o range automaticamente)
+    // Google Sheets spreadsheet ID
+    sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
+    // Nome da aba
     range: 'novos formatado',
 };
 
 export const ACCESS_DATA_SOURCE = {
-    type: 'access' as SheetType,
+    sheetId: '1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA',
     range: 'novo relatório final',
 };
 
 /** Planilha de logos dos parceiros (atualizada diariamente) */
 export const LOGO_SHEET_SOURCE = {
-    type: 'logo' as SheetType,
+    sheetId: '1Y5_TXSIi2RFyd_uUMXcWLQTQ52Oy8kCwYZrnlj6a5Xk',
     range: 'dados',
 } as const;
 
-/** @deprecated alias: use LOGO_SHEET_SOURCE.type */
-export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.type;
-
+/** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
+export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.sheetId;
