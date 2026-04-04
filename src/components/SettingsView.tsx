@@ -346,18 +346,6 @@ export default function SettingsView() {
                 </section>
             </div>
 
-            <section className="rounded-2xl border border-slate-200 dark:border-violet-900/40 bg-violet-50/40 dark:bg-violet-950/20 p-6 mb-8">
-                <div className="flex items-center gap-2 mb-3">
-                    <span className="material-symbols-outlined text-violet-600 dark:text-violet-400">edit_note</span>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Ajustes locais (não são planilha)</h3>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Valores de pedidos editados manualmente na tela da loja ficam no <strong>localStorage</strong> do seu
-                    navegador. Eles sobrescrevem temporariamente os números vindos da planilha principal só para você,
-                    até restaurar o original.
-                </p>
-            </section>
-
             <footer className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center text-[11px] text-slate-400">
                 Partner Journey Dashboard · mapa de dados e integrações
             </footer>

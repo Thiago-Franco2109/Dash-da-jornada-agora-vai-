@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
-    currentView: 'dashboard' | 'settings';
-    onNavigate: (view: 'dashboard' | 'settings') => void;
+    currentView: 'dashboard' | 'settings' | 'about';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about') => void;
     onToggleReports: () => void;
     reportsOpen: boolean;
     searchQuery: string;
@@ -58,6 +58,12 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                         className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'settings' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
                     >
                         Configurações
+                    </button>
+                    <button
+                        onClick={() => onNavigate('about')}
+                        className={`text-[11px] uppercase tracking-wider font-bold px-3 py-2 opacity-50 hover:opacity-100 transition-all ${currentView === 'about' ? 'text-primary' : 'text-slate-400'}`}
+                    >
+                        Sobre
                     </button>
                     <a
                         href="https://dashboad-onboarding.netlify.app/"

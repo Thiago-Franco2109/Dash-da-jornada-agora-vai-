@@ -1,59 +1,27 @@
-import { useState } from 'react';
+import { format, subDays } from 'date-fns';
 import { type EnrichedPerformanceRow, getInterpretationBox, getStarColor } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
-import type { WeekOverride } from '../hooks/useManualOverrides';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
     onBack: () => void;
-    /** Called when the user saves manual week overrides */
-    onSaveOrders: (estabelecimento: string, values: Omit<WeekOverride, 'updated_at'>) => void;
-    /** Called when the user clears manual week overrides */
-    onClearOrders: (estabelecimento: string) => void;
-    /** The current override entry for this partner (if any) */
-    override?: WeekOverride;
     /** Live data from the unique daily accesses API */
     dailyAccessData?: StoreAccessData;
 }
 
-export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onClearOrders, override, dailyAccessData }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({ partner, onBack, dailyAccessData }: PartnerDetailsViewProps) {
     const interpretation = getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
 
-    // ---- Edit-order state ------------------------------------------------
-    const [editMode, setEditMode] = useState(false);
-    const [editValues, setEditValues] = useState({
-        week_1: partner.week_1,
-        week_2: partner.week_2,
-        week_3: partner.week_3,
-        week_4: partner.week_4,
-    });
-    const [saveSuccess, setSaveSuccess] = useState(false);
-
-    const handleEditOpen = () => {
-        setEditValues({
-            week_1: partner.week_1,
-            week_2: partner.week_2,
-            week_3: partner.week_3,
-            week_4: partner.week_4,
-        });
-        setEditMode(true);
-        setSaveSuccess(false);
+    // ---- Reports URL helper ----
+    const getReportsUrl = (estabId: string | number) => {
+        const end = new Date();
+        const start = subDays(end, 28);
+        const startStr = `${format(start, 'yyyy-MM-dd')} 00:00:00`;
+        const endStr = `${format(end, 'yyyy-MM-dd')} 23:59:59`;
+        return `https://admin.bigou.com.br/relatorio/pedidos?data_inicio=${encodeURIComponent(startStr)}&data_fim=${encodeURIComponent(endStr)}&estabelecimentos=${estabId}`;
     };
-
-    const handleSave = () => {
-        onSaveOrders(partner.estabelecimento, editValues);
-        setSaveSuccess(true);
-        setEditMode(false);
-    };
-
-    const handleReset = () => {
-        onClearOrders(partner.estabelecimento);
-        setSaveSuccess(false);
-    };
-
-    const hasOverride = !!override;
 
     // ---- Funil: apenas dados reais das planilhas integradas (acessos + pedidos) ----
     const orders = partner.total_pedidos;
@@ -100,7 +68,7 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
         <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 overflow-y-auto">
             {/* Header */}
             <div className="px-6 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10">
-                <div>
+                <div className="w-full">
                     <button
                         onClick={onBack}
                         className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors mb-4 group"
@@ -116,9 +84,9 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                                 <span className="material-symbols-outlined text-5xl">store</span>
                             </div>
                         )}
-                        <div>
+                        <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-3">
-                                <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight">
+                                <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight truncate">
                                     {partner.estabelecimento}
                                 </h1>
                                 <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-sm font-medium ring-1 ring-inset ${partner.status === 'ativo'
@@ -128,22 +96,35 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                                     {partner.status}
                                 </span>
 
-                                <div className={`flex items-center ml-2 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1 bg-white dark:bg-slate-800 ${getStarColor(partner.priority_stars)}`}>
+                                <div className={`flex items-center border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1 bg-white dark:bg-slate-800 ${getStarColor(partner.priority_stars)}`}>
                                     <span className="material-symbols-outlined text-[18px] mr-1">star</span>
                                     <span className="text-sm font-bold text-slate-800 dark:text-white">Prioridade {partner.priority_stars}</span>
                                 </div>
                                 
                                 {partner.estab_id && (
-                                    <a
-                                        href={`https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-3 py-1.5 text-sm font-medium transition-colors shadow-sm ml-2 group"
-                                        title={`ID CMS: ${partner.estab_id}`}
-                                    >
-                                        <span className="material-symbols-outlined text-[18px] mr-1.5 group-hover:scale-110 transition-transform">launch</span>
-                                        Ir para CMS
-                                    </a>
+                                    <div className="flex items-center gap-2">
+                                        <a
+                                            href={`https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-3 py-1.5 text-sm font-medium transition-colors shadow-sm group"
+                                            title={`ID CMS: ${partner.estab_id}`}
+                                        >
+                                            <span className="material-symbols-outlined text-[18px] mr-1.5 group-hover:scale-110 transition-transform">launch</span>
+                                            Ir para CMS
+                                        </a>
+
+                                        <a
+                                            href={getReportsUrl(partner.estab_id)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-md px-3 py-1.5 text-sm font-medium transition-colors shadow-sm group"
+                                            title="Ver Relatório de Pedidos (Últimos 28 dias)"
+                                        >
+                                            <span className="material-symbols-outlined text-[18px] mr-1.5 group-hover:scale-110 transition-transform">assessment</span>
+                                            Ver Relatórios
+                                        </a>
+                                    </div>
                                 )}
                             </div>
                             <p className="text-slate-500 dark:text-slate-400 mt-2">
@@ -232,93 +213,27 @@ export default function PartnerDetailsView({ partner, onBack, onSaveOrders, onCl
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                         {/* Section header */}
                         <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <h3 className="text-slate-900 dark:text-white font-bold text-lg">Pedidos por Semana (Primeiros 28 Dias)</h3>
-                                {hasOverride && (
-                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-                                        <span className="material-symbols-outlined text-[12px]">edit</span>
-                                        Editado manualmente
-                                    </span>
-                                )}
-                                {saveSuccess && !hasOverride && (
-                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                                        <span className="material-symbols-outlined text-[12px]">check</span>
-                                        Salvo!
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {hasOverride && (
-                                    <button
-                                        onClick={handleReset}
-                                        className="text-xs text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 flex items-center gap-1 transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-[14px]">restart_alt</span>
-                                        Restaurar original
-                                    </button>
-                                )}
-                                {!editMode ? (
-                                    <button
-                                        onClick={handleEditOpen}
-                                        className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-[14px]">edit</span>
-                                        Editar pedidos
-                                    </button>
-                                ) : (
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => setEditMode(false)}
-                                            className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                                        >
-                                            Cancelar
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
-                                        >
-                                            <span className="material-symbols-outlined text-[14px]">save</span>
-                                            Salvar
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                            <h3 className="text-slate-900 dark:text-white font-bold text-lg">Pedidos por Semana (Primeiros 28 Dias)</h3>
                         </div>
 
-                        {/* Week cards – static or editable */}
+                        {/* Week cards – static */}
                         <div className="grid grid-cols-4 gap-4">
                             {([1, 2, 3, 4] as const).map(w => {
                                 const key = `week_${w}` as 'week_1' | 'week_2' | 'week_3' | 'week_4';
                                 return (
                                     <div key={w} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800">
                                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Semana {w}</span>
-                                        {editMode ? (
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                value={editValues[key]}
-                                                onChange={e => setEditValues(prev => ({ ...prev, [key]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                                                className="w-full text-center text-2xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800 border border-primary/30 rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                                            />
-                                        ) : (
-                                            <span className="text-2xl font-bold text-slate-900 dark:text-white">{partner[key]}</span>
-                                        )}
+                                        <span className="text-2xl font-bold text-slate-900 dark:text-white">{partner[key]}</span>
                                     </div>
                                 );
                             })}
                         </div>
 
-                        {/* Total & last-updated */}
+                        {/* Total */}
                         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center flex-wrap gap-2">
                             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Pedidos Confirmados:</span>
                             <span className="text-lg font-bold text-slate-900 dark:text-white">{partner.total_pedidos}</span>
                         </div>
-                        {hasOverride && override?.updated_at && (
-                            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[12px]">schedule</span>
-                                Última edição manual: {new Date(override.updated_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                            </p>
-                        )}
                     </div>
                 </div>
 

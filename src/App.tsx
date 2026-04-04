@@ -8,9 +8,9 @@ import type { SortConfig } from './components/PerformanceTable';
 import PartnerDetailsView from './components/PartnerDetailsView';
 import SettingsView from './components/SettingsView';
 import ReportsView from './components/ReportsView';
+import AboutView from './components/AboutView';
 import { DATA_SOURCE } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
-import { useManualOverrides } from './hooks/useManualOverrides';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
@@ -18,7 +18,7 @@ import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about'>('dashboard');
   const [reportsOpen, setReportsOpen] = useState(false);
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,22 +37,15 @@ function App() {
   // -- Live API Access Data (Unique Store Accesses) ---------------------------
   const { accessData, loadingAccess, refreshAccessData } = useDailyAccessSync();
 
-  // -- Manual overrides (persisted in localStorage) --------------------------
-  const { overrides, saveOverride, clearOverride } = useManualOverrides();
-
-  // Enrich Data – apply manual overrides before enriching
+  // Enrich Data
   const enrichedData = useMemo(() =>
     syncData
-      .map(row => {
-        const override = overrides[row.estabelecimento];
-        const merged = override ? { ...row, ...override } : row;
-        return enrichPartnerData(merged);
-      })
+      .map(row => enrichPartnerData(row))
       .filter(row => {
         const status = row.status?.toLowerCase() || '';
         return status !== 'desistencia' && status !== 'desistência';
       }),
-    [syncData, overrides]
+    [syncData]
   );
 
   // Extract unique cities and managers
@@ -112,7 +105,7 @@ function App() {
 
 
 
-  // Keep selectedRow in sync: recalculate whenever overrides change.
+  // Keep selectedRow in sync
   const currentSelectedRow = selectedRow
     ? (enrichedData.find(r => r.estabelecimento === selectedRow.estabelecimento) ?? selectedRow)
     : null;
@@ -142,15 +135,14 @@ function App() {
       <main className="flex flex-1 flex-col xl:flex-row h-full">
         {currentView === 'settings' ? (
           <SettingsView />
+        ) : currentView === 'about' ? (
+          <AboutView />
         ) : (
           <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (
               <PartnerDetailsView
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
-                onSaveOrders={(name, vals) => saveOverride(name, vals)}
-                onClearOrders={(name) => clearOverride(name)}
-                override={overrides[currentSelectedRow.estabelecimento]}
                 dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
               />
             ) : (
