@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
-    currentView: 'dashboard' | 'settings' | 'about';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about') => void;
+    currentView: 'dashboard' | 'settings' | 'about' | 'managers';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers') => void;
     onToggleReports: () => void;
     reportsOpen: boolean;
     searchQuery: string;
@@ -48,6 +48,12 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                         Dashboard
                     </button>
                     <button
+                        onClick={() => onNavigate('managers')}
+                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'managers' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                    >
+                        Gestores
+                    </button>
+                    <button
                         onClick={onToggleReports}
                         className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${reportsOpen ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
                     >
@@ -76,6 +82,7 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                     </a>
                 </div>
             </div>
+
 
             <div className="flex flex-1 justify-end items-center gap-4">
                 <div className="hidden sm:flex flex-col items-end">

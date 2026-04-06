@@ -1,4 +1,4 @@
-import { DATA_SOURCE, ACCESS_DATA_SOURCE, LOGO_SHEET_SOURCE } from '../config/dataSource';
+import { PARTNER_DATA_SOURCES, ACCESS_DATA_SOURCE, LOGO_SHEET_SOURCE } from '../config/dataSource';
 import { GA4_CONFIG } from '../config/ga4Config';
 
 const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? 'https://bigou-sheets-api.netlify.app';
@@ -37,7 +37,7 @@ const statusMeta: Record<
 };
 
 export default function SettingsView() {
-    const isMainSheetOk = !!DATA_SOURCE.sheetId;
+    const isMainSheetOk = PARTNER_DATA_SOURCES.length > 0 && PARTNER_DATA_SOURCES.every(s => !!s.sheetId);
     const isAccessSheetOk = !!ACCESS_DATA_SOURCE.sheetId;
     const isLogoSheetOk = !!LOGO_SHEET_SOURCE.sheetId;
     const isGA4Placeholder =
@@ -60,7 +60,7 @@ export default function SettingsView() {
         {
             title: 'Parceiros, pedidos por semana, status, lançamento, analista',
             where: 'Tabela principal, filtros, tela da loja (bloco onboarding)',
-            source: `Direto (${DATA_SOURCE.sheetId}) · aba “${DATA_SOURCE.range}”`,
+            source: `${PARTNER_DATA_SOURCES.length} planilhas configuradas`,
             status: isMainSheetOk ? 'connected' : 'none',
             detail:
                 'Colunas mapeadas pelo cabeçalho da linha 1. Valores errados ou vazios geram NaN ou campos em branco.',
@@ -214,51 +214,55 @@ export default function SettingsView() {
             </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-                {/* Planilha principal */}
-                <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
-                    <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="size-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                                <span className="material-symbols-outlined">table_view</span>
+                {/* Planilhas principais */}
+                <div className="flex flex-col gap-6">
+                    {PARTNER_DATA_SOURCES.map((source, idx) => (
+                        <section key={source.sheetId} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
+                            <div className="flex items-start justify-between gap-3 mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="size-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                                        <span className="material-symbols-outlined">table_view</span>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-900 dark:text-white">Fonte {idx + 1}</h2>
+                                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                            Parceiros e pedidos
+                                        </p>
+                                    </div>
+                                </div>
+                                <span
+                                    className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${source.sheetId ? statusMeta.connected.className : statusMeta.none.className}`}
+                                >
+                                    {source.sheetId ? 'Configurado' : 'Pendente'}
+                                </span>
                             </div>
-                            <div>
-                                <h2 className="text-base font-bold text-slate-900 dark:text-white">Planilha principal</h2>
-                                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                                    Parceiros e pedidos
+                            <dl className="space-y-3 text-sm">
+                                <div>
+                                    <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
+                                    <dd className="font-mono text-xs text-emerald-600 dark:text-emerald-400 break-all">
+                                        {source.sheetId}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aba</dt>
+                                    <dd className="font-mono text-xs text-slate-800 dark:text-slate-200">{source.range}</dd>
+                                </div>
+                            </dl>
+                            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status da Conexão</p>
+                                <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                                    <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                                    Busca direta via navegador
                                 </p>
                             </div>
-                        </div>
-                        <span
-                            className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${isMainSheetOk ? statusMeta.connected.className : statusMeta.none.className}`}
-                        >
-                            {isMainSheetOk ? 'Configurado' : 'Pendente'}
-                        </span>
-                    </div>
-                    <dl className="space-y-3 text-sm">
-                        <div>
-                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID da Planilha</dt>
-                            <dd className="font-mono text-xs text-emerald-600 dark:text-emerald-400 break-all">
-                                {DATA_SOURCE.sheetId}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aba</dt>
-                            <dd className="font-mono text-xs text-slate-800 dark:text-slate-200">{DATA_SOURCE.range}</dd>
-                        </div>
-                    </dl>
-                    <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status da Conexão</p>
-                        <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                            Busca direta via navegador
-                        </p>
-                    </div>
-
-                    <p className="mt-4 text-[11px] text-amber-800 dark:text-amber-400/90 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-3 leading-relaxed">
+                        </section>
+                    ))}
+                    <p className="text-[11px] text-amber-800 dark:text-amber-400/90 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl p-3 leading-relaxed">
                         Cabeçalhos esperados na linha 1 (ex.: Cidade, ID, Estabelecimento, Status, Lancamento, Responsavel,
                         Week_1…Week_4). Opcional: coluna de URL para logo (logo_url / Logo).
                     </p>
-                </section>
+                </div>
+
 
                 {/* Planilha de acessos */}
                 <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">

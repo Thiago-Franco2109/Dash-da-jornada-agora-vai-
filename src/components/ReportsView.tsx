@@ -1,4 +1,5 @@
 
+import { useState, useMemo } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 
 interface ReportsViewProps {
@@ -6,165 +7,227 @@ interface ReportsViewProps {
 }
 
 export default function ReportsView({ data }: ReportsViewProps) {
-    // 1. Relatório: Lojas S/ Ações de Cupom/Promo (Apenas lojas não-desistentes)
-    const pendingActions = data.filter(
-        row => 
-            row.promo_status !== 'ativo' && 
-            row.cupom_status !== 'ativo'
-    ).sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento); // Mais antigos primeiro
+    const [managerFilter, setManagerFilter] = useState('all');
+    const [cityFilter, setCityFilter] = useState('all');
 
-    // 2. Relatório: Progresso na Ativação (30 pedidos / 30 dias)
-    // Mostra as lojas que devem estar crescendo, limitadas a no máximo 30 dias na meta teórica
-    // Ordenar primeiramente pelos piores índices (lojas perigando)
-    const activationProgress = [...data]
-        .sort((a, b) => {
-            const percA = a.pedidos_esperados > 0 ? (a.total_pedidos / a.pedidos_esperados) : 0;
-            const percB = b.pedidos_esperados > 0 ? (b.total_pedidos / b.pedidos_esperados) : 0;
-            return percA - percB;
-        });
+    // Filtered data based on toolbar
+    const filteredData = useMemo(() => {
+        return data
+            .filter(row => managerFilter === 'all' || row.analista === managerFilter)
+            .filter(row => cityFilter === 'all' || row.cidade === cityFilter);
+    }, [data, managerFilter, cityFilter]);
+
+    // specific lists for the report
+    const noPromoList = useMemo(() => {
+        return filteredData
+            .filter(row => row.promo_status !== 'ativo')
+            .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
+    }, [filteredData]);
+
+    const noCupomList = useMemo(() => {
+        return filteredData
+            .filter(row => row.cupom_status !== 'ativo')
+            .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
+    }, [filteredData]);
+
+    const stats = useMemo(() => {
+        return {
+            total: filteredData.length,
+            noPromo: noPromoList.length,
+            noCupom: noCupomList.length
+        };
+    }, [filteredData, noPromoList, noCupomList]);
+
+    const uniqueManagers = Array.from(new Set(data.map(d => d.analista))).filter(Boolean).sort();
+    const uniqueCities = Array.from(new Set(data.map(d => d.cidade))).filter(Boolean).sort();
 
     return (
-        <div className="p-6 space-y-8">
+        <div className="p-4 md:p-8 space-y-8 animate-in fade-in duration-500">
+            
+            {/* LARGE DASHBOARD STATS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-900 dark:bg-black p-6 rounded-[2rem] border border-slate-800 shadow-xl overflow-hidden relative group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <span className="material-symbols-outlined text-8xl">storefront</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Total de Lojas</p>
+                    <div className="flex items-baseline gap-2">
+                        <h2 className="text-5xl font-black text-white">{stats.total}</h2>
+                        <span className="text-slate-500 font-bold text-lg">onboarding</span>
+                    </div>
+                </div>
 
-                {/* BLOCO 1: Sem Promo/Cupom */}
-                <section>
-                    <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-                        <span className="material-symbols-outlined text-orange-500">warning</span>
-                        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                            Pendência de Atrações (Sem Promo/Cupom)
-                        </h2>
-                        <span className="ml-auto bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
-                            {pendingActions.length} Lojas
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border-4 border-violet-500/10 shadow-lg relative group">
+                    <div className="absolute top-0 right-0 p-4 text-violet-500/10 group-hover:text-violet-500/20 transition-colors">
+                        <span className="material-symbols-outlined text-7xl font-light">percent</span>
+                    </div>
+                    <p className="text-xs font-bold text-violet-500/60 uppercase tracking-[0.2em] mb-2">Sem Promoção</p>
+                    <div className="flex items-baseline gap-2">
+                        <h2 className="text-5xl font-black text-slate-900 dark:text-white">{stats.noPromo}</h2>
+                        <span className="text-violet-500 font-bold text-lg">pendentes</span>
+                    </div>
+                    <div className="mt-4 w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full bg-violet-500 rounded-full" 
+                            style={{ width: `${(stats.noPromo / stats.total) * 100}%` }}
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border-4 border-indigo-500/10 shadow-lg relative group">
+                    <div className="absolute top-0 right-0 p-4 text-indigo-500/10 group-hover:text-indigo-500/20 transition-colors">
+                        <span className="material-symbols-outlined text-7xl font-light">confirmation_number</span>
+                    </div>
+                    <p className="text-xs font-bold text-indigo-500/60 uppercase tracking-[0.2em] mb-2">Sem Cupom</p>
+                    <div className="flex items-baseline gap-2">
+                        <h2 className="text-5xl font-black text-slate-900 dark:text-white">{stats.noCupom}</h2>
+                        <span className="text-indigo-500 font-bold text-lg">pendentes</span>
+                    </div>
+                    <div className="mt-4 w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full bg-indigo-500 rounded-full" 
+                            style={{ width: `${(stats.noCupom / stats.total) * 100}%` }}
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* FILTER TOOLBAR */}
+            <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-[1.5rem] sticky top-[72px] z-10 backdrop-blur-md border border-white dark:border-slate-700">
+                <div className="flex items-center gap-2 px-3 border-r border-slate-200 dark:border-slate-700 mr-2">
+                    <span className="material-symbols-outlined text-slate-400">tune</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Filtros</span>
+                </div>
+                
+                <select 
+                    value={managerFilter}
+                    onChange={(e) => setManagerFilter(e.target.value)}
+                    className="text-xs font-bold px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-violet-500/20 transition-all cursor-pointer"
+                >
+                    <option value="all">Todas os Gestores</option>
+                    {uniqueManagers.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+
+                <select 
+                    value={cityFilter}
+                    onChange={(e) => setCityFilter(e.target.value)}
+                    className="text-xs font-bold px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-violet-500/20 transition-all cursor-pointer"
+                >
+                    <option value="all">Todas as Cidades</option>
+                    {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+
+                { (managerFilter !== 'all' || cityFilter !== 'all') && (
+                    <button 
+                        onClick={() => { setManagerFilter('all'); setCityFilter('all'); }}
+                        className="text-[10px] font-black text-violet-500 uppercase tracking-widest hover:text-violet-600 transition-colors"
+                    >
+                        Resetar Filtros
+                    </button>
+                )}
+            </div>
+
+            {/* TWO COLUMN GRID FOR LISTS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                
+                {/* LIST: NO PROMO */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 px-2">
+                        <div className="size-8 bg-violet-500 text-white rounded-lg flex items-center justify-center shadow-lg shadow-violet-500/20">
+                            <span className="material-symbols-outlined text-sm">percent</span>
+                        </div>
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Sem Promoção Ativa</h3>
+                        <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full ml-auto">
+                            {noPromoList.length} lojas
                         </span>
                     </div>
-
-                    {pendingActions.length === 0 ? (
-                        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-8 text-center text-slate-500">
-                            <span className="material-symbols-outlined text-4xl mb-2 text-green-500">check_circle</span>
-                            <p>Todas as lojas ativas possuem pelo menos um Cupom ou Promoção rodando!</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {pendingActions.map(store => (
-                                <div key={store.estab_id || store.estabelecimento} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between">
-                                    <div>
-                                        <div className="flex items-start justify-between">
-                                            <h3 className="font-bold text-slate-900 dark:text-white truncate" title={store.estabelecimento}>
-                                                {store.estabelecimento}
-                                            </h3>
-                                            <span className="text-xs font-medium text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-                                                {store.dias_desde_lancamento} dias
-                                            </span>
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                        {noPromoList.map(store => (
+                            <div key={`promo-${store.estab_id || store.estabelecimento}`} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl flex items-center gap-4 hover:border-violet-500/30 hover:shadow-md transition-all active:scale-[0.98]">
+                                <div className="shrink-0">
+                                    {store.logo_url ? (
+                                        <img src={store.logo_url} alt={store.estabelecimento} className="size-10 rounded-xl object-cover border border-slate-100 dark:border-slate-700 shadow-sm" />
+                                    ) : (
+                                        <div className="size-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-300 border border-slate-100 dark:border-slate-700">
+                                            <span className="material-symbols-outlined text-[20px]">store</span>
                                         </div>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center mt-1">
-                                            <span className="material-symbols-outlined text-[14px] mr-1">location_on</span>
-                                            {store.cidade}
-                                        </p>
-                                    </div>
-                                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 pt-3">
-                                        <div className="flex items-center text-sm">
-                                            <span className="material-symbols-outlined text-[16px] text-slate-400 mr-1">person</span>
-                                            <span className="text-slate-600 dark:text-slate-300 font-medium">{store.analista}</span>
-                                        </div>
-                                        {(store.promo_status === 'aguardando' || store.cupom_status === 'aguardando') && (
-                                            <span className="text-[10px] text-yellow-600 bg-yellow-100 px-2 py-[2px] rounded uppercase font-bold tracking-wide">
-                                                Aguardando
-                                            </span>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                {/* BLOCO 2: Meta 30 Pedidos / 30 Dias */}
-                <section>
-                    <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 mb-4 mt-8">
-                        <span className="material-symbols-outlined text-blue-500">trending_up</span>
-                        <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                            Progresso na Ativação (Meta 30x30)
-                        </h2>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{store.estabelecimento}</h4>
+                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight mt-0.5 italic">{store.cidade} • {store.analista}</p>
+                                </div>
+                                <div className="flex flex-col items-end shrink-0">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${store.dias_desde_lancamento > 15 ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-400'}`}>
+                                        {store.dias_desde_lancamento} dias
+                                    </span>
+                                    {store.promo_status === 'aguardando' && (
+                                        <span className="text-[9px] font-bold text-amber-500 mt-1 uppercase">Aguardando</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {noPromoList.length === 0 && (
+                            <div className="py-20 text-center bg-slate-50 dark:bg-slate-800/20 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-slate-700">
+                                <span className="material-symbols-outlined text-4xl text-emerald-500 mb-2">verified</span>
+                                <p className="text-sm font-bold text-slate-500">Nenhuma loja pendente de promoção!</p>
+                            </div>
+                        )}
                     </div>
+                </div>
 
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-slate-500 dark:text-slate-400 border-collapse">
-                                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
-                                    <tr>
-                                        <th className="px-6 py-4">Estabelecimento / Analista</th>
-                                        <th className="px-6 py-4 text-center">Dias (Idade)</th>
-                                        <th className="px-6 py-4 text-center">Atingimento (Pedidos / Meta)</th>
-                                        <th className="px-6 py-4 w-1/3">Progresso Visual</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                    {activationProgress.map(store => {
-                                        const expected = calculateExpectedOrders(store.dias_desde_lancamento);
-                                        const total = store.total_pedidos;
-                                        // Atingimento absoluto limitando a 100%
-                                        const progressRaw = Math.round((total / 30) * 100);
-                                        const progressAbs = Math.min(100, progressRaw);
-                                        
-                                        // Índice em realação ao que deveria estar hoje (1.0 = na meta, < 1.0 = atrasado)
-                                        const index = expected > 0 ? (total / expected) : (total > 0 ? 1 : 0);
-                                        
-                                        let barColor = 'bg-blue-500';
-                                        if (store.dias_desde_lancamento > 5) {
-                                            if (index < 0.5) barColor = 'bg-red-500';
-                                            else if (index < 1.0) barColor = 'bg-yellow-500';
-                                            else barColor = 'bg-green-500';
-                                        }
-
-                                        return (
-                                            <tr key={store.estab_id || store.estabelecimento} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="font-bold text-slate-900 dark:text-white truncate w-48 lg:w-64">
-                                                        {store.estabelecimento}
-                                                    </div>
-                                                    <div className="text-xs mt-1 truncate w-48 lg:w-64">
-                                                        {store.cidade} • {store.analista}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className="font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-                                                        {store.dias_desde_lancamento} / 30
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center tabular-nums font-medium text-slate-700 dark:text-slate-300">
-                                                    <span className="text-lg">{total}</span>
-                                                    <span className="text-slate-400 mx-1">/</span>
-                                                    <span>{expected}</span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner">
-                                                            <div 
-                                                                className={`h-full rounded-full transition-all duration-500 ${barColor}`} 
-                                                                style={{ width: `${progressAbs}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className={`text-xs font-bold w-10 text-right ${index >= 1.0 || progressRaw >= 100 ? 'text-green-600 dark:text-green-400' : 'text-slate-500'}`}>
-                                                            {progressRaw}%
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                {/* LIST: NO CUPOM */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 px-2">
+                        <div className="size-8 bg-indigo-500 text-white rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                            <span className="material-symbols-outlined text-sm">confirmation_number</span>
                         </div>
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Sem Cupom Ativo</h3>
+                        <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full ml-auto">
+                            {noCupomList.length} lojas
+                        </span>
                     </div>
-                </section>
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                        {noCupomList.map(store => (
+                            <div key={`cupom-${store.estab_id || store.estabelecimento}`} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl flex items-center gap-4 hover:border-indigo-500/30 hover:shadow-md transition-all active:scale-[0.98]">
+                                <div className="shrink-0">
+                                    {store.logo_url ? (
+                                        <img src={store.logo_url} alt={store.estabelecimento} className="size-10 rounded-xl object-cover border border-slate-100 dark:border-slate-700 shadow-sm" />
+                                    ) : (
+                                        <div className="size-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-300 border border-slate-100 dark:border-slate-700">
+                                            <span className="material-symbols-outlined text-[20px]">store</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">{store.estabelecimento}</h4>
+                                    <p className="text-[10px] text-slate-500 font-medium uppercase tracking-tight mt-0.5 italic">{store.cidade} • {store.analista}</p>
+                                </div>
+                                <div className="flex flex-col items-end shrink-0">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${store.dias_desde_lancamento > 15 ? 'bg-red-50 text-red-500' : 'bg-slate-50 text-slate-400'}`}>
+                                        {store.dias_desde_lancamento} dias
+                                    </span>
+                                    {store.cupom_status === 'aguardando' && (
+                                        <span className="text-[9px] font-bold text-amber-500 mt-1 uppercase">Aguardando</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
 
+                        {noCupomList.length === 0 && (
+                            <div className="py-20 text-center bg-slate-50 dark:bg-slate-800/20 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-slate-700">
+                                <span className="material-symbols-outlined text-4xl text-emerald-500 mb-2">verified</span>
+                                <p className="text-sm font-bold text-slate-500">Nenhuma loja pendente de cupom!</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+            </div>
         </div>
     );
 }
 
-// Utils inside this file to avoid breaking imports since we only need the local math logic
-function calculateExpectedOrders(dias: number): number {
-    if (dias === 0) return 0;
-    const cappedDays = Math.min(dias, 28); // Matches the rule in calculations.ts that caps expectancies to 28/30 
-    return Math.round((cappedDays / 28) * 30);
-}
+

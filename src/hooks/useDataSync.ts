@@ -10,13 +10,17 @@ import {
     type SyncResult,
 } from '../utils/dataSync';
 
-interface UseDataSyncOptions {
+interface DataSourceConfig {
     sheetId: string;
     range?: string;
+}
+
+interface UseDataSyncOptions {
+    sources: DataSourceConfig[];
     autoRefreshIntervalMs?: number; // fallback interval, e.g., 60 * 60 * 1000 for 1 hour
 }
 
-export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
+export function useDataSync({ sources, autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
     const [data, setData] = useState<PerformanceRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -24,8 +28,8 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
     const [isUsingCache, setIsUsingCache] = useState(false);
 
     const performSync = useCallback(async () => {
-        if (!sheetId) {
-            setError("Sheet ID is missing.");
+        if (!sources || sources.length === 0) {
+            setError("No data sources provided.");
             setIsLoading(false);
             return;
         }
@@ -35,15 +39,23 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
             setError(null);
             setIsUsingCache(false);
 
-            const [fetchedData, logoMap] = await Promise.all([
-                fetchGoogleSheetsData(sheetId, range),
+            // Fetch from all sources in parallel
+            const fetchPromises = sources.map(source => 
+                fetchGoogleSheetsData(source.sheetId, source.range || 'NOVOS!A6:Z100')
+            );
+
+            const [allFetchedDataResults, logoMap] = await Promise.all([
+                Promise.all(fetchPromises),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
                     console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
                     return {} as Record<string, string>;
                 })
             ]);
 
-            const mergedData = mergeLogoMapIntoRows(fetchedData, logoMap);
+            // Flatten all fetched data into a single array
+            const flatFetchedData = allFetchedDataResults.flat();
+
+            const mergedData = mergeLogoMapIntoRows(flatFetchedData, logoMap);
 
             const syncResult: SyncResult = {
                 data: mergedData,
@@ -68,7 +80,8 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
         } finally {
             setIsLoading(false);
         }
-    }, [sheetId, range]);
+    }, [sources]);
+
 
 
     // Initial load

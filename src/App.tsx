@@ -9,7 +9,8 @@ import PartnerDetailsView from './components/PartnerDetailsView';
 import SettingsView from './components/SettingsView';
 import ReportsView from './components/ReportsView';
 import AboutView from './components/AboutView';
-import { DATA_SOURCE } from './config/dataSource';
+import ManagersView from './components/ManagersView';
+import { PARTNER_DATA_SOURCES } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
@@ -18,8 +19,10 @@ import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers'>('dashboard');
+  const [mappingVersion, setMappingVersion] = useState(0); // Para forçar re-enrich se o mapa de gestores mudar
   const [reportsOpen, setReportsOpen] = useState(false);
+
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -29,9 +32,9 @@ function App() {
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
   const { data: syncData, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
-    sheetId: DATA_SOURCE.sheetId,
-    range: DATA_SOURCE.range
+    sources: PARTNER_DATA_SOURCES
   });
+
 
 
   // -- Live API Access Data (Unique Store Accesses) ---------------------------
@@ -45,7 +48,7 @@ function App() {
         const status = row.status?.toLowerCase() || '';
         return status !== 'desistencia' && status !== 'desistência';
       }),
-    [syncData]
+    [syncData, mappingVersion]
   );
 
   // Extract unique cities and managers
@@ -137,6 +140,8 @@ function App() {
           <SettingsView />
         ) : currentView === 'about' ? (
           <AboutView />
+        ) : currentView === 'managers' ? (
+          <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
         ) : (
           <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (
@@ -273,7 +278,7 @@ function App() {
             onClick={() => setReportsOpen(false)}
           />
           {/* Panel */}
-          <div className="relative w-full max-w-3xl bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slide-in-right">
+          <div className="relative w-full max-w-screen-xl bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slide-in-right">
             <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">assessment</span>
