@@ -2,17 +2,35 @@ import { format, subDays } from 'date-fns';
 import { type EnrichedPerformanceRow, getInterpretationBox, getStarColor } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
+import { toggleContact, finishJourney, reopenJourney } from '../config/partnerState';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
     onBack: () => void;
     /** Live data from the unique daily accesses API */
     dailyAccessData?: StoreAccessData;
+    onRefresh: () => void;
 }
 
-export default function PartnerDetailsView({ partner, onBack, dailyAccessData }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({ partner, onBack, dailyAccessData, onRefresh }: PartnerDetailsViewProps) {
     const interpretation = getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
+
+    const handleToggleContact = (week: 'w1' | 'w2' | 'w3' | 'w4') => {
+        toggleContact(partner.estab_id || partner.estabelecimento, week);
+        onRefresh();
+    };
+
+    const handleToggleJourney = () => {
+        if (partner.isFinished) {
+            reopenJourney(partner.estab_id || partner.estabelecimento);
+        } else {
+            if (window.confirm(`Deseja encerrar a jornada de ${partner.estabelecimento}?`)) {
+                finishJourney(partner.estab_id || partner.estabelecimento);
+            }
+        }
+        onRefresh();
+    };
 
     // ---- Reports URL helper ----
     const getReportsUrl = (estabId: string | number) => {
@@ -100,9 +118,29 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData }:
                                     <span className="material-symbols-outlined text-[18px] mr-1">star</span>
                                     <span className="text-sm font-bold text-slate-800 dark:text-white">Prioridade {partner.priority_stars}</span>
                                 </div>
+
+                                {partner.isFinished && (
+                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-100 dark:border-emerald-800/30 text-sm font-black uppercase tracking-widest">
+                                        <span className="material-symbols-outlined text-[18px]">verified</span>
+                                        Jornada Finalizada
+                                    </div>
+                                )}
                                 
                                 {partner.estab_id && (
                                     <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={handleToggleJourney}
+                                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-bold transition-all shadow-sm ${
+                                                partner.isFinished 
+                                                ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300' 
+                                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                            }`}
+                                        >
+                                            <span className="material-symbols-outlined text-[18px] mr-1.5 italic">
+                                                {partner.isFinished ? 'settings_backup_restore' : 'check_circle'}
+                                            </span>
+                                            {partner.isFinished ? 'Reabrir Jornada' : 'Finalizar Onboarding'}
+                                        </button>
                                         <a
                                             href={`https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}`}
                                             target="_blank"
@@ -168,6 +206,38 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData }:
                             <div>
                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Índice Perfor.</p>
                                 <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.indice_desempenho.toFixed(2)}</p>
+                            </div>
+                        </div>
+
+                        {/* Pontos de Contato (Checklist) */}
+                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-4 rounded-xl items-center justify-between">
+                                <div className="flex gap-2 items-center">
+                                    <span className="material-symbols-outlined text-indigo-500">support_agent</span>
+                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Pontos de Contato (4 Checkpoints)</span>
+                                </div>
+                                <div className="flex gap-6">
+                                    {(['w1', 'w2', 'w3', 'w4'] as const).map((w, idx) => {
+                                        const checked = partner.contacts[w];
+                                        const dayLabel = (idx + 1) * 7;
+                                        return (
+                                            <button 
+                                                key={w} 
+                                                onClick={() => handleToggleContact(w)}
+                                                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${
+                                                    checked 
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800' 
+                                                    : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-400 dark:bg-slate-900 dark:border-slate-700'
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[20px] font-bold">
+                                                    {checked ? 'check' : 'circle'}
+                                                </span>
+                                                <span className="text-[11px] font-black uppercase">{dayLabel}d</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 

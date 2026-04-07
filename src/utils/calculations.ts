@@ -1,5 +1,6 @@
 import type { PerformanceRow } from '../components/PerformanceTable';
 import { getEffectiveManager } from '../config/managerMapping';
+import { getPartnerState, type PartnerState } from '../config/partnerState';
 
 export type CalculatedMetrics = {
     dias_desde_lancamento: number;
@@ -9,7 +10,7 @@ export type CalculatedMetrics = {
     city_weight: number;
     priority_stars: number;
     logo_url?: string;
-};
+} & PartnerState;
 
 export type EnrichedPerformanceRow = PerformanceRow & CalculatedMetrics;
 
@@ -109,9 +110,11 @@ export const enrichPartnerData = (partner: PerformanceRow, logoUrl?: string): En
     const priority_stars = calculatePriorityStars(partner, dias_desde_lancamento, total_pedidos, indice_desempenho, city_weight);
 
     const analista = getEffectiveManager(partner.cidade, partner.analista || '');
+    const state = getPartnerState(partner.estab_id || partner.estabelecimento);
     
     return {
         ...partner,
+        ...state,
         total_pedidos,
         dias_desde_lancamento,
         pedidos_esperados,

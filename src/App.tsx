@@ -18,9 +18,10 @@ import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading: loadingAuth } = useAuth();
   const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers'>('dashboard');
-  const [mappingVersion, setMappingVersion] = useState(0); // Para forçar re-enrich se o mapa de gestores mudar
+  const [mappingVersion, setMappingVersion] = useState(0); 
+  const [showFinished, setShowFinished] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
 
   const [cityFilter, setCityFilter] = useState('');
@@ -31,24 +32,25 @@ function App() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
-  const { data: syncData, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
+  // 1. Data Synchronization
+  const { data: rawRows, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
     sources: PARTNER_DATA_SOURCES
   });
-
-
 
   // -- Live API Access Data (Unique Store Accesses) ---------------------------
   const { accessData, loadingAccess, refreshAccessData } = useDailyAccessSync();
 
-  // Enrich Data
-  const enrichedData = useMemo(() =>
-    syncData
-      .map(row => enrichPartnerData(row))
-      .filter(row => {
+  // 2. Enrichment & Permanent Filters
+  const enrichedData = useMemo(
+    () =>
+      rawRows.map(row => enrichPartnerData(row))
+      .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
-        return status !== 'desistencia' && status !== 'desistência';
+        if (status === 'desistencia' || status === 'desistência') return false;
+        if (!showFinished && row.isFinished) return false;
+        return true;
       }),
-    [syncData, mappingVersion]
+    [rawRows, mappingVersion, showFinished]
   );
 
   // Extract unique cities and managers
@@ -63,7 +65,6 @@ function App() {
     if (priorityFilter && row.priority_stars.toString() !== priorityFilter) matches = false;
     if (managerFilter && row.analista !== managerFilter) matches = false;
 
-    // Age Group Filter
     const days = row.dias_desde_lancamento;
     if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) matches = false;
     if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) matches = false;
@@ -80,7 +81,6 @@ function App() {
       let aVal: any = a[key as keyof EnrichedPerformanceRow];
       let bVal: any = b[key as keyof EnrichedPerformanceRow];
 
-      // Handle specific types
       if (key === 'lancamento') {
         const [aD, aM, aY] = (aVal as string).split('/');
         const [bD, bM, bY] = (bVal as string).split('/');
@@ -105,21 +105,16 @@ function App() {
     setSortConfig({ key, direction });
   };
 
-
-
-
-  // Keep selectedRow in sync
   const currentSelectedRow = selectedRow
     ? (enrichedData.find(r => r.estabelecimento === selectedRow.estabelecimento) ?? selectedRow)
     : null;
 
-  // Always pass the latest enriched version on click.
   const handleRowClick = (row: EnrichedPerformanceRow) => {
     const latest = enrichedData.find(r => r.estabelecimento === row.estabelecimento) ?? row;
     setSelectedRow(latest);
   };
 
-  if (isLoading) {
+  if (loadingAuth || (loadingSync && rawRows.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -127,14 +122,20 @@ function App() {
     );
   }
 
-  // Auth Gate
   if (!isAuthenticated) {
     return <LoginPage />;
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden relative bg-white dark:bg-slate-900">
-      <Header currentView={currentView} onNavigate={setCurrentView} onToggleReports={() => setReportsOpen(o => !o)} reportsOpen={reportsOpen} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <Header 
+        currentView={currentView} 
+        onNavigate={setCurrentView} 
+        onToggleReports={() => setReportsOpen(o => !o)} 
+        reportsOpen={reportsOpen} 
+        searchQuery={searchQuery} 
+        setSearchQuery={setSearchQuery} 
+      />
       <main className="flex flex-1 flex-col xl:flex-row h-full">
         {currentView === 'settings' ? (
           <SettingsView />
@@ -149,6 +150,7 @@ function App() {
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
                 dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+                onRefresh={() => setMappingVersion(v => v + 1)}
               />
             ) : (
               <>
@@ -185,13 +187,6 @@ function App() {
                           <p className="text-sm opacity-90">Não foi possível conectar à base de dados no momento. Mostrando as últimas informações salvas localmente.</p>
                         </div>
                       </div>
-                      
-                      {syncError && (
-                        <div className="ml-9 p-2 bg-amber-100/50 dark:bg-amber-800/20 rounded border border-amber-200/50 dark:border-amber-700/30">
-                          <p className="text-[11px] font-mono uppercase tracking-wider mb-1 opacity-70">Detalhe técnico do erro:</p>
-                          <p className="text-xs font-mono break-all">{syncError}</p>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -206,33 +201,48 @@ function App() {
                   )}
                 </div>
 
-                {/* Age Group Tabs */}
-                <div className="border-b border-slate-200 dark:border-slate-800 px-6 flex gap-6 overflow-x-auto scrollbar-hide bg-slate-50/30 dark:bg-slate-900/50 pt-2">
-                    {[
-                        { id: 'all', label: 'Todos os Períodos' },
-                        { id: '1-7', label: '1 a 7 dias' },
-                        { id: '8-14', label: '8 a 14 dias' },
-                        { id: '15-21', label: '15 a 21 dias' },
-                        { id: '22-28', label: '22 a 28 dias' }
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setAgeGroupFilter(tab.id as any)}
-                            className={`pb-3 pt-2 px-1 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${ageGroupFilter === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                        >
-                            {tab.label}
-                            <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                                {enrichedData.filter(r => {
-                                    const d = r.dias_desde_lancamento;
-                                    if (tab.id === '1-7') return d >= 1 && d <= 7;
-                                    if (tab.id === '8-14') return d >= 8 && d <= 14;
-                                    if (tab.id === '15-21') return d >= 15 && d <= 21;
-                                    if (tab.id === '22-28') return d >= 22 && d <= 28;
-                                    return true;
-                                }).length}
-                            </span>
-                        </button>
-                    ))}
+                <div className="flex items-center justify-between px-6 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex gap-6 overflow-x-auto scrollbar-hide pt-2">
+                      {[
+                          { id: 'all', label: 'Todos os Períodos' },
+                          { id: '1-7', label: '1 a 7 dias' },
+                          { id: '8-14', label: '8 a 14 dias' },
+                          { id: '15-21', label: '15 a 21 dias' },
+                          { id: '22-28', label: '22 a 28 dias' }
+                      ].map(tab => (
+                          <button
+                              key={tab.id}
+                              onClick={() => setAgeGroupFilter(tab.id as any)}
+                              className={`pb-3 pt-2 px-1 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${ageGroupFilter === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                          >
+                              {tab.label}
+                              <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                                  {enrichedData.filter(r => {
+                                      const d = r.dias_desde_lancamento;
+                                      if (tab.id === '1-7') return d >= 1 && d <= 7;
+                                      if (tab.id === '8-14') return d >= 8 && d <= 14;
+                                      if (tab.id === '15-21') return d >= 15 && d <= 21;
+                                      if (tab.id === '22-28') return d >= 22 && d <= 28;
+                                      return true;
+                                  }).length}
+                              </span>
+                          </button>
+                      ))}
+                  </div>
+
+                  <button
+                    onClick={() => setShowFinished(!showFinished)}
+                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                      showFinished 
+                      ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm' 
+                      : 'bg-slate-100 text-slate-400 border border-transparent hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      {showFinished ? 'visibility' : 'visibility_off'}
+                    </span>
+                    {showFinished ? 'Mostrando Encerrados' : 'Ver Encerrados'}
+                  </button>
                 </div>
 
                 <FilterToolbar
@@ -246,15 +256,13 @@ function App() {
                   managers={uniqueManagers}
                 />
 
-                {loadingSync ? (
+                {loadingSync && rawRows.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[400px]">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
                     <p className="text-slate-500 font-medium">Sincronizando dados...</p>
                   </div>
                 ) : (
                   <div className="flex flex-col flex-1 divide-y divide-slate-100 dark:divide-slate-800">
-
-                    {/* Table */}
                     <PerformanceTable
                       data={filteredTableData}
                       sortConfig={sortConfig}
@@ -269,25 +277,16 @@ function App() {
         )}
       </main>
 
-      {/* Reports Drawer Overlay */}
       {reportsOpen && (
         <div className="fixed inset-0 z-40 flex justify-end">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity"
-            onClick={() => setReportsOpen(false)}
-          />
-          {/* Panel */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={() => setReportsOpen(false)} />
           <div className="relative w-full max-w-screen-xl bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slide-in-right">
             <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary">assessment</span>
                 Relatórios
               </h2>
-              <button
-                onClick={() => setReportsOpen(false)}
-                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
-              >
+              <button onClick={() => setReportsOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>

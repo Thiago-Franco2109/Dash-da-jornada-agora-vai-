@@ -108,10 +108,10 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                     Prioridade {renderSortIcon('priority_stars')}
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Promo
+                                    Contatos
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Cupom
+                                    Jornada
                                 </th>
                             </tr>
                         </thead>
@@ -119,6 +119,20 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                             {data.map((row, index) => {
                                 // Highlight top 10 critical/high risk partners (Index < 10 && stars >= 4 implies we need to be sorted descending by stars theoretically, but we'll apply it just to index 0-9 if they are >= 4 stars)
                                 const isTopPriority = index < 10 && row.priority_stars >= 4;
+
+                                const renderContactDots = () => {
+                                    return (
+                                        <div className="flex justify-center gap-1">
+                                            {(['w1', 'w2', 'w3', 'w4'] as const).map((w) => (
+                                                <div 
+                                                    key={w} 
+                                                    className={`size-2 rounded-full border ${row.contacts[w] ? 'bg-emerald-500 border-emerald-600' : 'bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}
+                                                    title={row.contacts[w] ? 'Contato Realizado' : 'Pendente'}
+                                                />
+                                            ))}
+                                        </div>
+                                    );
+                                };
 
                                 return (
                                     <tr
@@ -133,13 +147,15 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 group-hover:text-primary transition-colors">
                                             <div className="flex items-center gap-3">
                                                 {row.logo_url ? (
-                                                    <img src={row.logo_url} alt={row.estabelecimento} className="size-12 rounded-full border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
+                                                    <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
                                                 ) : (
-                                                    <div className="size-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
-                                                        <span className="material-symbols-outlined text-[24px]">store</span>
+                                                    <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                                                        <span className="material-symbols-outlined text-[20px]">store</span>
                                                     </div>
                                                 )}
-                                                {row.estabelecimento}
+                                                <span className="truncate max-w-[200px]" title={row.estabelecimento}>
+                                                    {row.estabelecimento}
+                                                </span>
                                             </div>
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
@@ -168,6 +184,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {renderIndicadorBadge(row.cupom_status)}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {renderContactDots()}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {row.isFinished ? (
+                                                <span className="text-emerald-500 material-symbols-outlined" title="Jornada Concluída">verified</span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Em curso</span>
+                                            )}
                                         </td>
                                     </tr>
                                 )
