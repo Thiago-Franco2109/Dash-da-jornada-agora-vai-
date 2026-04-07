@@ -141,28 +141,28 @@ export const getStarColor = (stars: number): string => {
 export const getInterpretationBox = (stars: number): { text: string; bg: string; border: string; icon: string; textClass: string } => {
     switch (stars) {
         case 5: return {
-            text: 'This partner is significantly below the expected onboarding performance and requires immediate intervention.',
+            text: 'Este parceiro está significativamente abaixo do desempenho esperado no onboarding e requer intervenção imediata.',
             bg: 'bg-red-50 dark:bg-red-900/10',
             border: 'border-red-200 dark:border-red-800/30',
             icon: 'error',
             textClass: 'text-red-800 dark:text-red-400'
         };
         case 4: return {
-            text: 'High risk of underperformance. Action recommended.',
+            text: 'Alto risco de baixo desempenho. Ação recomendada para correção de rota.',
             bg: 'bg-orange-50 dark:bg-orange-900/10',
             border: 'border-orange-200 dark:border-orange-800/30',
             icon: 'warning',
             textClass: 'text-orange-800 dark:text-orange-400'
         };
         case 3: return {
-            text: 'Moderate performance gap. Monitor closely.',
+            text: 'Desvio moderado de desempenho. Monitore de perto os próximos dias.',
             bg: 'bg-yellow-50 dark:bg-yellow-900/10',
             border: 'border-yellow-200 dark:border-yellow-800/30',
             icon: 'visibility',
             textClass: 'text-yellow-800 dark:text-yellow-400'
         };
         default: return {
-            text: 'Partner is on track.',
+            text: 'O parceiro está com desempenho dentro do esperado e seguindo a meta.',
             bg: 'bg-green-50 dark:bg-green-900/10',
             border: 'border-green-200 dark:border-green-800/30',
             icon: 'check_circle',

@@ -13,24 +13,27 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
     const { user, logout } = useAuth();
 
     return (
-        <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-3 shadow-sm z-10">
+        <header 
+            className="flex items-center justify-between whitespace-nowrap border-b border-solid border-emerald-600 px-6 py-3 shadow-md z-10"
+            style={{ backgroundColor: '#32ba72' }}
+        >
             <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3 text-slate-900 dark:text-white">
-                    <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined">monitoring</span>
+                <div className="flex items-center gap-3 text-white">
+                    <div className="size-10 rounded-lg bg-white/20 p-1 flex items-center justify-center backdrop-blur-sm overflow-hidden">
+                        <img src="/favicon.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
-                    <h2 className="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">
-                        CS Partner Journey
+                    <h2 className="text-white text-lg font-black leading-tight tracking-[-0.015em] uppercase">
+                        Jornada de novos parceiros
                     </h2>
                 </div>
                 
                 <label className="flex flex-col min-w-40 !h-10 max-w-64">
-                    <div className="flex w-full flex-1 items-stretch rounded-lg h-full">
-                        <div className="text-slate-500 flex border-none bg-slate-100 dark:bg-slate-800 items-center justify-center pl-4 rounded-l-lg border-r-0">
+                    <div className="flex w-full flex-1 items-stretch rounded-lg h-full overflow-hidden bg-white/10 border border-white/20 backdrop-blur-sm focus-within:bg-white/20 transition-all">
+                        <div className="text-white/70 flex border-none items-center justify-center pl-4 border-r-0">
                             <span className="material-symbols-outlined text-[20px]">search</span>
                         </div>
                         <input
-                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-none bg-slate-100 dark:bg-slate-800 focus:border-none h-full placeholder:text-slate-500 px-4 rounded-l-none border-l-0 pl-2 text-sm font-normal leading-normal"
+                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-white/60 px-4 rounded-l-none border-l-0 pl-2 text-sm font-medium leading-normal"
                             placeholder="Buscar parceiro..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -39,35 +42,35 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                 </label>
             </div>
 
-            <div className="flex flex-1 justify-end gap-8">
-                <div className="hidden md:flex items-center gap-4 text-slate-900 dark:text-white">
+            <div className="flex flex-1 justify-end gap-6 overflow-x-auto scrollbar-hide">
+                <div className="hidden md:flex items-center gap-1 text-white">
                     <button
                         onClick={() => onNavigate('dashboard')}
-                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'dashboard' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'dashboard' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
                     >
                         Dashboard
                     </button>
                     <button
                         onClick={() => onNavigate('managers')}
-                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'managers' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'managers' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
                     >
                         Gestores
                     </button>
                     <button
                         onClick={onToggleReports}
-                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${reportsOpen ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${reportsOpen ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
                     >
                         Relatórios
                     </button>
                     <button
                         onClick={() => onNavigate('settings')}
-                        className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${currentView === 'settings' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'settings' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
                     >
-                        Configurações
+                        Config.
                     </button>
                     <button
                         onClick={() => onNavigate('about')}
-                        className={`text-[11px] uppercase tracking-wider font-bold px-3 py-2 opacity-50 hover:opacity-100 transition-all ${currentView === 'about' ? 'text-primary' : 'text-slate-400'}`}
+                        className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-2 opacity-60 hover:opacity-100 transition-all text-white ${currentView === 'about' ? 'underline decoration-2 underline-offset-4' : ''}`}
                     >
                         Sobre
                     </button>
@@ -75,36 +78,34 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                         href="https://dashboad-onboarding.netlify.app/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm font-medium px-3 py-2 rounded-lg transition-colors text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 flex items-center gap-1.5"
+                        className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full text-white hover:bg-white/10 flex items-center gap-1.5 transition-all"
                     >
-                        Painel Onboarding
+                        Admin
                         <span className="material-symbols-outlined text-[16px]">open_in_new</span>
                     </a>
                 </div>
             </div>
 
 
-            <div className="flex flex-1 justify-end items-center gap-4">
+            <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
                 <div className="hidden sm:flex flex-col items-end">
-                    <span className="text-sm font-semibold text-slate-900 dark:text-white leading-none">{user?.name}</span>
-                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-1">
-                        {user?.email}
+                    <span className="text-sm font-black text-white leading-none tracking-tight">{user?.name}</span>
+                    <span className="text-[9px] font-bold text-white/70 mt-1 uppercase tracking-tighter">
+                        Logado como CS
                     </span>
                 </div>
 
                 {user?.picture && (
-                    <img src={user.picture} alt="Profile" className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-700" referrerPolicy="no-referrer" />
+                    <img src={user.picture} alt="Profile" className="size-9 rounded-xl border-2 border-white/30 shadow-sm" referrerPolicy="no-referrer" />
                 )}
 
-                <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-4">
-                    <button
-                        onClick={() => logout()}
-                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
-                        title="Sair do sistema"
-                    >
-                        <span className="material-symbols-outlined">logout</span>
-                    </button>
-                </div>
+                <button
+                    onClick={() => logout()}
+                    className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                    title="Sair do sistema"
+                >
+                    <span className="material-symbols-outlined">logout</span>
+                </button>
             </div>
         </header>
     );
