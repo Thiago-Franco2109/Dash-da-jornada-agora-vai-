@@ -8,11 +8,26 @@ export interface SyncResult {
 const CACHE_KEY = 'partner_journey_data_cache_v5';
 
 
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "https://sheets-api-production-0097.up.railway.app")
+    .trim()
+    .replace(/\/+$/, '');
 
 function apiUrl(path: string) {
     if (!path.startsWith("/")) path = `/${path}`;
     return `${API_ORIGIN}${path}`;
+}
+
+/** Prepara as opções de fetch incluindo token de fallback se disponível */
+function getFetchOptions(): RequestInit {
+    const token = sessionStorage.getItem("auth_token");
+    const options: RequestInit = { credentials: "include" as RequestCredentials };
+    if (token) {
+        options.headers = {
+            ...options.headers,
+            "Authorization": `Bearer ${token}`
+        };
+    }
+    return options;
 }
 
 // O Gateway usa a Linha 1 como header.
@@ -20,7 +35,7 @@ function apiUrl(path: string) {
 const SKIP_METADATA_ROWS = 0;
 
 export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
-    const fetchOptions: RequestInit = { credentials: "include" as RequestCredentials };
+    const fetchOptions = getFetchOptions();
 
     // Construir a URL do Gateway API (apenas o nome da aba, sem range)
     const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName)}`);
@@ -300,7 +315,7 @@ export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Pro
     const out: Record<string, string> = {};
     if (!sheetId?.trim() || !tabName?.trim()) return out;
 
-    const fetchOptions: RequestInit = { credentials: 'include' as RequestCredentials };
+    const fetchOptions = getFetchOptions();
     const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName)}`);
 
     const response = await fetch(url, fetchOptions);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import Header from './components/Header';
@@ -18,7 +18,7 @@ import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 
 function App() {
-  const { isAuthenticated, isLoading: loadingAuth } = useAuth();
+  const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers'>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
@@ -32,13 +32,25 @@ function App() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
-  // 1. Data Synchronization
+  // 1. Data Synchronization — só inicia após autenticação
   const { data: rawRows, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
-    sources: PARTNER_DATA_SOURCES
+    sources: PARTNER_DATA_SOURCES,
+    enabled: isAuthenticated,
   });
 
-  // -- Live API Access Data (Unique Store Accesses) ---------------------------
-  const { accessData, loadingAccess, refreshAccessData } = useDailyAccessSync();
+  // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
+  const { accessData, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
+
+  // Failsafe: se houver erro de autenticação em qualquer hook, força logout
+  useEffect(() => {
+    const isAuthError = (err: string | null) => 
+      err?.includes('401') || err?.toLowerCase().includes('unauthorized');
+
+    if (isAuthError(syncError) || isAuthError(accessError)) {
+      console.warn("[App] Erro de autenticação detectado nos hooks de sincronização. Redirecionando...");
+      logout();
+    }
+  }, [syncError, accessError, logout]);
 
   // 2. Enrichment & Permanent Filters
   const enrichedData = useMemo(

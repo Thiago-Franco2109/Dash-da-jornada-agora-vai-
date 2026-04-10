@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 // ---------------------------------------------------------------------------
 export interface User {
   email: string;
-  name: string;
+  name?: string;
   picture?: string;
   role?: string;
 }
@@ -18,14 +18,16 @@ interface AuthState {
   logout: () => void;
 }
 
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "https://sheets-api-production-0097.up.railway.app")
+  .trim()
+  .replace(/\/+$/, '');
 
 function apiUrl(path: string) {
   if (!path.startsWith("/")) path = `/${path}`;
   return `${API_ORIGIN}${path}`;
 }
 
-const fetchOptions: RequestInit = { credentials: "include" as RequestCredentials };
+const fetchOptionsBase: RequestInit = { credentials: "include" as RequestCredentials };
 
 // ---------------------------------------------------------------------------
 // Context
@@ -39,11 +41,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchSession = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(apiUrl("/auth/me"), fetchOptions);
+
+      // 1. Tenta pegar token da URL (fallback cross-site)
+      const hash = window.location.hash;
+      let token = sessionStorage.getItem("auth_token") || "";
+      
+      if (hash.startsWith("#token=")) {
+        token = hash.split("token=")[1];
+        sessionStorage.setItem("auth_token", token);
+        // Limpa a URL para estética/segurança
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+
+      // 2. Prepara headers (se tiver token, usa Bearer)
+      const options: RequestInit = { ...fetchOptionsBase };
+      if (token) {
+        options.headers = {
+          ...options.headers,
+          "Authorization": `Bearer ${token}`
+        };
+      }
+
+      const res = await fetch(apiUrl("/auth/me"), options);
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user || data); // Dependendo do backend, pode ser req.user ou {user: ...}
+        // O novo formato é { success: true, user: { email: ... } }
+        setUser(data.user || data);
       } else {
+        if (res.status === 401) {
+          console.warn("[Auth] Sessão inválida ou expirada (401)");
+        }
         setUser(null);
       }
     } catch (error) {
@@ -63,16 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${API_ORIGIN}/auth/login?redirect=${encodeURIComponent(window.location.origin)}`;
   }, []);
 
-  const logout = useCallback(async () => {
-    try {
-      // Opcional: Chama endpoint de logout caso o gateway o possua
-      await fetch(apiUrl("/auth/logout"), { method: 'POST', ...fetchOptions }).catch(() => {});
-    } catch (e) {
-      console.error(e);
-    }
-    setUser(null);
-    // Removemos state do frontend e podemos também redirecionar para endpoint GET logout se necessário
-    // window.location.href = `${API_ORIGIN}/auth/logout?redirect=${encodeURIComponent(window.location.origin)}`;
+  const logout = useCallback(() => {
+    // Agora o logout também é um redirecionamento para limpar a sessão no servidor
+    window.location.href = `${API_ORIGIN}/auth/logout?redirect=${encodeURIComponent(window.location.origin)}`;
   }, []);
 
   return (

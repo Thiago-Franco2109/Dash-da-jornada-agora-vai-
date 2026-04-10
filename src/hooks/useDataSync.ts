@@ -18,9 +18,10 @@ interface DataSourceConfig {
 interface UseDataSyncOptions {
     sources: DataSourceConfig[];
     autoRefreshIntervalMs?: number; // fallback interval, e.g., 60 * 60 * 1000 for 1 hour
+    enabled?: boolean; // se false, nenhum fetch será disparado (usar quando não autenticado)
 }
 
-export function useDataSync({ sources, autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
+export function useDataSync({ sources, autoRefreshIntervalMs = 3600000, enabled = true }: UseDataSyncOptions) {
     const [data, setData] = useState<PerformanceRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000 }: UseDat
     const [isUsingCache, setIsUsingCache] = useState(false);
 
     const performSync = useCallback(async () => {
+        if (!enabled) return;
         if (!sources || sources.length === 0) {
             setError("No data sources provided.");
             setIsLoading(false);
@@ -80,27 +82,29 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000 }: UseDat
         } finally {
             setIsLoading(false);
         }
-    }, [sources]);
+    }, [sources, enabled]);
 
 
 
-    // Initial load
+    // Initial load — só executa quando enabled for true
     useEffect(() => {
-        performSync();
-    }, [performSync]);
+        if (enabled) performSync();
+        else { setIsLoading(false); }
+    }, [performSync, enabled]);
 
     // Setup interval for fallback refresh
     useEffect(() => {
-        if (!autoRefreshIntervalMs) return;
+        if (!autoRefreshIntervalMs || !enabled) return;
         const intervalId = setInterval(() => {
             performSync();
         }, autoRefreshIntervalMs);
 
         return () => clearInterval(intervalId);
-    }, [performSync, autoRefreshIntervalMs]);
+    }, [performSync, autoRefreshIntervalMs, enabled]);
 
     // Setup scheduled daily refresh at 08:05 AM America/Sao_Paulo
     useEffect(() => {
+        if (!enabled) return;
         const scheduleNextRefresh = () => {
             const now = new Date();
             const target = new Date(now);
@@ -121,7 +125,7 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000 }: UseDat
         const timeoutId = scheduleNextRefresh();
 
         return () => clearTimeout(timeoutId);
-    }, [performSync]);
+    }, [performSync, enabled]);
 
     return {
         data,
