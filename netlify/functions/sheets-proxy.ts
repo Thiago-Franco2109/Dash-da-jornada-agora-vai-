@@ -45,7 +45,7 @@ const handler: Handler = async (event, _context) => {
         };
     }
 
-    const apiOrigin = process.env.VITE_API_ORIGIN || "https://bigou-sheets-api.netlify.app";
+    const apiOrigin = process.env.VITE_API_ORIGIN || "https://sheets-api-production-0097.up.railway.app";
     const url = `${apiOrigin}/api/sheets/${sheetId}/${encodeURIComponent(tab)}`;
 
     console.log(`[Proxy] Fetching from Gateway: ${url}`);
