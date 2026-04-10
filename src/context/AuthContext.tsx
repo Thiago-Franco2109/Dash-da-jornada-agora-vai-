@@ -48,9 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (hash.startsWith("#token=")) {
         token = hash.split("token=")[1];
+        console.log("[Auth] Token detectado na URL:", token.substring(0, 10) + "...");
         sessionStorage.setItem("auth_token", token);
         // Limpa a URL para estética/segurança
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      } else if (token) {
+        console.log("[Auth] Usando token do sessionStorage");
       }
 
       // 2. Prepara headers (se tiver token, usa Bearer)
