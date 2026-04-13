@@ -5,6 +5,8 @@ import {
     fetchGoogleSheetsData,
     fetchPartnerLogoMap,
     mergeLogoMapIntoRows,
+    fetchAvaliacoesMap,
+    mergeAvaliacoesMapIntoRows,
     saveToCache,
     loadFromCache,
     type SyncResult,
@@ -46,18 +48,23 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000, enabled 
                 fetchGoogleSheetsData(source.sheetId, source.range || 'NOVOS!A6:Z100')
             );
 
-            const [allFetchedDataResults, logoMap] = await Promise.all([
+            const [allFetchedDataResults, logoMap, avaliacoesMap] = await Promise.all([
                 Promise.all(fetchPromises),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
                     console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
                     return {} as Record<string, string>;
+                }),
+                fetchAvaliacoesMap().catch((err) => {
+                    console.warn('[useDataSync] Planilha de avaliações indisponível.', err);
+                    return {} as Record<string, number>;
                 })
             ]);
 
             // Flatten all fetched data into a single array
             const flatFetchedData = allFetchedDataResults.flat();
 
-            const mergedData = mergeLogoMapIntoRows(flatFetchedData, logoMap);
+            let mergedData = mergeLogoMapIntoRows(flatFetchedData, logoMap);
+            mergedData = mergeAvaliacoesMapIntoRows(mergedData, avaliacoesMap);
 
             const syncResult: SyncResult = {
                 data: mergedData,

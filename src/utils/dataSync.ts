@@ -363,3 +363,63 @@ export function mergeLogoMapIntoRows(rows: PerformanceRow[], logoMap: Record<str
         return rest as PerformanceRow;
     });
 }
+
+/**
+ * Busca os dados de avaliações a partir da planilha pública e retorna um mapa de avaliações por parceiro.
+ */
+export async function fetchAvaliacoesMap(): Promise<Record<string, number>> {
+    const csvUrl = "https://docs.google.com/spreadsheets/d/196UERhbkyBm3YZuqrqgyMTwZI0aiUqRQaQju6i4ilh4/export?format=csv&gid=1204641336";
+    try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) return {};
+        const text = await response.text();
+        const lines = text.split('\n');
+        const map: Record<string, number> = {};
+
+        if (lines.length > 1) {
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            const partnerIdx = headers.indexOf('estabelecimento');
+            const evalIdx = headers.indexOf('total avaliações');
+
+            if (partnerIdx >= 0 && evalIdx >= 0) {
+                for (let i = 1; i < lines.length; i++) {
+                    // Trata CSV simples (assumindo que não há vírgulas no nome da loja)
+                    // Caso haja, seria ideal um parser robusto, mas split serve como base rápida
+                    const cols = lines[i].split(',');
+                    // Reconstroi o nome do estabelecimento se houver vírgula extra (tentativa simples)
+                    const evalStr = cols.pop()?.trim(); // Pega o último que é Total Avaliações (se houver mais colunas)
+                    
+                    if (evalStr !== undefined) {
+                        const total = parseInt(evalStr, 10);
+                        if (!isNaN(total)) {
+                            // Se a estrutura for estrita ID, Nome, Data, Total
+                            const name = cols[1]?.replace(/^"|"$/g, '').trim(); 
+                            if (name) {
+                                const key = normalizePartnerLookupKey(name);
+                                map[key] = total;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return map;
+    } catch (err) {
+        console.error("Erro ao buscar avaliações da planilha pública", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de avaliações nas linhas de performance
+ */
+export function mergeAvaliacoesMapIntoRows(rows: PerformanceRow[], map: Record<string, number>): PerformanceRow[] {
+    return rows.map(row => {
+        const key = normalizePartnerLookupKey(row.estabelecimento);
+        if (key && map[key] !== undefined) {
+            return { ...row, total_avaliacoes: map[key] };
+        }
+        return row;
+    });
+}
+

@@ -17,6 +17,8 @@ export type PerformanceRow = {
     promo_status?: 'ativo' | 'aguardando' | 'inativo';
     /** Status do cupom: 'ativo' | 'aguardando' | 'inativo' */
     cupom_status?: 'ativo' | 'aguardando' | 'inativo';
+    /** Total de avaliações */
+    total_avaliacoes?: number;
 };
 
 export type SortConfig = {
@@ -68,6 +70,34 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
         );
     };
 
+    const renderAvaliacaoBadge = (total: number | undefined, diasAtivo: number) => {
+        if (total === undefined) {
+            return <span className="text-slate-400">—</span>;
+        }
+        if (total > 0) {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
+                    <span className="material-symbols-outlined text-[13px]">star</span>
+                    {total}
+                </span>
+            );
+        }
+        if (diasAtivo > 15) {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 ring-1 ring-inset ring-red-600/20">
+                    <span className="material-symbols-outlined text-[13px]">warning</span>
+                    Crítico
+                </span>
+            );
+        }
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
+                <span className="material-symbols-outlined text-[13px]">schedule</span>
+                0
+            </span>
+        );
+    };
+
     const renderSortIcon = (key: string) => {
         if (!sortConfig || sortConfig.key !== key) return null;
         return (
@@ -106,6 +136,9 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
                                     Prioridade {renderSortIcon('priority_stars')}
+                                </th>
+                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_avaliacoes')}>
+                                    Avaliação {renderSortIcon('total_avaliacoes')}
                                 </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                     Contatos
@@ -184,6 +217,9 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {renderIndicadorBadge(row.cupom_status)}
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {renderAvaliacaoBadge(row.total_avaliacoes, row.dias_desde_lancamento)}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {renderContactDots()}
