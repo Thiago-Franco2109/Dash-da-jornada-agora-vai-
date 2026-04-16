@@ -323,7 +323,19 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                 <div className="flex items-center gap-2">
                                     <span className="material-symbols-outlined text-[20px] text-violet-400">percent</span>
                                     <div>
-                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Promoção</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Promoção</p>
+                                            <a 
+                                                href="https://admin.bigou.com.br/campanha/promocao/cadastro/26" 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 font-bold underline flex items-center gap-0.5"
+                                                title="Ir para painel de ativação de promoções"
+                                            >
+                                                <span className="material-symbols-outlined text-[12px]">launch</span>
+                                                Ativar
+                                            </a>
+                                        </div>
                                         <p className="text-[11px] text-slate-400 mt-0.5">Desconto ativo no cardápio</p>
                                     </div>
                                 </div>
