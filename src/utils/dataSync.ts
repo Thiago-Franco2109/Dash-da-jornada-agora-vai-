@@ -436,7 +436,7 @@ export async function fetchRelevanceMap(): Promise<Record<string, number>> {
         if (error) throw error;
 
         const map: Record<string, number> = {};
-        data?.forEach(item => {
+        data?.forEach((item: { partner_id: string; relevance_score: number }) => {
             map[item.partner_id] = item.relevance_score;
         });
         return map;
