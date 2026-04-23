@@ -79,3 +79,21 @@ export function getEffectiveManager(city: string, originalManager: string): stri
     
     return originalManager || 'Desconhecido';
 }
+
+/**
+ * Identifica o nome do gestor (THIAGO ou LAÍS) com base no usuário logado (nome ou e-mail).
+ */
+export function identifyManagerFromUser(user: { name?: string; email?: string }): string | null {
+    const nameStr = (user.name || '').trim().toUpperCase();
+    const emailStr = (user.email || '').trim().toUpperCase();
+    
+    // Mapeamento direto ou detecção por palavra-chave no nome
+    if (nameStr.includes('THIAGO')) return 'THIAGO';
+    if (nameStr.includes('LAIS') || nameStr.includes('LAÍS')) return 'LAÍS';
+
+    // Fallback: detecção pelo e-mail
+    if (emailStr.includes('THIAGO')) return 'THIAGO';
+    if (emailStr.includes('LAIS') || emailStr.includes('LAÍS')) return 'LAÍS';
+    
+    return null;
+}

@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
-    currentView: 'dashboard' | 'settings' | 'about' | 'managers';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers') => void;
+    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile') => void;
     onToggleReports: () => void;
     reportsOpen: boolean;
     searchQuery: string;
@@ -88,16 +88,26 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
 
 
             <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
-                <div className="hidden sm:flex flex-col items-end">
-                    <span className="text-sm font-black text-white leading-none tracking-tight">{user?.name}</span>
-                    <span className="text-[9px] font-bold text-white/70 mt-1 uppercase tracking-tighter">
-                        Logado como CS
-                    </span>
-                </div>
+                <button 
+                    onClick={() => onNavigate('profile')}
+                    className="flex items-center gap-3 text-left hover:bg-white/10 p-1.5 rounded-xl transition-colors group"
+                    title="Ver meu perfil"
+                >
+                    <div className="hidden sm:flex flex-col items-end">
+                        <span className="text-sm font-black text-white leading-none tracking-tight group-hover:text-emerald-100 transition-colors">{user?.name || user?.email}</span>
+                        <span className="text-[9px] font-bold text-white/70 mt-1 uppercase tracking-tighter">
+                            Acessar meu Perfil
+                        </span>
+                    </div>
 
-                {user?.picture && (
-                    <img src={user.picture} alt="Profile" className="size-9 rounded-xl border-2 border-white/30 shadow-sm" referrerPolicy="no-referrer" />
-                )}
+                    {user?.picture ? (
+                        <img src={user.picture} alt="Profile" className="size-9 rounded-xl border-2 border-white/30 shadow-sm group-hover:border-white/50 transition-colors" referrerPolicy="no-referrer" />
+                    ) : (
+                        <div className="size-9 rounded-xl bg-white/20 flex items-center justify-center border-2 border-white/30">
+                            <span className="material-symbols-outlined text-white text-[20px]">person</span>
+                        </div>
+                    )}
+                </button>
 
                 <button
                     onClick={() => logout()}

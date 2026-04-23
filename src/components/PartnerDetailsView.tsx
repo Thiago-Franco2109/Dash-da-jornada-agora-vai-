@@ -3,6 +3,7 @@ import { type EnrichedPerformanceRow, getInterpretationBox, getStarColor } from 
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { toggleContact, finishJourney, reopenJourney } from '../config/partnerState';
+import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
@@ -15,6 +16,8 @@ interface PartnerDetailsViewProps {
 export default function PartnerDetailsView({ partner, onBack, dailyAccessData, onRefresh }: PartnerDetailsViewProps) {
     const interpretation = getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
+    
+    const { relevance, updateRelevance, loading: relevanceLoading } = usePartnerRelevance(partner.estab_id || partner.estabelecimento);
 
     const handleToggleContact = (week: 'w1' | 'w2' | 'w3' | 'w4') => {
         toggleContact(partner.estab_id || partner.estabelecimento, week);
@@ -117,6 +120,28 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                 <div className={`flex items-center border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1 bg-white dark:bg-slate-800 ${getStarColor(partner.priority_stars)}`}>
                                     <span className="material-symbols-outlined text-[18px] mr-1">star</span>
                                     <span className="text-sm font-bold text-slate-800 dark:text-white">Prioridade {partner.priority_stars}</span>
+                                </div>
+
+                                {/* Relevância Comercial (Supabase) */}
+                                <div className="flex items-center gap-2 border border-indigo-100 dark:border-indigo-900/30 rounded-md px-3 py-1 bg-indigo-50/50 dark:bg-indigo-900/10">
+                                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-tighter">Relevância Comercial:</span>
+                                    <div className="flex items-center">
+                                        {[1, 2, 3, 4, 5].map((score) => (
+                                            <button
+                                                key={score}
+                                                onClick={() => updateRelevance(score)}
+                                                disabled={relevanceLoading}
+                                                className={`material-symbols-outlined text-[20px] transition-all ${
+                                                    relevance && relevance >= score 
+                                                    ? 'text-amber-500 fill-1' 
+                                                    : 'text-slate-300 dark:text-slate-600'
+                                                } hover:scale-125 disabled:opacity-50`}
+                                                style={{ fontVariationSettings: relevance && relevance >= score ? "'FILL' 1" : "'FILL' 0" }}
+                                            >
+                                                grade
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 {partner.isFinished && (

@@ -94,8 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Agora o logout também é um redirecionamento para limpar a sessão no servidor
-    window.location.href = `${API_ORIGIN}/auth/logout?redirect=${encodeURIComponent(window.location.origin)}`;
+    // Limpa o token armazenado localmente
+    sessionStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_token");
+    
+    // Atualiza o estado
+    setUser(null);
+    
+    // Redireciona para a raiz para forçar a renderização do LoginPage
+    window.location.href = "/";
   }, []);
 
   return (

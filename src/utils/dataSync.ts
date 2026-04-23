@@ -1,4 +1,5 @@
 import { type PerformanceRow } from '../components/PerformanceTable';
+import { supabase } from '../lib/supabase';
 
 export interface SyncResult {
     data: PerformanceRow[];
@@ -418,6 +419,41 @@ export function mergeAvaliacoesMapIntoRows(rows: PerformanceRow[], map: Record<s
         const key = normalizePartnerLookupKey(row.estabelecimento);
         if (key && map[key] !== undefined) {
             return { ...row, total_avaliacoes: map[key] };
+        }
+        return row;
+    });
+}
+
+/**
+ * Busca todas as notas de relevância comercial no Supabase.
+ */
+export async function fetchRelevanceMap(): Promise<Record<string, number>> {
+    try {
+        const { data, error } = await supabase
+            .from('partner_relevance')
+            .select('partner_id, relevance_score');
+
+        if (error) throw error;
+
+        const map: Record<string, number> = {};
+        data?.forEach(item => {
+            map[item.partner_id] = item.relevance_score;
+        });
+        return map;
+    } catch (err) {
+        console.error("Erro ao buscar mapa de relevância no Supabase", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de relevância nas linhas de performance
+ */
+export function mergeRelevanceMapIntoRows(rows: PerformanceRow[], map: Record<string, number>): PerformanceRow[] {
+    return rows.map(row => {
+        const id = row.estab_id || row.estabelecimento;
+        if (id && map[id] !== undefined) {
+            return { ...row, commercial_relevance: map[id] };
         }
         return row;
     });

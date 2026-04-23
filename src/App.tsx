@@ -10,16 +10,18 @@ import SettingsView from './components/SettingsView';
 import ReportsView from './components/ReportsView';
 import AboutView from './components/AboutView';
 import ManagersView from './components/ManagersView';
+import ProfileView from './components/ProfileView';
 import { PARTNER_DATA_SOURCES } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
+import { identifyManagerFromUser } from './config/managerMapping';
 
 function App() {
-  const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers'>('dashboard');
+  const { user, isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile'>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -40,6 +42,17 @@ function App() {
 
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
   const { accessData, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
+
+  // 1.1 Automatic Manager Filter based on Google Account
+  useEffect(() => {
+    if (isAuthenticated && user && !managerFilter) {
+      const identifiedManager = identifyManagerFromUser(user);
+      if (identifiedManager) {
+        console.log(`[App] Gestor identificado: ${identifiedManager} (via conta: ${user.name || user.email})`);
+        setManagerFilter(identifiedManager);
+      }
+    }
+  }, [isAuthenticated, user, managerFilter]);
 
   // Failsafe: se houver erro de autenticação em qualquer hook, força logout
   useEffect(() => {
@@ -155,6 +168,8 @@ function App() {
           <AboutView />
         ) : currentView === 'managers' ? (
           <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
+        ) : currentView === 'profile' ? (
+          <ProfileView />
         ) : (
           <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (

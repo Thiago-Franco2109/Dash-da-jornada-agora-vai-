@@ -19,6 +19,8 @@ export type PerformanceRow = {
     cupom_status?: 'ativo' | 'aguardando' | 'inativo';
     /** Total de avaliações */
     total_avaliacoes?: number;
+    /** Relevância Comercial (1-5) vinda do Supabase */
+    commercial_relevance?: number;
 };
 
 export type SortConfig = {
@@ -119,6 +121,9 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 <th scope="col" className="px-3 py-3.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('estabelecimento')}>
                                     Estabelecimento {renderSortIcon('estabelecimento')}
                                 </th>
+                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('commercial_relevance')}>
+                                    Relevância {renderSortIcon('commercial_relevance')}
+                                </th>
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('status')}>
                                     Status {renderSortIcon('status')}
                                 </th>
@@ -196,6 +201,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                     {row.estabelecimento}
                                                 </span>
                                             </div>
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                            {row.commercial_relevance ? (
+                                                <div className="flex items-center justify-center gap-0.5 text-amber-500">
+                                                    <span className="material-symbols-outlined text-[16px] fill-1" style={{ fontVariationSettings: "'FILL' 1" }}>grade</span>
+                                                    <span className="font-bold text-xs">{row.commercial_relevance}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-300 dark:text-slate-700 material-symbols-outlined text-[16px]">grade</span>
+                                            )}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${row.status === 'ativo'
