@@ -9,7 +9,7 @@ interface HeaderProps {
     setSearchQuery: (query: string) => void;
 }
 
-export default function Header({ currentView, onNavigate, onToggleReports, reportsOpen, searchQuery, setSearchQuery }: HeaderProps) {
+export default function Header(props: HeaderProps) {
     const { user, logout } = useAuth();
 
     return (
@@ -35,20 +35,21 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
                         <input
                             className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-white/60 px-4 rounded-l-none border-l-0 pl-2 text-sm font-medium leading-normal"
                             placeholder="Buscar parceiro..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            value={props.searchQuery}
+                            onChange={(e) => props.setSearchQuery(e.target.value)}
                         />
                     </div>
                 </label>
             </div>
 
             <div className="flex flex-1 justify-end gap-6 overflow-x-auto scrollbar-hide">
+                {/* As navegações foram movidas para a Sidebar no commit remoto */}
             </div>
 
 
             <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
                 <button 
-                    onClick={() => onNavigate('profile')}
+                    onClick={() => props.onNavigate('profile')}
                     className="flex items-center gap-3 text-left hover:bg-white/10 p-1.5 rounded-xl transition-colors group"
                     title="Ver meu perfil"
                 >
