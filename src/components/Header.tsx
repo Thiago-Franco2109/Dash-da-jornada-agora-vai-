@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
-    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile') => void;
+    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts') => void;
     onToggleReports: () => void;
     reportsOpen: boolean;
     searchQuery: string;
@@ -17,7 +17,7 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
             className="flex items-center justify-between whitespace-nowrap border-b border-solid border-emerald-600 px-6 py-3 shadow-md z-10"
             style={{ backgroundColor: '#32ba72' }}
         >
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3 text-white">
                     <div className="size-10 rounded-lg bg-white/20 p-1 flex items-center justify-center backdrop-blur-sm overflow-hidden">
                         <img src="/favicon.png" alt="Logo" className="w-full h-full object-contain" />
@@ -43,47 +43,6 @@ export default function Header({ currentView, onNavigate, onToggleReports, repor
             </div>
 
             <div className="flex flex-1 justify-end gap-6 overflow-x-auto scrollbar-hide">
-                <div className="hidden md:flex items-center gap-1 text-white">
-                    <button
-                        onClick={() => onNavigate('dashboard')}
-                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'dashboard' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
-                    >
-                        Dashboard
-                    </button>
-                    <button
-                        onClick={() => onNavigate('managers')}
-                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'managers' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
-                    >
-                        Gestores
-                    </button>
-                    <button
-                        onClick={onToggleReports}
-                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${reportsOpen ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
-                    >
-                        Relatórios
-                    </button>
-                    <button
-                        onClick={() => onNavigate('settings')}
-                        className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full transition-all ${currentView === 'settings' ? 'bg-white text-[#32ba72] shadow-sm' : 'text-white hover:bg-white/10'}`}
-                    >
-                        Config.
-                    </button>
-                    <button
-                        onClick={() => onNavigate('about')}
-                        className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-2 opacity-60 hover:opacity-100 transition-all text-white ${currentView === 'about' ? 'underline decoration-2 underline-offset-4' : ''}`}
-                    >
-                        Sobre
-                    </button>
-                    <a
-                        href="https://dashboad-onboarding.netlify.app/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-black uppercase tracking-widest px-4 py-2 rounded-full text-white hover:bg-white/10 flex items-center gap-1.5 transition-all"
-                    >
-                        Admin
-                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                    </a>
-                </div>
             </div>
 
 

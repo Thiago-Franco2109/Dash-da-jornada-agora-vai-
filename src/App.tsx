@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import Header from './components/Header';
+import NavigationSidebar from './components/NavigationSidebar';
 import FilterToolbar from './components/FilterToolbar';
 import PerformanceTable from './components/PerformanceTable';
 import type { SortConfig } from './components/PerformanceTable';
@@ -11,6 +12,7 @@ import ReportsView from './components/ReportsView';
 import AboutView from './components/AboutView';
 import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
+import ContactsView from './components/ContactsView';
 import { PARTNER_DATA_SOURCES } from './config/dataSource';
 import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useDataSync } from './hooks/useDataSync';
@@ -21,7 +23,7 @@ import { identifyManagerFromUser } from './config/managerMapping';
 
 function App() {
   const { user, isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts'>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -137,6 +139,9 @@ function App() {
   const handleRowClick = (row: EnrichedPerformanceRow) => {
     const latest = enrichedData.find(r => r.estabelecimento === row.estabelecimento) ?? row;
     setSelectedRow(latest);
+    if (currentView !== 'dashboard') {
+      setCurrentView('dashboard');
+    }
   };
 
   if (loadingAuth || (loadingSync && rawRows.length === 0)) {
@@ -152,7 +157,7 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden relative bg-white dark:bg-slate-900">
+    <div className="flex flex-col h-screen w-full overflow-hidden bg-white dark:bg-slate-900">
       <Header 
         currentView={currentView} 
         onNavigate={setCurrentView} 
@@ -161,8 +166,15 @@ function App() {
         searchQuery={searchQuery} 
         setSearchQuery={setSearchQuery} 
       />
-      <main className="flex flex-1 flex-col xl:flex-row h-full">
-        {currentView === 'settings' ? (
+      <div className="flex flex-1 min-h-0 relative">
+        <NavigationSidebar 
+          currentView={currentView}
+          onNavigate={setCurrentView}
+          reportsOpen={reportsOpen}
+          onToggleReports={() => setReportsOpen(o => !o)}
+        />
+        <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-all duration-300">
+          {currentView === 'settings' ? (
           <SettingsView />
         ) : currentView === 'about' ? (
           <AboutView />
@@ -170,6 +182,8 @@ function App() {
           <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
         ) : currentView === 'profile' ? (
           <ProfileView />
+        ) : currentView === 'contacts' ? (
+          <ContactsView data={enrichedData} onRowClick={handleRowClick} />
         ) : (
           <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (
@@ -302,8 +316,8 @@ function App() {
             )}
           </div>
         )}
-      </main>
-
+        </main>
+      </div>
       {reportsOpen && (
         <div className="fixed inset-0 z-40 flex justify-end">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={() => setReportsOpen(false)} />
