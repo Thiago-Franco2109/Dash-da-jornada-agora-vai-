@@ -1,7 +1,19 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+
 
 export default function LoginPage() {
     const { login } = useAuth();
+    const [keepLoggedIn, setKeepLoggedIn] = useState(true);
+
+    const handleLogin = () => {
+        if (keepLoggedIn) {
+            localStorage.setItem("want_keep_logged_in", "true");
+        } else {
+            localStorage.removeItem("want_keep_logged_in");
+        }
+        login();
+    };
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-[#0d1f35] to-[#0a1628] p-4">
@@ -28,7 +40,7 @@ export default function LoginPage() {
 
                     <div className="space-y-4">
                         <button
-                            onClick={() => login()}
+                            onClick={handleLogin}
                             className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-slate-100 text-slate-800 font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 focus:ring-offset-transparent shadow-lg"
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -39,6 +51,16 @@ export default function LoginPage() {
                             </svg>
                             Entrar com Google
                         </button>
+                        
+                        <label className="flex items-center gap-2 cursor-pointer mt-4">
+                            <input 
+                                type="checkbox" 
+                                checked={keepLoggedIn}
+                                onChange={(e) => setKeepLoggedIn(e.target.checked)}
+                                className="w-4 h-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary/50 focus:ring-offset-0"
+                            />
+                            <span className="text-sm text-slate-300">Permanecer logado</span>
+                        </label>
                     </div>
 
                     {/* Security hint */}

@@ -44,16 +44,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // 1. Tenta pegar token da URL (fallback cross-site)
       const hash = window.location.hash;
-      let token = sessionStorage.getItem("auth_token") || "";
+      let token = sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token") || "";
       
       if (hash.startsWith("#token=")) {
         token = hash.split("token=")[1];
         console.log("[Auth] Token detectado na URL:", token.substring(0, 10) + "...");
-        sessionStorage.setItem("auth_token", token);
+        
+        const keepLoggedIn = localStorage.getItem("want_keep_logged_in") === "true";
+        if (keepLoggedIn) {
+            localStorage.setItem("auth_token", token);
+        } else {
+            sessionStorage.setItem("auth_token", token);
+        }
         // Limpa a URL para estética/segurança
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       } else if (token) {
-        console.log("[Auth] Usando token do sessionStorage");
+        console.log("[Auth] Usando token do storage");
       }
 
       // 2. Prepara headers (se tiver token, usa Bearer)
@@ -68,8 +74,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(apiUrl("/auth/me"), options);
       if (res.ok) {
         const data = await res.json();
-        // O novo formato é { success: true, user: { email: ... } }
-        setUser(data.user || data);
+        let foundUser = data.user || data;
+        
+        // Mapeia estrutura bruta do Google Profile (passport.js) caso a API retorne assim, mas sem forçar erro se não tiver
+        if (foundUser && !foundUser.email && foundUser.emails && foundUser.emails.length > 0) {
+            foundUser = {
+                ...foundUser,
+                email: foundUser.emails[0].value,
+                name: foundUser.displayName || foundUser.name,
+                picture: foundUser.photos && foundUser.photos.length > 0 ? foundUser.photos[0].value : foundUser.picture
+            };
+        }
+
+        // Aceita o usuário independentemente de ter email ou não (evita loop de login)
+        setUser(foundUser);
       } else {
         if (res.status === 401) {
           console.warn("[Auth] Sessão inválida ou expirada (401)");
