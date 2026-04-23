@@ -23,10 +23,10 @@ import { identifyManagerFromUser } from './config/managerMapping';
 
 function App() {
   const { user, isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports'>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
+
 
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,8 +161,6 @@ function App() {
       <Header 
         currentView={currentView} 
         onNavigate={setCurrentView} 
-        onToggleReports={() => setReportsOpen(o => !o)} 
-        reportsOpen={reportsOpen} 
         searchQuery={searchQuery} 
         setSearchQuery={setSearchQuery} 
       />
@@ -170,8 +168,6 @@ function App() {
         <NavigationSidebar 
           currentView={currentView}
           onNavigate={setCurrentView}
-          reportsOpen={reportsOpen}
-          onToggleReports={() => setReportsOpen(o => !o)}
         />
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-all duration-300">
           {currentView === 'settings' ? (
@@ -184,6 +180,8 @@ function App() {
           <ProfileView />
         ) : currentView === 'contacts' ? (
           <ContactsView data={enrichedData} onRowClick={handleRowClick} />
+        ) : currentView === 'reports' ? (
+          <ReportsView data={enrichedData} />
         ) : (
           <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (
@@ -318,23 +316,7 @@ function App() {
         )}
         </main>
       </div>
-      {reportsOpen && (
-        <div className="fixed inset-0 z-40 flex justify-end">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={() => setReportsOpen(false)} />
-          <div className="relative w-full max-w-screen-xl bg-white dark:bg-slate-900 shadow-2xl overflow-y-auto animate-slide-in-right">
-            <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">assessment</span>
-                Relatórios
-              </h2>
-              <button onClick={() => setReportsOpen(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-            <ReportsView data={enrichedData} />
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

@@ -1,13 +1,11 @@
 import { useState } from 'react';
 
 interface NavigationSidebarProps {
-    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts') => void;
-    reportsOpen: boolean;
-    onToggleReports: () => void;
+    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports') => void;
 }
 
-export default function NavigationSidebar({ currentView, onNavigate, reportsOpen, onToggleReports }: NavigationSidebarProps) {
+export default function NavigationSidebar({ currentView, onNavigate }: NavigationSidebarProps) {
     const [isPinned, setIsPinned] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
 
@@ -15,6 +13,7 @@ export default function NavigationSidebar({ currentView, onNavigate, reportsOpen
 
     const navItems = [
         { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+        { id: 'reports', icon: 'assessment', label: 'Relatórios' },
         { id: 'contacts', icon: 'contact_phone', label: 'Contatos' },
         { id: 'managers', icon: 'badge', label: 'Gestores' },
     ] as const;
@@ -64,16 +63,7 @@ export default function NavigationSidebar({ currentView, onNavigate, reportsOpen
                     </button>
                 ))}
 
-                <button 
-                    onClick={onToggleReports}
-                    className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${reportsOpen ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-emerald-50 hover:bg-white/10 hover:text-white font-medium'}`}
-                    title={!isExpanded ? 'Relatórios' : undefined}
-                >
-                    <span className="material-symbols-outlined shrink-0 text-[22px]">assessment</span>
-                    <span className={`transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
-                        Relatórios
-                    </span>
-                </button>
+
 
                 <div className="mt-8 mb-4 h-px bg-emerald-600/50 mx-2" />
 

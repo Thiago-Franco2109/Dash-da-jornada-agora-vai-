@@ -1,10 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
-    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts') => void;
-    onToggleReports: () => void;
-    reportsOpen: boolean;
+    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports';
+    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports') => void;
     searchQuery: string;
     setSearchQuery: (query: string) => void;
 }
