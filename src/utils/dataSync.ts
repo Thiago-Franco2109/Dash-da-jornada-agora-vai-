@@ -459,3 +459,44 @@ export function mergeRelevanceMapIntoRows(rows: PerformanceRow[], map: Record<st
     });
 }
 
+/**
+ * Busca os status de promoção e cupom personalizados no Supabase.
+ */
+export async function fetchStatusOverridesMap(): Promise<Record<string, {promo: string, cupom: string}>> {
+    try {
+        const { data, error } = await supabase
+            .from('partner_status_overrides')
+            .select('partner_id, promo_status_override, cupom_status_override');
+
+        if (error) throw error;
+
+        const map: Record<string, {promo: string, cupom: string}> = {};
+        data?.forEach((item: any) => {
+            map[item.partner_id] = {
+                promo: item.promo_status_override,
+                cupom: item.cupom_status_override
+            };
+        });
+        return map;
+    } catch (err) {
+        console.warn("Erro ao buscar status overrides no Supabase", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de status overrides nas linhas de performance
+ */
+export function mergeStatusOverridesIntoRows(rows: PerformanceRow[], map: Record<string, {promo: string, cupom: string}>): PerformanceRow[] {
+    return rows.map(row => {
+        const id = row.estab_id || row.estabelecimento;
+        if (id && map[id]) {
+            return {
+                ...row,
+                promo_status: (map[id].promo as any) || row.promo_status,
+                cupom_status: (map[id].cupom as any) || row.cupom_status
+            };
+        }
+        return row;
+    });
+}

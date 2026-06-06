@@ -20,12 +20,15 @@ import { useAuth } from './context/AuthContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 import { identifyManagerFromUser } from './config/managerMapping';
+import { useStatusOverride } from './hooks/useStatusOverride';
+import { useCityIds } from './hooks/useCityIds';
 
 function App() {
   const { user, isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const [currentView, setCurrentView] = useState<'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports'>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
+  const [forceRender, setForceRender] = useState(0);
 
 
   const [cityFilter, setCityFilter] = useState('');
@@ -41,6 +44,26 @@ function App() {
     sources: PARTNER_DATA_SOURCES,
     enabled: isAuthenticated,
   });
+
+  const { updateStatus } = useStatusOverride();
+  const { cityIdMap, loading: cityIdsLoading } = useCityIds();
+
+  const handleStatusChange = async (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: any) => {
+    // Optimistic update in memory
+    const row = rawRows.find(r => (r.estab_id || r.estabelecimento) === partnerId);
+    if (row) {
+        if (field === 'promo_status_override') row.promo_status = newStatus;
+        if (field === 'cupom_status_override') row.cupom_status = newStatus;
+        setForceRender(prev => prev + 1);
+    }
+    
+    // Save to Supabase
+    const success = await updateStatus(partnerId, field, newStatus);
+    if (!success) {
+        // Option to revert or show error
+        console.error("Falha ao salvar o novo status no Supabase");
+    }
+  };
 
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
   const { accessData, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
@@ -67,38 +90,58 @@ function App() {
     }
   }, [syncError, accessError, logout]);
 
+  // Diagnóstico: cidades do dashboard não mapeadas na planilha de IDs
+  useEffect(() => {
+    if (cityIdsLoading || rawRows.length === 0) return;
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const uniqueCidadesData = Array.from(new Set(rawRows.map(r => r.cidade).filter(Boolean)));
+    const unmapped = uniqueCidadesData.filter(c => cityIdMap[normalize(c)] === undefined);
+    const mapped   = uniqueCidadesData.filter(c => cityIdMap[normalize(c)] !== undefined);
+    console.group('%c[Diagnóstico] Mapeamento de Cidades', 'color:#6366f1;font-weight:bold');
+    console.log(`%cMapeadas (${mapped.length}):`, 'color:#10b981', mapped.sort().join(', '));
+    if (unmapped.length > 0) {
+      console.warn(`%c⚠ NÃO mapeadas (${unmapped.length}):`, 'color:#f59e0b', unmapped.sort().join(', '));
+    } else {
+      console.log('%c✅ Todas as cidades estão mapeadas!', 'color:#10b981');
+    }
+    console.groupEnd();
+  }, [cityIdMap, cityIdsLoading, rawRows]);
+
   // 2. Enrichment & Permanent Filters
-  const enrichedData = useMemo(
-    () =>
-      rawRows.map(row => enrichPartnerData(row))
+  const enrichedData = useMemo(() => {
+    return rawRows.map(row => enrichPartnerData(row))
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
         if (status === 'desistencia' || status === 'desistência') return false;
         if (!showFinished && row.isFinished) return false;
         return true;
-      }),
-    [rawRows, mappingVersion, showFinished]
-  );
+      });
+  }, [rawRows, mappingVersion, showFinished, forceRender]);
 
   // Extract unique cities and managers
   const uniqueCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
   const uniqueManagers = Array.from(new Set(enrichedData.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
+  // Base filtered data (without period tab filter)
+  const baseFilteredData = useMemo(() => {
+    return enrichedData.filter((row: EnrichedPerformanceRow) => {
+      let matches = true;
+      if (cityFilter && row.cidade !== cityFilter) matches = false;
+      if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) matches = false;
+      if (priorityFilter && row.priority_stars.toString() !== priorityFilter) matches = false;
+      if (managerFilter && row.analista !== managerFilter) matches = false;
+      return matches;
+    });
+  }, [enrichedData, cityFilter, searchQuery, priorityFilter, managerFilter]);
+
   // Filter Data
-  let filteredTableData = enrichedData.filter((row: EnrichedPerformanceRow) => {
-    let matches = true;
-    if (cityFilter && row.cidade !== cityFilter) matches = false;
-    if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) matches = false;
-    if (priorityFilter && row.priority_stars.toString() !== priorityFilter) matches = false;
-    if (managerFilter && row.analista !== managerFilter) matches = false;
-
+  let filteredTableData = baseFilteredData.filter((row: EnrichedPerformanceRow) => {
     const days = row.dias_desde_lancamento;
-    if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) matches = false;
-    if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) matches = false;
-    if (ageGroupFilter === '15-21' && (days < 15 || days > 21)) matches = false;
-    if (ageGroupFilter === '22-28' && (days < 22 || days > 28)) matches = false;
-
-    return matches;
+    if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) return false;
+    if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) return false;
+    if (ageGroupFilter === '15-21' && (days < 15 || days > 21)) return false;
+    if (ageGroupFilter === '22-28' && (days < 22 || days > 28)) return false;
+    return true;
   });
 
   // Sort Data
@@ -240,6 +283,17 @@ function App() {
                   )}
                 </div>
 
+                <FilterToolbar
+                  cityFilter={cityFilter}
+                  setCityFilter={setCityFilter}
+                  cities={uniqueCities}
+                  priorityFilter={priorityFilter}
+                  setPriorityFilter={setPriorityFilter}
+                  managerFilter={managerFilter}
+                  setManagerFilter={setManagerFilter}
+                  managers={uniqueManagers}
+                />
+
                 <div className="flex items-center justify-between px-6 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex gap-6 overflow-x-auto scrollbar-hide pt-2">
                       {[
@@ -256,7 +310,7 @@ function App() {
                           >
                               {tab.label}
                               <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                                  {enrichedData.filter(r => {
+                                  {baseFilteredData.filter(r => {
                                       const d = r.dias_desde_lancamento;
                                       if (tab.id === '1-7') return d >= 1 && d <= 7;
                                       if (tab.id === '8-14') return d >= 8 && d <= 14;
@@ -284,17 +338,6 @@ function App() {
                   </button>
                 </div>
 
-                <FilterToolbar
-                  cityFilter={cityFilter}
-                  setCityFilter={setCityFilter}
-                  cities={uniqueCities}
-                  priorityFilter={priorityFilter}
-                  setPriorityFilter={setPriorityFilter}
-                  managerFilter={managerFilter}
-                  setManagerFilter={setManagerFilter}
-                  managers={uniqueManagers}
-                />
-
                 {loadingSync && rawRows.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[400px]">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
@@ -307,6 +350,7 @@ function App() {
                       sortConfig={sortConfig}
                       requestSort={requestSort}
                       onRowClick={handleRowClick}
+                      onStatusChange={handleStatusChange}
                     />
                   </div>
                 )}

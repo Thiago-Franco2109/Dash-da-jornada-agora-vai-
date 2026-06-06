@@ -9,6 +9,8 @@ import {
     mergeAvaliacoesMapIntoRows,
     fetchRelevanceMap,
     mergeRelevanceMapIntoRows,
+    fetchStatusOverridesMap,
+    mergeStatusOverridesIntoRows,
     saveToCache,
     loadFromCache,
     type SyncResult,
@@ -50,7 +52,7 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000, enabled 
                 fetchGoogleSheetsData(source.sheetId, source.range || 'NOVOS!A6:Z100')
             );
 
-            const [allFetchedDataResults, logoMap, avaliacoesMap, relevanceMap] = await Promise.all([
+            const [allFetchedDataResults, logoMap, avaliacoesMap, relevanceMap, statusOverridesMap] = await Promise.all([
                 Promise.all(fetchPromises),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
                     console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
@@ -63,6 +65,10 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000, enabled 
                 fetchRelevanceMap().catch((err) => {
                     console.warn('[useDataSync] Supabase relevance map indisponível.', err);
                     return {} as Record<string, number>;
+                }),
+                fetchStatusOverridesMap().catch((err) => {
+                    console.warn('[useDataSync] Supabase status overrides indisponível.', err);
+                    return {} as Record<string, {promo: string, cupom: string}>;
                 })
             ]);
 
@@ -72,6 +78,7 @@ export function useDataSync({ sources, autoRefreshIntervalMs = 3600000, enabled 
             let mergedData = mergeLogoMapIntoRows(flatFetchedData, logoMap);
             mergedData = mergeAvaliacoesMapIntoRows(mergedData, avaliacoesMap);
             mergedData = mergeRelevanceMapIntoRows(mergedData, relevanceMap);
+            mergedData = mergeStatusOverridesIntoRows(mergedData, statusOverridesMap);
 
             const syncResult: SyncResult = {
                 data: mergedData,

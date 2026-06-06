@@ -5,6 +5,7 @@ import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { toggleContact, finishJourney, reopenJourney } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
+import { useCityIds } from '../hooks/useCityIds';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
@@ -23,6 +24,16 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
     
     const { relevance, updateRelevance, loading: relevanceLoading } = usePartnerRelevance(partner.estab_id || partner.estabelecimento);
+    const { getCmsPromoUrl, getLocalidadeId, loading: cityIdsLoading } = useCityIds();
+
+    const BASE_PROMO_URL = 'https://admin.bigou.com.br/campanha/promocao/cadastro/26';
+    const promoUrl     = getCmsPromoUrl(BASE_PROMO_URL, partner.cidade);
+    const localidadeId = getLocalidadeId(partner.cidade);
+
+    // Cupom: vai direto para a aba de cupons do estabelecimento
+    const cupomUrl = partner.estab_id
+        ? `https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}/cupons`
+        : 'https://admin.bigou.com.br/estabelecimento';
 
     const handleToggleContact = (week: 'w1' | 'w2' | 'w3' | 'w4') => {
         toggleContact(partner.estab_id || partner.estabelecimento, week);
@@ -510,13 +521,25 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                         </div>
                                     </div>
                                     <a 
-                                        href="https://admin.bigou.com.br/campanha/promocao/cadastro/26" 
+                                        href={promoUrl}
                                         target="_blank" 
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors"
+                                        className="flex flex-col items-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors min-w-[140px]"
+                                        title={localidadeId ? `Abre com localidade_id=${localidadeId}` : cityIdsLoading ? 'Carregando ID da cidade...' : 'ID da cidade não encontrado — link genérico'}
                                     >
-                                        <span className="material-symbols-outlined text-[18px]">launch</span>
-                                        Gerenciar no CMS
+                                        <span className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-[18px]">launch</span>
+                                            Gerenciar no CMS
+                                        </span>
+                                        {localidadeId ? (
+                                            <span className="text-[10px] font-normal text-indigo-400 dark:text-indigo-500">
+                                                localidade_id={localidadeId}
+                                            </span>
+                                        ) : cityIdsLoading ? (
+                                            <span className="text-[10px] font-normal text-indigo-300 animate-pulse">carregando cidade...</span>
+                                        ) : (
+                                            <span className="text-[10px] font-normal text-amber-500">⚠ cidade não mapeada</span>
+                                        )}
                                     </a>
                                 </div>
 
@@ -551,10 +574,27 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Cupons exclusivos para primeira compra ou retenção de clientes.</p>
                                         </div>
                                     </div>
-                                    <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg font-bold text-slate-600 dark:text-slate-300 transition-colors">
-                                        <span className="material-symbols-outlined text-[18px]">add</span>
-                                        Solicitar Cupom
-                                    </button>
+                                    <a
+                                        href={cupomUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex flex-col items-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors min-w-[140px]"
+                                        title={localidadeId ? `Abre com localidade_id=${localidadeId}` : cityIdsLoading ? 'Carregando ID da cidade...' : 'ID da cidade não encontrado — link genérico'}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-[18px]">launch</span>
+                                            Gerenciar no CMS
+                                        </span>
+                                        {localidadeId ? (
+                                            <span className="text-[10px] font-normal text-indigo-400 dark:text-indigo-500">
+                                                localidade_id={localidadeId}
+                                            </span>
+                                        ) : cityIdsLoading ? (
+                                            <span className="text-[10px] font-normal text-indigo-300 animate-pulse">carregando cidade...</span>
+                                        ) : (
+                                            <span className="text-[10px] font-normal text-amber-500">⚠ cidade não mapeada</span>
+                                        )}
+                                    </a>
                                 </div>
                             </div>
                         </div>
