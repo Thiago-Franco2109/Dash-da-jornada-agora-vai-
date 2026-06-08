@@ -8,8 +8,8 @@ export interface SyncResult {
 }
 export const CACHE_KEYS = {
     marketplace: 'partner_journey_data_cache_v5_marketplace',
-    cd_novos: 'partner_journey_data_cache_v5_cd_novos',
-    cd_desempenho: 'partner_journey_data_cache_v5_cd_desempenho',
+    cd_novos: 'partner_journey_data_cache_v6_cd_novos',
+    cd_desempenho: 'partner_journey_data_cache_v7_cd_desempenho',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;
@@ -67,11 +67,11 @@ function formatSheetFetchError(status: number, errorJson: Record<string, unknown
     const detail = String(errorJson.error || errorJson.message || '').trim();
     switch (status) {
         case 429:
-            return 'Muitas requisições à API de planilhas. Aguarde alguns segundos e tente novamente.';
+            return 'Limite de leituras da planilha atingido (429). Aguarde ~1 minuto e clique em Atualizar.';
         case 500:
         case 502:
             if (detail.includes('Unable to parse range')) {
-                return `Nome da aba inválido para o Google Sheets (erro ${status}). Verifique se a aba existe com o nome exato na planilha.${detail ? ` (${detail})` : ''}`;
+                return `A aba não foi encontrada na planilha (erro ${status}). O Google não reconheceu o nome da aba — confira se ela existe com o nome exato.${detail ? ` (${detail})` : ''}`;
             }
             return `Falha no servidor ao ler a aba (erro ${status}). Tente novamente em instantes.${detail ? ` (${detail})` : ''}`;
         case 503:
@@ -103,10 +103,12 @@ function buildQuotedSheetRange(tabName: string): string {
     return `'${safe}'!A1:ZZ10000`;
 }
 
-function parseGatewayJson(json: Record<string, unknown>): PerformanceRow[] {
+type SheetRowParser = (rows: Record<string, unknown>[], headers?: string[]) => PerformanceRow[];
+
+function parseGatewayJson(json: Record<string, unknown>, parser: SheetRowParser = parseGatewayRows): PerformanceRow[] {
     if (json.success && json.data && Array.isArray((json.data as { rows?: unknown }).rows)) {
         const data = json.data as { rows: Record<string, unknown>[]; headers?: string[] };
-        return parseGatewayRows(data.rows, data.headers);
+        return parser(data.rows, data.headers);
     }
 
     const values = Array.isArray(json) ? json : (json.values as unknown);
@@ -114,30 +116,52 @@ function parseGatewayJson(json: Record<string, unknown>): PerformanceRow[] {
         if (Array.isArray(values[0])) {
             const dataRows = (values as unknown[][]).slice(SKIP_METADATA_ROWS);
             const mappedData = dataRows.map((row: unknown[]) => mapPositionalRow(row));
-            return validateAndMapData(mappedData);
+            return parser(mappedData as Record<string, unknown>[]);
         }
-        return validateAndMapData((values as unknown[]).slice(SKIP_METADATA_ROWS));
+        return parser((values as unknown[]).slice(SKIP_METADATA_ROWS) as Record<string, unknown>[]);
     }
 
     return [];
 }
 
-async function fetchFromGateway(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+/** Tenta várias codificações de URL (aspas no range) e nomes de aba */
+async function fetchFromGatewayVariants(
+    sheetId: string,
+    tabNames: string[],
+    parser: SheetRowParser,
+): Promise<PerformanceRow[]> {
     const fetchOptions = getFetchOptions();
-    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName.trim())}`);
+    const uniqueTabs = [...new Set(tabNames.map(t => t.trim()).filter(Boolean))];
+    let lastError: Error | null = null;
 
-    const response = await fetchWithRetry(url, fetchOptions);
-    if (!response.ok) {
-        const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
-        const tentative = errorJson.tentativa ? ` (URL: ${errorJson.tentativa})` : '';
-        throw new Error(`${formatSheetFetchError(response.status, errorJson)}${tentative}`);
+    for (const tab of uniqueTabs) {
+        const encodings = [
+            encodeSheetTabForGateway(tab),
+            encodeURIComponent(tab),
+        ].filter(Boolean);
+
+        for (const encoded of encodings) {
+            const url = apiUrl(`/api/sheets/${sheetId}/${encoded}`);
+            try {
+                const response = await fetchWithRetry(url, fetchOptions);
+                if (!response.ok) {
+                    const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+                    lastError = new Error(formatSheetFetchError(response.status, errorJson));
+                    continue;
+                }
+                const rows = parseGatewayJson(await response.json(), parser);
+                if (rows.length > 0 || uniqueTabs.length === 1) return rows;
+            } catch (err) {
+                lastError = err as Error;
+            }
+        }
     }
 
-    return parseGatewayJson(await response.json());
+    throw lastError ?? new Error('Falha ao buscar planilha via Gateway');
 }
 
 /** Fallback: Google Sheets API com range quotado corretamente (contorna bug do Gateway Railway) */
-async function fetchFromGoogleSheetsApiDirect(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+async function fetchFromGoogleSheetsApiDirect(sheetId: string, tabName: string, parser: SheetRowParser = parseGatewayRows): Promise<PerformanceRow[]> {
     const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
     if (!token) throw new Error('Token indisponível para fallback Google API');
 
@@ -163,31 +187,61 @@ async function fetchFromGoogleSheetsApiDirect(sheetId: string, tabName: string):
         return obj;
     });
 
-    return parseGatewayRows(rows as Record<string, unknown>[], headers);
+    return parser(rows, headers);
 }
 
-/** Fallback Netlify: service account com range quotado (produção) */
-async function fetchFromNetlifySheetRead(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
-    const params = new URLSearchParams({ sheetId, tab: tabName.trim() });
-    const url = `/.netlify/functions/sheet-read?${params.toString()}`;
-    const res = await fetch(url, getFetchOptions());
+/** Fallback Netlify/Vite: gviz CSV com service account (evita erro "Unable to parse range") */
+async function fetchFromNetlifySheetRead(
+    sheetId: string,
+    tabName: string,
+    parser: SheetRowParser = parseGatewayRows,
+    tabVariants: string[] = [],
+): Promise<PerformanceRow[]> {
+    const tabs = [...new Set([tabName.trim(), ...tabVariants.map(t => t.trim()).filter(Boolean)])];
+    let lastError: Error | null = null;
 
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(err.error || `sheet-read ${res.status}`);
+    for (const tab of tabs) {
+        const params = new URLSearchParams({ sheetId, tab });
+        const url = `/.netlify/functions/sheet-read?${params.toString()}`;
+        try {
+            const res = await fetch(url, getFetchOptions());
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({})) as { error?: string };
+                lastError = new Error(err.error || `sheet-read ${res.status}`);
+                continue;
+            }
+            const rows = parseGatewayJson(await res.json(), parser);
+            if (rows.length > 0) return rows;
+        } catch (err) {
+            lastError = err as Error;
+        }
     }
 
-    return parseGatewayJson(await res.json());
+    throw lastError ?? new Error('sheet-read falhou para todas as variantes de aba');
 }
 
-export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
+async function fetchSheetData(
+    sheetId: string,
+    tabName: string,
+    parser: SheetRowParser = parseGatewayRows,
+    options?: { tabVariants?: string[]; preferGviz?: boolean },
+): Promise<PerformanceRow[]> {
     return enqueueSheetFetch(async () => {
         const trimmedTab = tabName.trim();
-        const strategies: { name: string; run: () => Promise<PerformanceRow[]> }[] = [
-            { name: 'gateway', run: () => fetchFromGateway(sheetId, trimmedTab) },
-            { name: 'google-api', run: () => fetchFromGoogleSheetsApiDirect(sheetId, trimmedTab) },
-            { name: 'netlify-sheet-read', run: () => fetchFromNetlifySheetRead(sheetId, trimmedTab) },
-        ];
+        const tabVariants = options?.tabVariants ?? [];
+        const allTabNames = [...new Set([trimmedTab, ...tabVariants.map(t => t.trim()).filter(Boolean)])];
+
+        const strategies: { name: string; run: () => Promise<PerformanceRow[]> }[] = options?.preferGviz
+            ? [
+                { name: 'sheet-read-gviz', run: () => fetchFromNetlifySheetRead(sheetId, trimmedTab, parser, allTabNames) },
+                { name: 'gateway', run: () => fetchFromGatewayVariants(sheetId, allTabNames, parser) },
+                { name: 'google-api', run: () => fetchFromGoogleSheetsApiDirect(sheetId, trimmedTab, parser) },
+            ]
+            : [
+                { name: 'gateway', run: () => fetchFromGatewayVariants(sheetId, allTabNames, parser) },
+                { name: 'google-api', run: () => fetchFromGoogleSheetsApiDirect(sheetId, trimmedTab, parser) },
+                { name: 'sheet-read-gviz', run: () => fetchFromNetlifySheetRead(sheetId, trimmedTab, parser, allTabNames) },
+            ];
 
         let lastError: Error | null = null;
 
@@ -209,6 +263,91 @@ export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "
         }
 
         throw lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
+    });
+}
+
+export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
+    return fetchSheetData(sheetId, tabName, parseGatewayRows);
+}
+
+function isTabNotFoundError(err: unknown): boolean {
+    const msg = String((err as Error)?.message || '').toLowerCase();
+    return msg.includes('parse range')
+        || msg.includes('unable to parse')
+        || msg.includes('not found')
+        || msg.includes('404')
+        || (msg.includes('500') && msg.includes('aba'));
+}
+
+async function fetchGatewayTabOnce(
+    sheetId: string,
+    tab: string,
+    parser: SheetRowParser,
+): Promise<PerformanceRow[]> {
+    const fetchOptions = getFetchOptions();
+    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tab)}`);
+    const response = await fetchWithRetry(url, fetchOptions, 0);
+
+    if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(formatSheetFetchError(response.status, errorJson));
+    }
+
+    return parseGatewayJson(await response.json(), parser);
+}
+
+async function fetchAvailableSheetTabs(sheetId: string): Promise<string[]> {
+    const url = `/.netlify/functions/list-sheet-tabs?sheetId=${encodeURIComponent(sheetId)}`;
+    const res = await fetch(url, getFetchOptions());
+    if (!res.ok) return [];
+    const json = await res.json() as { tabs?: string[] };
+    return json.tabs ?? [];
+}
+
+function formatTabNotFoundMessage(requestedTab: string, availableTabs: string[]): string {
+    if (availableTabs.length === 0) {
+        return `A aba "${requestedTab}" não foi encontrada pelo Gateway. Confira o nome exato na planilha (clique direito na aba → Renomear).`;
+    }
+    return `A aba "${requestedTab}" não existe na planilha. Abas disponíveis: ${availableTabs.map(t => `"${t}"`).join(', ')}. Renomeie ou ajuste em dataSource.ts.`;
+}
+
+/** Aba CD desempenho — Gateway Bigou + fallback sheet-read (descobre nome real da aba) */
+export async function fetchCDDesempenhoSheetData(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+    return enqueueSheetFetch(async () => {
+        const tab = tabName.trim();
+        let gatewayError: Error | null = null;
+
+        try {
+            return await fetchGatewayTabOnce(sheetId, tab, parseCDDesempenhoRows);
+        } catch (err) {
+            gatewayError = err as Error;
+            if (!isTabNotFoundError(err)) throw gatewayError;
+        }
+
+        try {
+            const params = new URLSearchParams({ sheetId, tab });
+            const res = await fetch(`/.netlify/functions/sheet-read?${params}`, getFetchOptions());
+            const json = await res.json() as { success?: boolean; error?: string; availableTabs?: string[]; resolvedTab?: string };
+
+            if (!res.ok) {
+                if (json.availableTabs?.length) {
+                    throw new Error(formatTabNotFoundMessage(tab, json.availableTabs));
+                }
+                throw new Error(json.error || `sheet-read ${res.status}`);
+            }
+
+            if (json.resolvedTab && json.resolvedTab !== tab) {
+                console.info(`[dataSync] Aba resolvida: "${json.resolvedTab}" (config: "${tab}")`);
+            }
+
+            return parseGatewayJson(json as Record<string, unknown>, parseCDDesempenhoRows);
+        } catch (fallbackErr) {
+            const availableTabs = await fetchAvailableSheetTabs(sheetId).catch(() => [] as string[]);
+            if (availableTabs.length) {
+                throw new Error(formatTabNotFoundMessage(tab, availableTabs));
+            }
+            throw fallbackErr instanceof Error ? fallbackErr : gatewayError ?? new Error('Falha ao carregar desempenho');
+        }
     });
 }
 
@@ -304,10 +443,167 @@ function isValidPartnerRow(row: PerformanceRow): boolean {
     return id.length > 0;
 }
 
-function parseWeekValue(val: any): number {
+function parseWeekValue(val: unknown): number {
     if (val == null || val === '') return 0;
     const num = parseInt(String(val), 10);
     return isNaN(num) ? 0 : num;
+}
+
+function looksLikeDateValue(val: unknown): boolean {
+    if (val == null || val === '') return false;
+    return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(String(val).trim());
+}
+
+function looksLikeNumericValue(val: unknown): boolean {
+    if (val == null || val === '') return false;
+    const s = String(val).trim().replace(',', '.');
+    return !isNaN(Number(s)) && s !== '';
+}
+
+function parseWeekFromRow(row: Record<string, unknown>, weekNum: 1 | 2 | 3 | 4): number {
+    return parseWeekValue(findValue(
+        row,
+        `Week_${weekNum}`,
+        `week_${weekNum}`,
+        `Semana ${weekNum}`,
+        `Semana${weekNum}`,
+        `S${weekNum}`,
+        `W${weekNum}`,
+    ));
+}
+
+function findColumnByPattern(row: Record<string, unknown>, headers: string[], patterns: RegExp[]): unknown {
+    for (const header of headers) {
+        if (patterns.some(p => p.test(header))) return row[header];
+    }
+    for (const key of Object.keys(row)) {
+        if (patterns.some(p => p.test(key))) return row[key];
+    }
+    return undefined;
+}
+
+/**
+ * Parser da aba CD_TODOS_DESEMPENHO.
+ * Não exige coluna de lançamento — mapeia semanas e desempenho por cabeçalho.
+ */
+export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?: string[]): PerformanceRow[] {
+    const dataRows = rows.slice(SKIP_METADATA_ROWS);
+    if (dataRows.length === 0) return [];
+
+    const headerList = headers?.map(h => h.trim()) ?? [];
+    const hasLancamentoHeader = headerList.some(h => /lançamento|lancamento/i.test(h));
+
+    if (headerList.length >= 3) {
+        return dataRows.map(row => {
+            const cidade = String(findValue(row, 'cidade', 'Cidade') || findColumnByPattern(row, headerList, [/cidade/i]) || '').trim();
+            const estab_id = String(findValue(row, 'estab_id', 'ID', 'Id') || findColumnByPattern(row, headerList, [/^id$/i, /estab.*id/i]) || '').trim();
+            const estabelecimento = String(findValue(row, 'estabelecimento', 'Estabelecimento', 'Loja', 'Parceiro') || findColumnByPattern(row, headerList, [/estabelecimento|loja|parceiro|nome/i]) || '').trim();
+            const status = (String(findValue(row, 'status', 'Status') || findColumnByPattern(row, headerList, [/status/i]) || 'ativo')).trim().toLowerCase() as 'ativo' | 'suspenso';
+            const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel', 'Responsável') || findColumnByPattern(row, headerList, [/analista|gestor|respons/i]) || 'Desconhecido';
+            const desempenho = String(findValue(row, 'desempenho', 'Desempenho', 'DESEMPENHO') || findColumnByPattern(row, headerList, [/desempenho/i]) || '').trim();
+            const lancamento = hasLancamentoHeader
+                ? String(findValue(row, 'lancamento', 'Lancamento', 'Lançamento') || '').trim()
+                : '';
+
+            let week_1 = parseWeekFromRow(row, 1);
+            let week_2 = parseWeekFromRow(row, 2);
+            let week_3 = parseWeekFromRow(row, 3);
+            let week_4 = parseWeekFromRow(row, 4);
+
+            if (week_1 === 0 && week_2 === 0 && week_3 === 0 && week_4 === 0) {
+                week_1 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?1|semana.?1|^s1$|^w1$/i]));
+                week_2 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?2|semana.?2|^s2$|^w2$/i]));
+                week_3 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?3|semana.?3|^s3$|^w3$/i]));
+                week_4 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?4|semana.?4|^s4$|^w4$/i]));
+            }
+
+            // Posicional sem lançamento: E=desempenho ou W1, F–I=semanas
+            if (!hasLancamentoHeader && week_1 === 0 && week_2 === 0 && week_3 === 0 && week_4 === 0) {
+                const vals = headerList.map(h => row[h]);
+                if (looksLikeNumericValue(vals[4]) && looksLikeNumericValue(vals[5])) {
+                    week_1 = parseWeekValue(vals[4]);
+                    week_2 = parseWeekValue(vals[5]);
+                    week_3 = parseWeekValue(vals[6]);
+                    week_4 = parseWeekValue(vals[7]);
+                } else if (looksLikeNumericValue(vals[5])) {
+                    week_1 = parseWeekValue(vals[5]);
+                    week_2 = parseWeekValue(vals[6]);
+                    week_3 = parseWeekValue(vals[7]);
+                    week_4 = parseWeekValue(vals[8]);
+                }
+            }
+
+            const rawPromo = findValue(row, 'promos', 'promo', 'PROMO', 'promo_status');
+            const rawCupom = findValue(row, 'cupons', 'cupom', 'CUPOM', 'cupom_status');
+
+            return {
+                cidade,
+                estab_id,
+                estabelecimento,
+                status,
+                lancamento,
+                desempenho,
+                week_1,
+                week_2,
+                week_3,
+                week_4,
+                analista,
+                promo_status: normalizePromoStatus(rawPromo),
+                cupom_status: normalizePromoStatus(rawCupom),
+            };
+        }).filter(isValidPartnerRow);
+    }
+
+    return dataRows.map(row => {
+        const arr = Array.isArray(row) ? row as unknown[] : Object.values(row);
+        const cidade = String(arr[0] ?? '').trim();
+        const estab_id = String(arr[1] ?? '').trim();
+        const estabelecimento = String(arr[2] ?? '').trim();
+        const status = (String(arr[3] ?? 'ativo')).trim().toLowerCase() as 'ativo' | 'suspenso';
+
+        let lancamento = '';
+        let desempenho = '';
+        let week_1 = 0;
+        let week_2 = 0;
+        let week_3 = 0;
+        let week_4 = 0;
+
+        if (looksLikeDateValue(arr[4])) {
+            lancamento = String(arr[4]);
+            desempenho = String(arr[5] ?? '');
+            week_1 = parseWeekValue(arr[6]);
+            week_2 = parseWeekValue(arr[7]);
+            week_3 = parseWeekValue(arr[8]);
+            week_4 = parseWeekValue(arr[9]);
+        } else if (looksLikeNumericValue(arr[4]) && looksLikeNumericValue(arr[5])) {
+            week_1 = parseWeekValue(arr[4]);
+            week_2 = parseWeekValue(arr[5]);
+            week_3 = parseWeekValue(arr[6]);
+            week_4 = parseWeekValue(arr[7]);
+        } else {
+            desempenho = String(arr[4] ?? '');
+            week_1 = parseWeekValue(arr[5]);
+            week_2 = parseWeekValue(arr[6]);
+            week_3 = parseWeekValue(arr[7]);
+            week_4 = parseWeekValue(arr[8]);
+        }
+
+        return {
+            cidade,
+            estab_id,
+            estabelecimento,
+            status,
+            lancamento,
+            desempenho,
+            week_1,
+            week_2,
+            week_3,
+            week_4,
+            analista: 'Desconhecido',
+            promo_status: 'inativo' as const,
+            cupom_status: 'inativo' as const,
+        };
+    }).filter(isValidPartnerRow);
 }
 
 function validateAndMapData(rawData: any[]): PerformanceRow[] {

@@ -3,6 +3,7 @@ import { type PerformanceRow } from '../components/PerformanceTable';
 import { LOGO_SHEET_SOURCE } from '../config/dataSource';
 import {
     fetchGoogleSheetsData,
+    fetchCDDesempenhoSheetData,
     fetchPartnerLogoMap,
     mergeLogoMapIntoRows,
     fetchAvaliacoesMap,
@@ -26,8 +27,8 @@ interface UseDataSyncOptions {
     cacheKey?: string;
     /** Pula logos, avaliações, relevância e overrides — reduz chamadas à API */
     skipSideData?: boolean;
-    /** Fetch customizado (ex.: desempenho CD com fallback de abas) */
-    customFetcher?: () => Promise<PerformanceRow[]>;
+    /** Perfil de leitura — evita passar callbacks instáveis que causam loop de render */
+    syncProfile?: 'default' | 'cd_desempenho';
     /** Atraso antes do primeiro fetch (evita 429 ao abrir abas em sequência) */
     fetchDelayMs?: number;
     autoRefreshIntervalMs?: number;
@@ -38,7 +39,7 @@ export function useDataSync({
     sources,
     cacheKey,
     skipSideData = false,
-    customFetcher,
+    syncProfile = 'default',
     fetchDelayMs = 0,
     autoRefreshIntervalMs = 3600000,
     enabled = true,
@@ -74,13 +75,21 @@ export function useDataSync({
         try {
             setError(null);
 
-            const flatFetchedData = customFetcher
-                ? await customFetcher()
-                : (await Promise.all(
+            let flatFetchedData: PerformanceRow[];
+
+            if (syncProfile === 'cd_desempenho') {
+                const src = sources[0];
+                flatFetchedData = await fetchCDDesempenhoSheetData(
+                    src.sheetId,
+                    src.range ?? 'CD_TODOS_DESEMPENHO',
+                );
+            } else {
+                flatFetchedData = (await Promise.all(
                     sources.map(source =>
                         fetchGoogleSheetsData(source.sheetId, source.range || 'NOVOS!A6:Z100')
                     )
                 )).flat();
+            }
 
             if (skipSideData) {
                 const syncResult: SyncResult = {
@@ -147,7 +156,7 @@ export function useDataSync({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [sources, cacheKey, enabled, skipSideData, customFetcher]);
+    }, [sources, cacheKey, enabled, skipSideData, syncProfile]);
 
     // Initial load — com delay opcional para evitar rajadas de requisição
     useEffect(() => {

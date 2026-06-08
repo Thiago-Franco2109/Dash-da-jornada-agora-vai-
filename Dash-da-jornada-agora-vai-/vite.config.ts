@@ -6,12 +6,36 @@ import { GoogleAuth } from 'google-auth-library'
 
 dotenv.config()
 
-function buildQuotedRange(tabName: string): string {
-  const safe = tabName.trim().replace(/'/g, "''")
-  return `'${safe}'!A1:ZZ10000`
+function parseCSV(csvText: string): string[][] {
+  const rows: string[][] = []
+  let currentRow: string[] = []
+  let currentCell = ''
+  let inQuotes = false
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i]
+    const nextChar = csvText[i + 1]
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') { currentCell += '"'; i++ }
+      else inQuotes = !inQuotes
+    } else if (char === ',' && !inQuotes) {
+      currentRow.push(currentCell.trim()); currentCell = ''
+    } else if (char === '\n' && !inQuotes) {
+      currentRow.push(currentCell.trim())
+      if (currentRow.some(c => c !== '')) rows.push(currentRow)
+      currentRow = []; currentCell = ''
+    } else if (char !== '\r') {
+      currentCell += char
+    }
+  }
+  if (currentCell || currentRow.length > 0) {
+    currentRow.push(currentCell.trim())
+    if (currentRow.some(c => c !== '')) rows.push(currentRow)
+  }
+  return rows
 }
 
-/** Em `vite dev`, expõe `/.netlify/functions/sheet-read` com service account do `.env` */
+/** Em `vite dev`, expõe `/.netlify/functions/sheet-read` via gviz + service account */
 function sheetReadDevPlugin(): Plugin {
   return {
     name: 'sheet-read-dev',
@@ -40,54 +64,54 @@ function sheetReadDevPlugin(): Plugin {
           const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
           if (!clientEmail || !privateKey) {
-            sendJson(500, { error: 'Credenciais Google não configuradas no .env (GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY)' })
+            sendJson(500, { error: 'Configure GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY no .env para a aba Todas as Lojas funcionar localmente' })
             return
           }
 
           const auth = new GoogleAuth({
             credentials: { client_email: clientEmail, private_key: privateKey },
-            scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+            scopes: ['https://www.googleapis.com/auth/drive.readonly'],
           })
           const client = await auth.getClient()
-          const token = await client.getAccessToken()
-          if (!token.token) throw new Error('Falha ao obter token do service account')
+          const tokenResult = await client.getAccessToken()
+          if (!tokenResult.token) throw new Error('Falha ao obter token')
 
-          const range = encodeURIComponent(buildQuotedRange(tab))
-          const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`
-          const apiRes = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token.token}` } })
-          const json = await apiRes.json() as { values?: string[][]; error?: { message?: string } }
+          const tabVariants = [...new Set([tab, 'CD_TODOS_DESEMPENHO', 'CD_TODOS_NOVOS_FORMATADO'])]
+          let lastError = 'Aba não encontrada'
 
-          if (!apiRes.ok) {
-            sendJson(apiRes.status, { error: json.error?.message || `Google API ${apiRes.status}` })
-            return
+          for (const tabName of tabVariants) {
+            try {
+              const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`
+              const apiRes = await fetch(gvizUrl, { headers: { Authorization: `Bearer ${tokenResult.token}` }, redirect: 'follow' })
+              if (!apiRes.ok) {
+                lastError = `gviz ${apiRes.status}`
+                continue
+              }
+              const values = parseCSV(await apiRes.text())
+              if (values.length === 0) continue
+
+              const headers = values[0].map(cell => String(cell ?? '').trim())
+              const rows = values.slice(1).map(row => {
+                const obj: Record<string, string> = {}
+                headers.forEach((header, index) => { obj[header] = row[index] != null ? String(row[index]) : '' })
+                return obj
+              })
+              sendJson(200, { success: true, data: { headers, rows, count: rows.length } })
+              return
+            } catch (err: unknown) {
+              lastError = err instanceof Error ? err.message : lastError
+            }
           }
 
-          const values: string[][] = json.values || []
-          if (values.length === 0) {
-            sendJson(200, { success: true, data: { headers: [], rows: [], count: 0 } })
-            return
-          }
-
-          const headers = values[0].map(cell => String(cell ?? '').trim())
-          const rows = values.slice(1).map(row => {
-            const obj: Record<string, string> = {}
-            headers.forEach((header, index) => {
-              obj[header] = row[index] != null ? String(row[index]) : ''
-            })
-            return obj
-          })
-
-          sendJson(200, { success: true, data: { headers, rows, count: rows.length } })
+          sendJson(404, { error: lastError })
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Erro desconhecido'
-          sendJson(500, { error: message })
+          sendJson(500, { error: err instanceof Error ? err.message : 'Erro desconhecido' })
         }
       })
     },
   }
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), sheetReadDevPlugin()],
 })

@@ -50,7 +50,7 @@ export default function CDDesempenhoView({
         let rows = data.filter(row => {
             if (cityFilter && row.cidade !== cityFilter) return false;
             if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-            if (priorityFilter && row.priority_stars.toString() !== priorityFilter) return false;
+            if (priorityFilter && (row.risco_churn ?? row.priority_stars).toString() !== priorityFilter) return false;
             if (managerFilter && row.analista !== managerFilter) return false;
             return true;
         });
@@ -68,6 +68,16 @@ export default function CDDesempenhoView({
                     };
                     aVal = parseDate(aVal as string);
                     bVal = parseDate(bVal as string);
+                } else if (key === 'tendencia_pedidos') {
+                    const order: Record<string, number> = { queda: 0, estavel: 1, alta: 2 };
+                    aVal = order[String(a.tendencia_pedidos || 'estavel')];
+                    bVal = order[String(b.tendencia_pedidos || 'estavel')];
+                } else if (key === 'risco_churn') {
+                    aVal = a.risco_churn ?? a.priority_stars;
+                    bVal = b.risco_churn ?? b.priority_stars;
+                } else if (key === 'desempenho' && typeof aVal === 'string') {
+                    aVal = parseFloat((aVal as string).replace('%', '').replace(',', '.')) || 0;
+                    bVal = parseFloat((bVal as string).replace('%', '').replace(',', '.')) || 0;
                 }
 
                 if (aVal! < bVal!) return direction === 'asc' ? -1 : 1;
@@ -97,7 +107,7 @@ export default function CDDesempenhoView({
                             Desempenho de Todas as Lojas
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 text-base font-normal">
-                            Visão consolidada do desempenho de todos os assinantes do Cardápio Digital.
+                            Acompanhe pedidos semanais e identifique lojas em risco de churn para agir antes da perda do parceiro.
                         </p>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
@@ -167,14 +177,18 @@ export default function CDDesempenhoView({
                 <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[400px]">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
                     <p className="text-slate-500 font-medium">Carregando desempenho das lojas...</p>
-                    <p className="text-slate-400 text-sm mt-2 text-center max-w-sm">
-                        Buscando aba &quot;cd todos Desempenho&quot; — mesmo fluxo do dashboard.
+                    <p className="text-slate-400 text-sm mt-2 text-center max-w-md">
+                        Lendo aba &quot;CD_TODOS_DESEMPENHO&quot; via Bigou API…
                     </p>
                 </div>
-            ) : data.length === 0 && error ? (
+            ) : data.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[400px] gap-4">
-                    <span className="material-symbols-outlined text-5xl text-slate-300">cloud_off</span>
-                    <p className="text-slate-600 dark:text-slate-300 font-medium text-center max-w-md">{error}</p>
+                    <span className="material-symbols-outlined text-5xl text-slate-300">storefront</span>
+                    <p className="text-slate-600 dark:text-slate-300 font-medium text-center max-w-lg">
+                        {error
+                            ? error
+                            : 'Nenhuma loja carregada. Verifique se a aba CD_TODOS_DESEMPENHO tem cabeçalhos na linha 1 (Cidade, ID, Estabelecimento, Status, Week_1…Week_4).'}
+                    </p>
                     <button
                         onClick={onRefresh}
                         className="flex items-center gap-2 bg-primary text-white font-medium px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
@@ -190,6 +204,7 @@ export default function CDDesempenhoView({
                     requestSort={requestSort}
                     onRowClick={onRowClick}
                     onStatusChange={onStatusChange}
+                    variant="desempenho"
                 />
             )}
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getStarColor, type EnrichedPerformanceRow } from '../utils/calculations';
+import { getStarColor, getTendenciaColor, getTendenciaLabel, type EnrichedPerformanceRow } from '../utils/calculations';
 
 export type PerformanceRow = {
     cidade: string;
@@ -35,6 +35,8 @@ interface PerformanceTableProps {
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => void;
+    /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD (churn) */
+    variant?: 'journey' | 'desempenho';
 }
 
 type ActiveDropdown = { rowIndex: number; field: 'promo' | 'cupom' } | null;
@@ -153,7 +155,8 @@ function StatusDropdown({
 // ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onStatusChange }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onStatusChange, variant = 'journey' }: PerformanceTableProps) {
+    const isDesempenho = variant === 'desempenho';
     const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
 
     // Fecha dropdown ao pressionar Escape
@@ -271,47 +274,75 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 <th scope="col" className="px-3 py-3.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('estabelecimento')}>
                                     Estabelecimento {renderSortIcon('estabelecimento')}
                                 </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('commercial_relevance')}>
-                                    Relevância {renderSortIcon('commercial_relevance')}
-                                </th>
+                                {!isDesempenho && (
+                                    <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('commercial_relevance')}>
+                                        Relevância {renderSortIcon('commercial_relevance')}
+                                    </th>
+                                )}
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('status')}>
                                     Status {renderSortIcon('status')}
                                 </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('dias_desde_lancamento')}>
-                                    Dias Ativo {renderSortIcon('dias_desde_lancamento')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
-                                    Pedidos {renderSortIcon('total_pedidos')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('indice_desempenho')}>
-                                    Índice {renderSortIcon('indice_desempenho')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('city_weight')}>
-                                    Peso (Cid.) {renderSortIcon('city_weight')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
-                                    Prioridade {renderSortIcon('priority_stars')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Promo
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Cupom
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_avaliacoes')}>
-                                    Avaliação {renderSortIcon('total_avaliacoes')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Contatos
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                    Jornada
-                                </th>
+                                {isDesempenho ? (
+                                    <>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_1')}>S1 {renderSortIcon('week_1')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_2')}>S2 {renderSortIcon('week_2')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_3')}>S3 {renderSortIcon('week_3')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_4')}>S4 {renderSortIcon('week_4')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
+                                            Total {renderSortIcon('total_pedidos')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('desempenho')}>
+                                            Desempenho {renderSortIcon('desempenho')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('tendencia_pedidos')}>
+                                            Tendência {renderSortIcon('tendencia_pedidos')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('risco_churn')}>
+                                            Risco Churn {renderSortIcon('risco_churn')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('analista')}>
+                                            Gestor {renderSortIcon('analista')}
+                                        </th>
+                                    </>
+                                ) : (
+                                    <>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('dias_desde_lancamento')}>
+                                            Dias Ativo {renderSortIcon('dias_desde_lancamento')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
+                                            Pedidos {renderSortIcon('total_pedidos')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('indice_desempenho')}>
+                                            Índice {renderSortIcon('indice_desempenho')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('city_weight')}>
+                                            Peso (Cid.) {renderSortIcon('city_weight')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
+                                            Prioridade {renderSortIcon('priority_stars')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Promo
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Cupom
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_avaliacoes')}>
+                                            Avaliação {renderSortIcon('total_avaliacoes')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Contatos
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Jornada
+                                        </th>
+                                    </>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900">
                             {data.map((row, index) => {
-                                const isTopPriority = index < 10 && row.priority_stars >= 4;
+                                const isTopPriority = index < 10 && (isDesempenho ? (row.risco_churn ?? 0) >= 4 : row.priority_stars >= 4);
                                 const partnerId = row.estab_id || row.estabelecimento;
 
                                 const renderContactDots = () => {
@@ -352,16 +383,18 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {row.commercial_relevance ? (
-                                                <div className="flex items-center justify-center gap-0.5 text-amber-500">
-                                                    <span className="material-symbols-outlined text-[16px] fill-1" style={{ fontVariationSettings: "'FILL' 1" }}>grade</span>
-                                                    <span className="font-bold text-xs">{row.commercial_relevance}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-300 dark:text-slate-700 material-symbols-outlined text-[16px]">grade</span>
-                                            )}
-                                        </td>
+                                        {!isDesempenho && (
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                {row.commercial_relevance ? (
+                                                    <div className="flex items-center justify-center gap-0.5 text-amber-500">
+                                                        <span className="material-symbols-outlined text-[16px] fill-1" style={{ fontVariationSettings: "'FILL' 1" }}>grade</span>
+                                                        <span className="font-bold text-xs">{row.commercial_relevance}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-300 dark:text-slate-700 material-symbols-outlined text-[16px]">grade</span>
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${row.status === 'ativo'
                                                 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-green-600/20'
@@ -370,6 +403,32 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 {row.status}
                                             </span>
                                         </td>
+                                        {isDesempenho ? (
+                                            <>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_1}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_2}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_3}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center font-medium text-slate-800 dark:text-slate-200">{row.week_4}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    <span className="font-bold text-lg text-slate-900 dark:text-white">{row.total_pedidos}</span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">
+                                                    {row.desempenho || '—'}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    <span className={`font-semibold ${getTendenciaColor(row.tendencia_pedidos || 'estavel')}`}>
+                                                        {getTendenciaLabel(row.tendencia_pedidos || 'estavel')}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    {renderStars(row.risco_churn ?? row.priority_stars)}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">
+                                                    {row.analista}
+                                                </td>
+                                            </>
+                                        ) : (
+                                            <>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">{row.dias_desde_lancamento}</td>
                                         <td className="whitespace-nowrap px-3 py-4 text-center">
                                             <span className="font-bold text-lg text-slate-900 dark:text-white">{row.total_pedidos}</span>
@@ -429,6 +488,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Em curso</span>
                                             )}
                                         </td>
+                                            </>
+                                        )}
                                     </tr>
                                 )
                             })}

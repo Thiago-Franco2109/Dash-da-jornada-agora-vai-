@@ -29,19 +29,22 @@ export const DATA_SOURCE = THIAGO_DATA_SOURCE;
 /** CD — aba com todos os novos assinantes (formatada) */
 export const CD_NOVOS_DATA_SOURCE = {
     sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
-    range: 'cd todos novos formatado',
+    range: 'CD_TODOS_NOVOS_FORMATADO',
 };
 
-/** CD — aba com desempenho total dos assinantes */
+/** CD — aba com desempenho total dos assinantes (nome exato da aba na planilha) */
 export const CD_DESEMPENHO_DATA_SOURCE = {
     sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
-    range: 'cd todos Desempenho',
+    range: (import.meta.env.VITE_CD_DESEMPENHO_TAB as string | undefined)?.trim() || 'CD_TODOS_DESEMPENHO',
 };
 
 /** Fontes consolidadas para o modo Cardápio Digital */
 export const CD_DATA_SOURCES = [
     CD_NOVOS_DATA_SOURCE,
 ];
+
+/** Fonte da aba Todas as Lojas (referência estável para o hook) */
+export const CD_DESEMPENHO_SOURCES = [CD_DESEMPENHO_DATA_SOURCE];
 
 
 export const ACCESS_DATA_SOURCE = {

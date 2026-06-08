@@ -10,6 +10,11 @@ export type CalculatedMetrics = {
     city_weight: number;
     priority_stars: number;
     logo_url?: string;
+    /** Métricas específicas da aba Todas as Lojas (CD desempenho) */
+    tendencia_pedidos?: 'queda' | 'estavel' | 'alta';
+    semanas_zeradas?: number;
+    media_semanal?: number;
+    risco_churn?: number;
 } & PartnerState;
 
 export type EnrichedPerformanceRow = PerformanceRow & CalculatedMetrics;
@@ -101,6 +106,64 @@ export const calculatePriorityStars = (
     return Math.max(1, Math.min(5, finalScore));
 };
 
+export type TendenciaPedidos = 'queda' | 'estavel' | 'alta';
+
+export const calculateTendenciaPedidos = (partner: PerformanceRow): TendenciaPedidos => {
+    const { week_1: w1, week_2: w2, week_3: w3, week_4: w4 } = partner;
+    const recentAvg = (w3 + w4) / 2;
+    const olderAvg = (w1 + w2) / 2;
+
+    if (w4 === 0 && w3 === 0 && (w1 + w2) > 0) return 'queda';
+    if (w4 === 0 && w3 > 0) return 'queda';
+    if (recentAvg < olderAvg * 0.7 && olderAvg > 0) return 'queda';
+    if (recentAvg > olderAvg * 1.2 && recentAvg > 0) return 'alta';
+    return 'estavel';
+};
+
+export const calculateSemanasZeradas = (partner: PerformanceRow): number => {
+    let count = 0;
+    for (const w of [partner.week_4, partner.week_3, partner.week_2, partner.week_1]) {
+        if (w === 0) count++;
+        else break;
+    }
+    return count;
+};
+
+export const calculateMediaSemanal = (partner: PerformanceRow): number => {
+    return (partner.week_1 + partner.week_2 + partner.week_3 + partner.week_4) / 4;
+};
+
+export const parseDesempenhoPercentual = (raw: string): number | null => {
+    if (!raw?.trim()) return null;
+    const num = parseFloat(raw.replace('%', '').replace(',', '.').trim());
+    return isNaN(num) ? null : num;
+};
+
+/** Risco de churn (1=saudável, 5=crítico) baseado em tendência semanal */
+export const calculateRiscoChurn = (
+    partner: PerformanceRow,
+    tendencia: TendenciaPedidos,
+    semanasZeradas: number,
+    totalPedidos: number,
+    cityWeight: number,
+): number => {
+    if (partner.status === 'suspenso') return 5;
+    if (semanasZeradas >= 2 && totalPedidos > 0) return 5;
+    if (totalPedidos === 0) return 4;
+    if (tendencia === 'queda' && semanasZeradas >= 1) return 4;
+    if (tendencia === 'queda') return 4;
+
+    const desempPct = parseDesempenhoPercentual(partner.desempenho);
+    if (desempPct != null && desempPct < 30) return 4;
+    if (desempPct != null && desempPct < 50) return 3;
+
+    if (tendencia === 'estavel' && totalPedidos < 8) return 3;
+
+    let score = tendencia === 'alta' ? 1 : 2;
+    if (score > 1 && cityWeight >= 4) score = Math.min(5, score + 1);
+    return score;
+};
+
 export const enrichPartnerData = (
     partner: PerformanceRow,
     logoUrl?: string,
@@ -129,6 +192,97 @@ export const enrichPartnerData = (
         analista,
         logo_url: logoUrl || partner.logo_url
     };
+};
+
+/** Enriquecimento para aba Todas as Lojas — sem jornada de lançamento, foco em churn */
+export const enrichDesempenhoPartnerData = (
+    partner: PerformanceRow,
+    logoUrl?: string,
+    noCityIndex?: number,
+    productMode: ProductModeKey = 'cardapio_digital',
+): EnrichedPerformanceRow => {
+    const total_pedidos = calculateTotalPedidos(partner);
+    const tendencia_pedidos = calculateTendenciaPedidos(partner);
+    const semanas_zeradas = calculateSemanasZeradas(partner);
+    const media_semanal = calculateMediaSemanal(partner);
+    const city_weight = getCityWeight(partner.cidade);
+    const risco_churn = calculateRiscoChurn(partner, tendencia_pedidos, semanas_zeradas, total_pedidos, city_weight);
+
+    const desempPct = parseDesempenhoPercentual(partner.desempenho);
+    const indice_desempenho = desempPct != null
+        ? desempPct / 100
+        : media_semanal > 0
+            ? Math.min(1, total_pedidos / (media_semanal * 4))
+            : 0;
+
+    const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode);
+    const state = getPartnerState(partner.estab_id || partner.estabelecimento);
+
+    return {
+        ...partner,
+        ...state,
+        total_pedidos,
+        dias_desde_lancamento: 0,
+        pedidos_esperados: 0,
+        indice_desempenho,
+        city_weight,
+        priority_stars: risco_churn,
+        risco_churn,
+        tendencia_pedidos,
+        semanas_zeradas,
+        media_semanal,
+        analista,
+        logo_url: logoUrl || partner.logo_url,
+    };
+};
+
+export const getTendenciaLabel = (tendencia: TendenciaPedidos): string => {
+    switch (tendencia) {
+        case 'queda': return 'Queda';
+        case 'alta': return 'Alta';
+        default: return 'Estável';
+    }
+};
+
+export const getTendenciaColor = (tendencia: TendenciaPedidos): string => {
+    switch (tendencia) {
+        case 'queda': return 'text-red-600 dark:text-red-400';
+        case 'alta': return 'text-emerald-600 dark:text-emerald-400';
+        default: return 'text-slate-500 dark:text-slate-400';
+    }
+};
+
+export const getChurnInterpretationBox = (risco: number): { text: string; bg: string; border: string; icon: string; textClass: string } => {
+    switch (risco) {
+        case 5: return {
+            text: 'Risco crítico de churn. Intervenção imediata para reverter queda ou inatividade.',
+            bg: 'bg-red-50 dark:bg-red-900/10',
+            border: 'border-red-200 dark:border-red-800/30',
+            icon: 'error',
+            textClass: 'text-red-800 dark:text-red-400',
+        };
+        case 4: return {
+            text: 'Tendência de queda nos pedidos. Ação proativa recomendada antes de perder o parceiro.',
+            bg: 'bg-orange-50 dark:bg-orange-900/10',
+            border: 'border-orange-200 dark:border-orange-800/30',
+            icon: 'warning',
+            textClass: 'text-orange-800 dark:text-orange-400',
+        };
+        case 3: return {
+            text: 'Desempenho abaixo do ideal. Monitorar de perto e buscar melhorias nas próximas semanas.',
+            bg: 'bg-yellow-50 dark:bg-yellow-900/10',
+            border: 'border-yellow-200 dark:border-yellow-800/30',
+            icon: 'visibility',
+            textClass: 'text-yellow-800 dark:text-yellow-400',
+        };
+        default: return {
+            text: 'Parceiro com desempenho estável ou em crescimento. Manter acompanhamento regular.',
+            bg: 'bg-green-50 dark:bg-green-900/10',
+            border: 'border-green-200 dark:border-green-800/30',
+            icon: 'check_circle',
+            textClass: 'text-green-800 dark:text-green-400',
+        };
+    }
 };
 
 // UI Helpers

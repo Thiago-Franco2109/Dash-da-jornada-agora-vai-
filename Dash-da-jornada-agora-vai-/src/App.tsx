@@ -15,8 +15,8 @@ import ProfileView from './components/ProfileView';
 import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import type { AppView } from './types/views';
-import { PARTNER_DATA_SOURCES, CD_DATA_SOURCES, CD_DESEMPENHO_DATA_SOURCE } from './config/dataSource';
-import { enrichPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
+import { PARTNER_DATA_SOURCES, CD_DATA_SOURCES, CD_DESEMPENHO_SOURCES } from './config/dataSource';
+import { enrichPartnerData, enrichDesempenhoPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
@@ -65,10 +65,11 @@ function App() {
     isUsingCache: desempenhoUsingCache,
     refreshData: refreshDesempenhoData,
   } = useDataSync({
-    sources: [CD_DESEMPENHO_DATA_SOURCE],
+    sources: CD_DESEMPENHO_SOURCES,
     cacheKey: CACHE_KEYS.cd_desempenho,
-    skipSideData: true,
+    skipSideData: false,
     enabled: desempenhoTabActive,
+    syncProfile: 'cd_desempenho',
   });
 
   const { updateStatus } = useStatusOverride();
@@ -125,6 +126,14 @@ function App() {
     }
   }, [mode]);
 
+  useEffect(() => {
+    if (currentView === 'cd_desempenho') {
+      setSortConfig({ key: 'risco_churn', direction: 'desc' });
+      setManagerFilter('');
+      setPriorityFilter('');
+    }
+  }, [currentView]);
+
   // Failsafe: se houver erro de autenticação em qualquer hook, força logout
   useEffect(() => {
     const isAuthError = (err: string | null) => 
@@ -175,7 +184,7 @@ function App() {
     return desempenhoRawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
-      return enrichPartnerData(row, undefined, noCityIndex, mode);
+      return enrichDesempenhoPartnerData(row, undefined, noCityIndex, mode);
     });
   }, [desempenhoRawRows, mappingVersion, mode, isCD]);
 
@@ -295,6 +304,7 @@ function App() {
               onBack={() => setSelectedRow(null)}
               dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
               onRefresh={() => setMappingVersion(v => v + 1)}
+              viewContext="desempenho"
             />
           ) : (
             <CDDesempenhoView

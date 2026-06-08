@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
-import { type EnrichedPerformanceRow, getInterpretationBox, getStarColor } from '../utils/calculations';
+import { type EnrichedPerformanceRow, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { getPartnerState, updateContactDetail, finishJourney, reopenJourney, type ContactDetail } from '../config/partnerState';
@@ -13,6 +13,7 @@ interface PartnerDetailsViewProps {
     /** Live data from the unique daily accesses API */
     dailyAccessData?: StoreAccessData;
     onRefresh: () => void;
+    viewContext?: 'journey' | 'desempenho';
 }
 
 type TabKey = 'geral' | 'contatos' | 'promocoes' | 'historico';
@@ -52,7 +53,8 @@ const STATUS_OPTIONS = [
     { value: 'negado' as const, label: 'Negado', color: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border border-red-200/50 dark:border-red-900/30' },
 ];
 
-export default function PartnerDetailsView({ partner, onBack, dailyAccessData, onRefresh }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({ partner, onBack, dailyAccessData, onRefresh, viewContext = 'journey' }: PartnerDetailsViewProps) {
+    const isDesempenho = viewContext === 'desempenho';
     const [activeTab, setActiveTab] = useState<TabKey>('geral');
     
     // States for contact details and notes drafting
@@ -210,7 +212,9 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
         handleUpdateDetail(week, 'images', newImages);
     };
 
-    const interpretation = getInterpretationBox(partner.priority_stars);
+    const interpretation = isDesempenho
+        ? getChurnInterpretationBox(partner.risco_churn ?? partner.priority_stars)
+        : getInterpretationBox(partner.priority_stars);
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
     
     const { relevance, updateRelevance, loading: relevanceLoading } = usePartnerRelevance(partner.estab_id || partner.estabelecimento);
@@ -449,8 +453,34 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                             </div>
 
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                                <h3 className="text-slate-900 dark:text-white font-bold text-lg mb-4">Métricas de Onboarding</h3>
+                                <h3 className="text-slate-900 dark:text-white font-bold text-lg mb-4">
+                                    {isDesempenho ? 'Métricas de Desempenho' : 'Métricas de Onboarding'}
+                                </h3>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                    {isDesempenho ? (
+                                        <>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pedidos (4 sem.)</p>
+                                                <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.total_pedidos}</p>
+                                                <p className="text-xs text-slate-400 mt-1">Média: {(partner.media_semanal ?? 0).toFixed(1)}/sem</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Tendência</p>
+                                                <p className={`mt-1 text-2xl font-semibold ${getTendenciaColor(partner.tendencia_pedidos || 'estavel')}`}>
+                                                    {getTendenciaLabel(partner.tendencia_pedidos || 'estavel')}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Semanas zeradas</p>
+                                                <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.semanas_zeradas ?? 0}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Desempenho</p>
+                                                <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.desempenho || '—'}</p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
                                     <div>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Dias Ativo</p>
                                         <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.dias_desde_lancamento}</p>
@@ -468,6 +498,8 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Índice Perfor.</p>
                                         <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.indice_desempenho.toFixed(2)}</p>
                                     </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Acessos ao Cardápio (Live API) */}
