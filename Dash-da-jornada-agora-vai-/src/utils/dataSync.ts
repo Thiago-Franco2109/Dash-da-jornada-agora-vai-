@@ -1,0 +1,660 @@
+import { type PerformanceRow } from '../components/PerformanceTable';
+import { supabase } from '../lib/supabase';
+
+export interface SyncResult {
+    data: PerformanceRow[];
+    lastSyncTime: Date;
+    sourceUpdatedAt?: Date; // Optional
+}
+export const CACHE_KEYS = {
+    marketplace: 'partner_journey_data_cache_v5_marketplace',
+    cd_novos: 'partner_journey_data_cache_v5_cd_novos',
+    cd_desempenho: 'partner_journey_data_cache_v5_cd_desempenho',
+} as const;
+
+export type DataCacheKey = keyof typeof CACHE_KEYS;
+
+
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "https://sheets-api-production-0097.up.railway.app")
+    .trim()
+    .replace(/\/+$/, '');
+
+function apiUrl(path: string) {
+    if (!path.startsWith("/")) path = `/${path}`;
+    return `${API_ORIGIN}${path}`;
+}
+
+/**
+ * Formata o segmento da aba na URL do Gateway.
+ * O servidor monta o range do Google como `{aba}!A1:ZZ10000`.
+ * Abas com espaços precisam de aspas simples: `'cd todos Desempenho'!A1:ZZ10000`
+ */
+export function encodeSheetTabForGateway(tabName: string): string {
+    const trimmed = tabName.trim();
+    if (!trimmed) return '';
+    const needsQuotes = /\s/.test(trimmed) && !trimmed.startsWith("'");
+    const forRange = needsQuotes ? `'${trimmed.replace(/'/g, "''")}'` : trimmed;
+    return encodeURIComponent(forRange);
+}
+
+/** Prepara as opções de fetch incluindo token de fallback se disponível */
+function getFetchOptions(): RequestInit {
+    const token = sessionStorage.getItem("auth_token");
+    const options: RequestInit = { credentials: "include" as RequestCredentials };
+    if (token) {
+        options.headers = {
+            ...options.headers,
+            "Authorization": `Bearer ${token}`
+        };
+    }
+    return options;
+}
+
+// O Gateway usa a Linha 1 como header.
+// Se a nova aba está "formatada", os dados devem começar imediatamente na próxima linha.
+const SKIP_METADATA_ROWS = 0;
+
+/** Fila global: uma requisição de planilha por vez (evita 429 por rajada) */
+let sheetFetchChain: Promise<unknown> = Promise.resolve();
+
+function enqueueSheetFetch<T>(fn: () => Promise<T>): Promise<T> {
+    const task = sheetFetchChain.then(() => fn());
+    sheetFetchChain = task.catch(() => {});
+    return task;
+}
+
+function formatSheetFetchError(status: number, errorJson: Record<string, unknown>): string {
+    const detail = String(errorJson.error || errorJson.message || '').trim();
+    switch (status) {
+        case 429:
+            return 'Muitas requisições à API de planilhas. Aguarde alguns segundos e tente novamente.';
+        case 500:
+        case 502:
+            if (detail.includes('Unable to parse range')) {
+                return `Nome da aba inválido para o Google Sheets (erro ${status}). Verifique se a aba existe com o nome exato na planilha.${detail ? ` (${detail})` : ''}`;
+            }
+            return `Falha no servidor ao ler a aba (erro ${status}). Tente novamente em instantes.${detail ? ` (${detail})` : ''}`;
+        case 503:
+        case 504:
+            return `Servidor temporariamente indisponível (${status}). Tente novamente.${detail ? ` (${detail})` : ''}`;
+        case 404:
+            return `Aba não encontrada na planilha.${detail ? ` ${detail}` : ''}`;
+        default:
+            return detail || `Erro ${status}: falha ao buscar planilha`;
+    }
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
+    let lastResponse: Response | null = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, options);
+        lastResponse = response;
+        const shouldRetry = response.status === 429 || response.status === 503 || response.status === 504;
+        if (!shouldRetry || attempt === maxRetries) return response;
+        const delayMs = 1000 * (attempt + 1);
+        console.warn(`[dataSync] HTTP ${response.status}. Retry em ${delayMs}ms (${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return lastResponse!;
+}
+
+function buildQuotedSheetRange(tabName: string): string {
+    const safe = tabName.trim().replace(/'/g, "''");
+    return `'${safe}'!A1:ZZ10000`;
+}
+
+function parseGatewayJson(json: Record<string, unknown>): PerformanceRow[] {
+    if (json.success && json.data && Array.isArray((json.data as { rows?: unknown }).rows)) {
+        const data = json.data as { rows: Record<string, unknown>[]; headers?: string[] };
+        return parseGatewayRows(data.rows, data.headers);
+    }
+
+    const values = Array.isArray(json) ? json : (json.values as unknown);
+    if (values && Array.isArray(values) && values.length > 0) {
+        if (Array.isArray(values[0])) {
+            const dataRows = (values as unknown[][]).slice(SKIP_METADATA_ROWS);
+            const mappedData = dataRows.map((row: unknown[]) => mapPositionalRow(row));
+            return validateAndMapData(mappedData);
+        }
+        return validateAndMapData((values as unknown[]).slice(SKIP_METADATA_ROWS));
+    }
+
+    return [];
+}
+
+async function fetchFromGateway(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+    const fetchOptions = getFetchOptions();
+    const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tabName.trim())}`);
+
+    const response = await fetchWithRetry(url, fetchOptions);
+    if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+        const tentative = errorJson.tentativa ? ` (URL: ${errorJson.tentativa})` : '';
+        throw new Error(`${formatSheetFetchError(response.status, errorJson)}${tentative}`);
+    }
+
+    return parseGatewayJson(await response.json());
+}
+
+/** Fallback: Google Sheets API com range quotado corretamente (contorna bug do Gateway Railway) */
+async function fetchFromGoogleSheetsApiDirect(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+    const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+    if (!token) throw new Error('Token indisponível para fallback Google API');
+
+    const range = encodeURIComponent(buildQuotedSheetRange(tabName));
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json().catch(() => ({})) as { values?: unknown[][]; error?: { message?: string } };
+
+    if (!res.ok) {
+        throw new Error(json.error?.message || `Google API ${res.status}`);
+    }
+
+    const values = json.values || [];
+    if (values.length === 0) return [];
+
+    const headers = values[0].map(cell => String(cell ?? '').trim());
+    const rows = values.slice(1).map(row => {
+        const obj: Record<string, unknown> = {};
+        headers.forEach((header, index) => {
+            obj[header] = row[index] ?? '';
+        });
+        return obj;
+    });
+
+    return parseGatewayRows(rows as Record<string, unknown>[], headers);
+}
+
+/** Fallback Netlify: service account com range quotado (produção) */
+async function fetchFromNetlifySheetRead(sheetId: string, tabName: string): Promise<PerformanceRow[]> {
+    const params = new URLSearchParams({ sheetId, tab: tabName.trim() });
+    const url = `/.netlify/functions/sheet-read?${params.toString()}`;
+    const res = await fetch(url, getFetchOptions());
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error || `sheet-read ${res.status}`);
+    }
+
+    return parseGatewayJson(await res.json());
+}
+
+export async function fetchGoogleSheetsData(sheetId: string, tabName: string = "NOVOS"): Promise<PerformanceRow[]> {
+    return enqueueSheetFetch(async () => {
+        const trimmedTab = tabName.trim();
+        const strategies: { name: string; run: () => Promise<PerformanceRow[]> }[] = [
+            { name: 'gateway', run: () => fetchFromGateway(sheetId, trimmedTab) },
+            { name: 'google-api', run: () => fetchFromGoogleSheetsApiDirect(sheetId, trimmedTab) },
+            { name: 'netlify-sheet-read', run: () => fetchFromNetlifySheetRead(sheetId, trimmedTab) },
+        ];
+
+        let lastError: Error | null = null;
+
+        for (let i = 0; i < strategies.length; i++) {
+            const strategy = strategies[i];
+            const isLast = i === strategies.length - 1;
+            try {
+                const rows = await strategy.run();
+                if (strategy.name !== 'gateway') {
+                    console.info(`[dataSync] Aba "${trimmedTab}" carregada via fallback ${strategy.name} (${rows.length} linhas)`);
+                }
+                return rows;
+            } catch (err) {
+                lastError = err as Error;
+                console.warn(`[dataSync] ${strategy.name} falhou para "${trimmedTab}":`, lastError.message);
+                if (!isLast) continue;
+                throw lastError;
+            }
+        }
+
+        throw lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
+    });
+}
+
+function mapPositionalRow(row: any[]): Record<string, unknown> {
+    return {
+        cidade: row[0] || '',
+        estab_id: row[1] || '',
+        estabelecimento: row[2] || '',
+        status: row[3] || 'ativo',
+        lancamento: row[4] || '',
+        desempenho: row[5] || '',
+        week_1: row[6] || 0,
+        week_2: row[7] || 0,
+        week_3: row[8] || 0,
+        week_4: row[9] || 0,
+        promo: row[10] || '',
+        cupom: row[11] || '',
+    };
+}
+
+/**
+ * Encontra um valor num objeto de row, testando múltiplos nomes de chave
+ */
+export function findValue(row: Record<string, any>, ...candidates: string[]): any {
+    for (const key of candidates) {
+        if (key in row && row[key] !== undefined) return row[key];
+    }
+    const rowKeys = Object.keys(row);
+    for (const candidate of candidates) {
+        const lower = candidate.toLowerCase();
+        const match = rowKeys.find(k => k.toLowerCase() === lower);
+        if (match && row[match] !== undefined) return row[match];
+    }
+    return undefined;
+}
+
+/**
+ * Normaliza o valor bruto para as métricas de Promoção e Cupom.
+ * Retorna 'ativo' para APROV, 'aguardando' para AGUAR, ou 'inativo' (vazio/ausente).
+ */
+export function normalizePromoStatus(raw: any): 'ativo' | 'aguardando' | 'inativo' {
+    if (raw == null) return 'inativo';
+    const s = String(raw).trim().toUpperCase();
+    if (s.includes('APROV') || s.includes('ATIVO')) return 'ativo';
+    if (s.includes('AGUAR')) return 'aguardando';
+    return 'inativo';
+}
+
+/**
+ * Processas as rows retornadas pelo Gateway.
+ */
+function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): PerformanceRow[] {
+    const dataRows = rows.slice(SKIP_METADATA_ROWS);
+
+    if (dataRows.length === 0) return [];
+
+    if (headers && headers.length >= 3) {
+        return dataRows.map(row => {
+            const vals = headers.map(h => row[h]);
+            const logoRaw = findValue(row, 'logo_url', 'Logo_URL', 'Logo');
+            const logo_url = logoRaw != null && String(logoRaw).trim() ? String(logoRaw).trim() : '';
+            const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel', 'Responsável') || 'Desconhecido';
+            const rawPromo = findValue(row, 'promos', 'promo', 'promocao', 'PROMO PARC.', 'PROMO', 'promoção', 'PROMO PARC', 'PROMOCOES', 'Promoções', 'promo_status') || vals[10];
+            const rawCupom = findValue(row, 'cupons', 'cupom', 'CUPOM PARC.', 'CUPOM', 'cupom_status', 'CUPONS') || vals[11];
+            const estabelecimento = String(vals[2] || findValue(row, 'estabelecimento', 'Estabelecimento') || '').trim();
+
+            return {
+                cidade: String(vals[0] || findValue(row, 'cidade', 'Cidade') || '').trim(),
+                estab_id: String(vals[1] || findValue(row, 'estab_id', 'ID', 'Id') || '').trim(),
+                estabelecimento,
+                status: (String(vals[3] || findValue(row, 'status', 'Status') || 'ativo').trim().toLowerCase()) as 'ativo' | 'suspenso',
+                lancamento: String(vals[4] || findValue(row, 'lancamento', 'Lancamento', 'Lançamento') || '').trim(),
+                desempenho: String(vals[5] || findValue(row, 'desempenho', 'Desempenho') || '').trim(),
+                week_1: parseWeekValue(vals[6] ?? findValue(row, 'Week_1', 'week_1')),
+                week_2: parseWeekValue(vals[7] ?? findValue(row, 'Week_2', 'week_2')),
+                week_3: parseWeekValue(vals[8] ?? findValue(row, 'Week_3', 'week_3')),
+                week_4: parseWeekValue(vals[9] ?? findValue(row, 'Week_4', 'week_4')),
+                analista,
+                promo_status: normalizePromoStatus(rawPromo),
+                cupom_status: normalizePromoStatus(rawCupom),
+                ...(logo_url ? { logo_url } : {}),
+            };
+        }).filter(isValidPartnerRow);
+    }
+
+    return validateAndMapData(dataRows);
+}
+
+function isValidPartnerRow(row: PerformanceRow): boolean {
+    const name = (row.estabelecimento || '').trim();
+    if (name.length > 1 && name !== 'Desconhecido') return true;
+    const id = (row.estab_id || '').trim();
+    return id.length > 0;
+}
+
+function parseWeekValue(val: any): number {
+    if (val == null || val === '') return 0;
+    const num = parseInt(String(val), 10);
+    return isNaN(num) ? 0 : num;
+}
+
+function validateAndMapData(rawData: any[]): PerformanceRow[] {
+    return rawData.map(row => {
+        const cidade = findValue(row, 'cidade', 'Cidade', 'PEDIDOS_ACEITOS') || 'Desconhecida';
+        const estab_id = String(findValue(row, 'estab_id', 'ESTAB_ID', 'ID', 'Id', 'id') || '').trim();
+        const estabelecimento = findValue(row, 'estabelecimento', 'Estabelecimento', 'TODAS') || 'Desconhecido';
+        const status = (String(findValue(row, 'status', 'Status') || 'ativo')).toLowerCase() as 'ativo' | 'suspenso';
+        const lancamento = String(findValue(row, 'lancamento', 'Lancamento', 'Lançamento') || '');
+        const analista = findValue(row, 'analista', 'Analista', 'Gestor', 'Responsavel') || 'Desconhecido';
+        const logo_url = findValue(row, 'logo_url', 'Logo_URL', 'Logo') || '';
+        const rawPromo = findValue(row, 'promos', 'promo', 'promocao', 'PROMO PARC.', 'PROMO', 'promoção', 'PROMO PARC', 'PROMOCOES', 'Promoções', 'promo_status');
+        const rawCupom = findValue(row, 'cupons', 'cupom', 'CUPOM PARC.', 'CUPOM', 'cupom_status', 'CUPONS');
+
+        return {
+            cidade,
+            estab_id,
+            estabelecimento,
+            status,
+            lancamento,
+            desempenho: '',
+            week_1: parseWeekValue(findValue(row, 'Week_1', 'week_1')),
+            week_2: parseWeekValue(findValue(row, 'Week_2', 'week_2')),
+            week_3: parseWeekValue(findValue(row, 'Week_3', 'week_3')),
+            week_4: parseWeekValue(findValue(row, 'Week_4', 'week_4')),
+            analista,
+            promo_status: normalizePromoStatus(rawPromo),
+            cupom_status: normalizePromoStatus(rawCupom),
+            ...(logo_url ? { logo_url } : {})
+        };
+    }).filter(isValidPartnerRow);
+}
+
+export function saveToCache(result: SyncResult, cacheKey: string = CACHE_KEYS.marketplace): void {
+    try {
+        const cacheData = {
+            data: result.data,
+            lastSyncTime: result.lastSyncTime.toISOString(),
+            sourceUpdatedAt: result.sourceUpdatedAt ? result.sourceUpdatedAt.toISOString() : undefined
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    } catch (error) {
+        console.warn("Failed to save data to local storage cache", error);
+    }
+}
+
+const LEGACY_CACHE_KEY = 'partner_journey_data_cache_v5';
+
+export function loadFromCache(cacheKey: string = CACHE_KEYS.marketplace): SyncResult | null {
+    try {
+        let cachedString = localStorage.getItem(cacheKey);
+        // Migra cache legado para o marketplace
+        if (!cachedString && cacheKey === CACHE_KEYS.marketplace) {
+            cachedString = localStorage.getItem(LEGACY_CACHE_KEY);
+            if (cachedString) localStorage.setItem(cacheKey, cachedString);
+        }
+        if (!cachedString) return null;
+
+        const cachedData = JSON.parse(cachedString);
+        return {
+            data: cachedData.data,
+            lastSyncTime: new Date(cachedData.lastSyncTime),
+            sourceUpdatedAt: cachedData.sourceUpdatedAt ? new Date(cachedData.sourceUpdatedAt) : undefined
+        };
+    } catch (error) {
+        console.warn("Failed to load data from local storage cache", error);
+        return null;
+    }
+}
+
+/** Chave estável para casar nome do parceiro (planilha principal × planilha de logos). */
+export function normalizePartnerLookupKey(name: string): string {
+    return String(name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function extractLogoSheetStoreName(row: Record<string, any>): string {
+    const v = findValue(
+        row,
+        'parceiro_nome',
+        'Parceiro_Nome',
+        'estabelecimento',
+        'Estabelecimento',
+        'Loja',
+        'loja',
+        'Parceiro',
+        'parceiro',
+        'Nome',
+        'nome',
+        'Parceiros',
+        'Fantasia',
+        'fantasia'
+    );
+    return v != null ? String(v).trim() : '';
+}
+
+function normalizeLogoUrlCandidate(raw: unknown): string {
+    if (raw == null) return '';
+    const s = String(raw).trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.startsWith('//')) return `https:${s}`;
+    return '';
+}
+
+function extractLogoSheetUrl(row: Record<string, any>): string {
+    const fromLogo = normalizeLogoUrlCandidate(findValue(row, 'logo_url', 'Logo_URL', 'Logo', 'logo'));
+    if (fromLogo) return fromLogo;
+
+    const fromCms = normalizeLogoUrlCandidate(findValue(row, 'cms_arte_url', 'CMS_Arte_URL', 'cms_arte'));
+    if (fromCms) return fromCms;
+
+    const arquivo = findValue(row, 'logo_arquivo', 'Logo_Arquivo', 'logo_arquivo');
+    return normalizeLogoUrlCandidate(arquivo);
+}
+
+/** Extrai linhas da planilha de logos quando o JSON do gateway varia levemente. */
+function extractLogoSheetRows(json: any): Record<string, any>[] {
+    if (json?.data?.rows && Array.isArray(json.data.rows)) return json.data.rows;
+    if (Array.isArray(json?.rows)) return json.rows;
+
+    const values = Array.isArray(json) ? json : json?.values;
+    if (!values?.length || !Array.isArray(values[0])) return [];
+
+    const header = (values[0] as any[]).map((h) => String(h ?? '').trim());
+    const lower = header.map((h) => h.toLowerCase());
+
+    const idxNome =
+        lower.indexOf('parceiro_nome') >= 0
+            ? lower.indexOf('parceiro_nome')
+            : lower.indexOf('estabelecimento') >= 0
+              ? lower.indexOf('estabelecimento')
+              : lower.indexOf('loja') >= 0
+                ? lower.indexOf('loja')
+                : lower.indexOf('nome') >= 0
+                  ? lower.indexOf('nome')
+                  : -1;
+    if (idxNome < 0) return [];
+
+    const idxLogoUrl = lower.indexOf('logo_url') >= 0 ? lower.indexOf('logo_url') : lower.indexOf('logo');
+    const idxCms = lower.indexOf('cms_arte_url');
+    const idxArq = lower.indexOf('logo_arquivo');
+
+    const objects: Record<string, any>[] = [];
+    for (let r = 1; r < values.length; r++) {
+        const line = values[r] as any[];
+        if (!line?.length) continue;
+        const o: Record<string, any> = {
+            parceiro_nome: line[idxNome],
+        };
+        if (idxLogoUrl >= 0) o.logo_url = line[idxLogoUrl];
+        if (idxCms >= 0) o.cms_arte_url = line[idxCms];
+        if (idxArq >= 0) o.logo_arquivo = line[idxArq];
+        objects.push(o);
+    }
+    return objects;
+}
+
+export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (!sheetId?.trim() || !tabName?.trim()) return out;
+
+    const fetchOptions = getFetchOptions();
+    const url = apiUrl(`/api/sheets/${sheetId}/${encodeSheetTabForGateway(tabName)}`);
+
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+        throw new Error(`Logo sheet: ${response.status} ${response.statusText}`);
+    }
+
+    const json = await response.json();
+
+    let rows: Record<string, any>[] = [];
+    if (json?.data?.rows && Array.isArray(json.data.rows)) {
+        rows = json.data.rows;
+    } else {
+        rows = extractLogoSheetRows(json);
+    }
+
+    if (import.meta.env.DEV && rows.length === 0) {
+        console.warn('[fetchPartnerLogoMap] Nenhuma linha parseada. Chaves do JSON:', json && typeof json === 'object' ? Object.keys(json) : typeof json);
+    }
+
+    for (const row of rows) {
+        const storeName = extractLogoSheetStoreName(row);
+        const logoUrl = extractLogoSheetUrl(row);
+        if (!storeName || !logoUrl) continue;
+        const key = normalizePartnerLookupKey(storeName);
+        if (!key) continue;
+        out[key] = logoUrl;
+    }
+
+    return out;
+}
+
+/**
+ * Prioriza URL da planilha de logos; se ainda vazia, mantém coluna da planilha principal.
+ * Assim, logo preenchida no dia seguinte passa a aparecer no próximo refresh.
+ */
+export function mergeLogoMapIntoRows(rows: PerformanceRow[], logoMap: Record<string, string>): PerformanceRow[] {
+    return rows.map((row) => {
+        const key = normalizePartnerLookupKey(row.estabelecimento);
+        const fromRepo = key && logoMap[key] ? logoMap[key].trim() : '';
+        const fromMain = row.logo_url?.trim() || '';
+        const merged = fromRepo || fromMain;
+        if (merged) return { ...row, logo_url: merged };
+        const { logo_url: _omit, ...rest } = row;
+        return rest as PerformanceRow;
+    });
+}
+
+/**
+ * Busca os dados de avaliações a partir da planilha pública e retorna um mapa de avaliações por parceiro.
+ */
+export async function fetchAvaliacoesMap(): Promise<Record<string, number>> {
+    const csvUrl = "https://docs.google.com/spreadsheets/d/196UERhbkyBm3YZuqrqgyMTwZI0aiUqRQaQju6i4ilh4/export?format=csv&gid=1204641336";
+    try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) return {};
+        const text = await response.text();
+        const lines = text.split('\n');
+        const map: Record<string, number> = {};
+
+        if (lines.length > 1) {
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            const partnerIdx = headers.indexOf('estabelecimento');
+            const evalIdx = headers.indexOf('total avaliações');
+
+            if (partnerIdx >= 0 && evalIdx >= 0) {
+                for (let i = 1; i < lines.length; i++) {
+                    // Trata CSV simples (assumindo que não há vírgulas no nome da loja)
+                    // Caso haja, seria ideal um parser robusto, mas split serve como base rápida
+                    const cols = lines[i].split(',');
+                    // Reconstroi o nome do estabelecimento se houver vírgula extra (tentativa simples)
+                    const evalStr = cols.pop()?.trim(); // Pega o último que é Total Avaliações (se houver mais colunas)
+                    
+                    if (evalStr !== undefined) {
+                        const total = parseInt(evalStr, 10);
+                        if (!isNaN(total)) {
+                            // Se a estrutura for estrita ID, Nome, Data, Total
+                            const name = cols[1]?.replace(/^"|"$/g, '').trim(); 
+                            if (name) {
+                                const key = normalizePartnerLookupKey(name);
+                                map[key] = total;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return map;
+    } catch (err) {
+        console.error("Erro ao buscar avaliações da planilha pública", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de avaliações nas linhas de performance
+ */
+export function mergeAvaliacoesMapIntoRows(rows: PerformanceRow[], map: Record<string, number>): PerformanceRow[] {
+    return rows.map(row => {
+        const key = normalizePartnerLookupKey(row.estabelecimento);
+        if (key && map[key] !== undefined) {
+            return { ...row, total_avaliacoes: map[key] };
+        }
+        return row;
+    });
+}
+
+/**
+ * Busca todas as notas de relevância comercial no Supabase.
+ */
+export async function fetchRelevanceMap(): Promise<Record<string, number>> {
+    try {
+        const { data, error } = await supabase
+            .from('partner_relevance')
+            .select('partner_id, relevance_score');
+
+        if (error) throw error;
+
+        const map: Record<string, number> = {};
+        data?.forEach((item: { partner_id: string; relevance_score: number }) => {
+            map[item.partner_id] = item.relevance_score;
+        });
+        return map;
+    } catch (err) {
+        console.error("Erro ao buscar mapa de relevância no Supabase", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de relevância nas linhas de performance
+ */
+export function mergeRelevanceMapIntoRows(rows: PerformanceRow[], map: Record<string, number>): PerformanceRow[] {
+    return rows.map(row => {
+        const id = row.estab_id || row.estabelecimento;
+        if (id && map[id] !== undefined) {
+            return { ...row, commercial_relevance: map[id] };
+        }
+        return row;
+    });
+}
+
+/**
+ * Busca os status de promoção e cupom personalizados no Supabase.
+ */
+export async function fetchStatusOverridesMap(): Promise<Record<string, {promo: string, cupom: string}>> {
+    try {
+        const { data, error } = await supabase
+            .from('partner_status_overrides')
+            .select('partner_id, promo_status_override, cupom_status_override');
+
+        if (error) throw error;
+
+        const map: Record<string, {promo: string, cupom: string}> = {};
+        data?.forEach((item: any) => {
+            map[item.partner_id] = {
+                promo: item.promo_status_override,
+                cupom: item.cupom_status_override
+            };
+        });
+        return map;
+    } catch (err) {
+        console.warn("Erro ao buscar status overrides no Supabase", err);
+        return {};
+    }
+}
+
+/**
+ * Mescla o mapa de status overrides nas linhas de performance
+ */
+export function mergeStatusOverridesIntoRows(rows: PerformanceRow[], map: Record<string, {promo: string, cupom: string}>): PerformanceRow[] {
+    return rows.map(row => {
+        const id = row.estab_id || row.estabelecimento;
+        if (id && map[id]) {
+            return {
+                ...row,
+                promo_status: (map[id].promo as any) || row.promo_status,
+                cupom_status: (map[id].cupom as any) || row.cupom_status
+            };
+        }
+        return row;
+    });
+}
