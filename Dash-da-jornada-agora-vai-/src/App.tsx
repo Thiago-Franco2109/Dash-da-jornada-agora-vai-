@@ -185,6 +185,9 @@ function App() {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
       return enrichDesempenhoPartnerData(row, undefined, noCityIndex, mode);
+    }).filter((row: EnrichedPerformanceRow) => {
+      const status = row.status?.toLowerCase().trim() || '';
+      return status !== 'cancelado' && status !== 'cancelada';
     });
   }, [desempenhoRawRows, mappingVersion, mode, isCD]);
 
@@ -284,21 +287,28 @@ function App() {
           currentView={currentView}
           onNavigate={setCurrentView}
         />
-        <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-all duration-300">
+        <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-all duration-300">
           {currentView === 'settings' ? (
-          <SettingsView />
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <SettingsView />
+          </div>
         ) : currentView === 'about' ? (
           <AboutView />
         ) : currentView === 'managers' ? (
-          <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
+          </div>
         ) : currentView === 'profile' ? (
           <ProfileView />
         ) : currentView === 'contacts' ? (
-          <ContactsView data={enrichedData} onRowClick={handleRowClick} />
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <ContactsView data={enrichedData} onRowClick={handleRowClick} />
+          </div>
         ) : currentView === 'reports' ? (
           <ReportsView data={enrichedData} />
         ) : currentView === 'cd_desempenho' ? (
           currentSelectedRow ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
             <PartnerDetailsView
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
@@ -306,6 +316,7 @@ function App() {
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext="desempenho"
             />
+            </div>
           ) : (
             <CDDesempenhoView
               data={enrichedDesempenhoData}
@@ -329,17 +340,19 @@ function App() {
             />
           )
         ) : (
-          <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
             {currentSelectedRow ? (
+              <div className="flex-1 min-h-0 overflow-y-auto">
               <PartnerDetailsView
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
                 dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
                 onRefresh={() => setMappingVersion(v => v + 1)}
               />
+              </div>
             ) : (
               <>
-                <div className="px-6 py-6 border-b border-slate-100 dark:border-slate-800">
+                <div className="shrink-0 px-6 py-6 border-b border-slate-100 dark:border-slate-800">
                   <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
                       <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight mb-2">{theme.headerTitle}</h1>
@@ -386,6 +399,7 @@ function App() {
                   )}
                 </div>
 
+                <div className="shrink-0">
                 <FilterToolbar
                   cityFilter={cityFilter}
                   setCityFilter={setCityFilter}
@@ -396,8 +410,9 @@ function App() {
                   setManagerFilter={setManagerFilter}
                   managers={uniqueManagers}
                 />
+                </div>
 
-                <div className="flex items-center justify-between px-6 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+                <div className="shrink-0 flex items-center justify-between px-6 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex gap-6 overflow-x-auto scrollbar-hide pt-2">
                       {[
                           { id: 'all', label: 'Todos os Períodos' },
@@ -447,7 +462,7 @@ function App() {
                     <p className="text-slate-500 font-medium">Sincronizando dados...</p>
                   </div>
                 ) : (
-                  <div className="flex flex-col flex-1 divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
                     <PerformanceTable
                       data={filteredTableData}
                       sortConfig={sortConfig}

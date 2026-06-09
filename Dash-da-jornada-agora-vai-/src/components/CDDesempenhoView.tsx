@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
+import { calcularMRRMetrics, formatarMoedaBRL } from '../config/cdContracts';
 import FilterToolbar from './FilterToolbar';
 import PerformanceTable, { type SortConfig } from './PerformanceTable';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
@@ -78,6 +79,12 @@ export default function CDDesempenhoView({
                 } else if (key === 'desempenho' && typeof aVal === 'string') {
                     aVal = parseFloat((aVal as string).replace('%', '').replace(',', '.')) || 0;
                     bVal = parseFloat((bVal as string).replace('%', '').replace(',', '.')) || 0;
+                } else if (key === 'mrr_em_risco') {
+                    aVal = a.mrr_em_risco ? 1 : 0;
+                    bVal = b.mrr_em_risco ? 1 : 0;
+                } else if (key === 'valor_contrato' || key === 'pedidos_por_dia') {
+                    aVal = (aVal as number) ?? -1;
+                    bVal = (bVal as number) ?? -1;
                 }
 
                 if (aVal! < bVal!) return direction === 'asc' ? -1 : 1;
@@ -98,9 +105,11 @@ export default function CDDesempenhoView({
         [data],
     );
 
+    const mrrMetrics = useMemo(() => calcularMRRMetrics(filteredData), [filteredData]);
+
     return (
-        <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
-            <div className="px-6 py-6 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
+            <div className="shrink-0 px-6 py-6 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
                         <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight mb-2">
@@ -154,8 +163,36 @@ export default function CDDesempenhoView({
                         </div>
                     </div>
                 )}
+
+                {data.length > 0 && (
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">MRR total</p>
+                            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{formatarMoedaBRL(mrrMetrics.mrrTotal)}</p>
+                            <p className="text-xs text-slate-400 mt-1">{mrrMetrics.contratosAtivos} contratos ativos no cadastro</p>
+                        </div>
+                        <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10 p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">MRR em risco</p>
+                            <p className="mt-1 text-2xl font-bold text-red-700 dark:text-red-300">{formatarMoedaBRL(mrrMetrics.mrrEmRisco)}</p>
+                            <p className="text-xs text-red-600/80 dark:text-red-400/80 mt-1">
+                                {mrrMetrics.lojasEmRisco} lojas com &lt; 1 pedido/dia
+                            </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">% MRR em risco</p>
+                            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{mrrMetrics.mrrEmRiscoPct.toFixed(1)}%</p>
+                            <p className="text-xs text-slate-400 mt-1">sobre lojas com contrato na planilha</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Lojas c/ contrato</p>
+                            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{mrrMetrics.lojasComContrato}</p>
+                            <p className="text-xs text-slate-400 mt-1">casadas com o cadastro de contratos</p>
+                        </div>
+                    </div>
+                )}
             </div>
 
+            <div className="shrink-0">
             <FilterToolbar
                 cityFilter={cityFilter}
                 setCityFilter={setCityFilter}
@@ -166,8 +203,9 @@ export default function CDDesempenhoView({
                 setManagerFilter={setManagerFilter}
                 managers={uniqueManagers}
             />
+            </div>
 
-            <div className="px-6 py-3 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="shrink-0 px-6 py-3 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-sm text-slate-500 dark:text-slate-400">
                     <strong className="text-slate-700 dark:text-slate-200">{filteredData.length}</strong> lojas exibidas
                 </span>
@@ -198,14 +236,16 @@ export default function CDDesempenhoView({
                     </button>
                 </div>
             ) : (
-                <PerformanceTable
-                    data={filteredData}
-                    sortConfig={sortConfig}
-                    requestSort={requestSort}
-                    onRowClick={onRowClick}
-                    onStatusChange={onStatusChange}
-                    variant="desempenho"
-                />
+                <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+                    <PerformanceTable
+                        data={filteredData}
+                        sortConfig={sortConfig}
+                        requestSort={requestSort}
+                        onRowClick={onRowClick}
+                        onStatusChange={onStatusChange}
+                        variant="desempenho"
+                    />
+                </div>
             )}
         </div>
     );

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { formatarMoedaBRL } from '../config/cdContracts';
 import { getStarColor, getTendenciaColor, getTendenciaLabel, type EnrichedPerformanceRow } from '../utils/calculations';
 
 export type PerformanceRow = {
@@ -12,6 +13,14 @@ export type PerformanceRow = {
     week_2: number;
     week_3: number;
     week_4: number;
+    week_5?: number;
+    week_6?: number;
+    week_7?: number;
+    week_8?: number;
+    week_9?: number;
+    week_10?: number;
+    week_11?: number;
+    week_12?: number;
     logo_url?: string;
     analista?: string;
     /** Status da promoção */
@@ -262,18 +271,25 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     };
 
     return (
-        <div className="flex-1 overflow-x-auto p-6 flex flex-col">
-            <div className="inline-block min-w-full align-middle">
-                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                        <thead className="bg-slate-50 dark:bg-slate-800">
+        <div className="flex flex-1 flex-col min-h-0 px-6 pb-6 pt-2">
+            <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <table className="performance-table min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                    <thead className="bg-slate-50 dark:bg-slate-800">
                             <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('cidade')}>
-                                    Cidade {renderSortIcon('cidade')}
-                                </th>
-                                <th scope="col" className="px-3 py-3.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('estabelecimento')}>
-                                    Estabelecimento {renderSortIcon('estabelecimento')}
-                                </th>
+                                {isDesempenho ? (
+                                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('estabelecimento')}>
+                                        Estabelecimento {renderSortIcon('estabelecimento')}
+                                    </th>
+                                ) : (
+                                    <>
+                                        <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('cidade')}>
+                                            Cidade {renderSortIcon('cidade')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('estabelecimento')}>
+                                            Estabelecimento {renderSortIcon('estabelecimento')}
+                                        </th>
+                                    </>
+                                )}
                                 {!isDesempenho && (
                                     <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('commercial_relevance')}>
                                         Relevância {renderSortIcon('commercial_relevance')}
@@ -284,10 +300,18 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 </th>
                                 {isDesempenho ? (
                                     <>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_1')}>S1 {renderSortIcon('week_1')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_1')}>
+                                            S1 <span className="normal-case font-normal text-[10px] text-primary">(atual)</span> {renderSortIcon('week_1')}
+                                        </th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_2')}>S2 {renderSortIcon('week_2')}</th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_3')}>S3 {renderSortIcon('week_3')}</th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_4')}>S4 {renderSortIcon('week_4')}</th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('pedidos_por_dia')}>
+                                            Ped/dia {renderSortIcon('pedidos_por_dia')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('valor_contrato')}>
+                                            Contrato {renderSortIcon('valor_contrato')}
+                                        </th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
                                             Total {renderSortIcon('total_pedidos')}
                                         </th>
@@ -342,7 +366,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900">
                             {data.map((row, index) => {
-                                const isTopPriority = index < 10 && (isDesempenho ? (row.risco_churn ?? 0) >= 4 : row.priority_stars >= 4);
+                                const isTopPriority = index < 10 && (isDesempenho ? ((row.risco_churn ?? 0) >= 4 || row.mrr_em_risco) : row.priority_stars >= 4);
                                 const partnerId = row.estab_id || row.estabelecimento;
 
                                 const renderContactDots = () => {
@@ -365,24 +389,51 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}
                                         onClick={() => handleRowClick(row)}
                                     >
-                                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-base font-semibold text-slate-700 dark:text-slate-300 sm:pl-6 group-hover:text-primary transition-colors relative">
-                                            {isTopPriority && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
-                                            {row.cidade}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 group-hover:text-primary transition-colors">
-                                            <div className="flex items-center gap-3">
-                                                {row.logo_url ? (
-                                                    <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
-                                                ) : (
-                                                    <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
-                                                        <span className="material-symbols-outlined text-[20px]">store</span>
+                                        {isDesempenho ? (
+                                            <td className="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6 relative">
+                                                {isTopPriority && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
+                                                <div className="flex items-center gap-3">
+                                                    {row.logo_url ? (
+                                                        <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover shrink-0" />
+                                                    ) : (
+                                                        <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                                                            <span className="material-symbols-outlined text-[20px]">store</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className="truncate max-w-[220px] text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors" title={row.estabelecimento}>
+                                                            {row.estabelecimento}
+                                                        </div>
+                                                        {row.cidade && (
+                                                            <div className="truncate max-w-[220px] mt-0.5 text-[11px] font-normal text-slate-400 dark:text-slate-500" title={row.cidade}>
+                                                                {row.cidade}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                                <span className="truncate max-w-[200px]" title={row.estabelecimento}>
-                                                    {row.estabelecimento}
-                                                </span>
-                                            </div>
-                                        </td>
+                                                </div>
+                                            </td>
+                                        ) : (
+                                            <>
+                                                <td className="whitespace-nowrap py-4 pl-4 pr-3 text-base font-semibold text-slate-700 dark:text-slate-300 sm:pl-6 group-hover:text-primary transition-colors relative">
+                                                    {isTopPriority && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
+                                                    {row.cidade}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 group-hover:text-primary transition-colors">
+                                                    <div className="flex items-center gap-3">
+                                                        {row.logo_url ? (
+                                                            <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
+                                                        ) : (
+                                                            <div className="size-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                                                                <span className="material-symbols-outlined text-[20px]">store</span>
+                                                            </div>
+                                                        )}
+                                                        <span className="truncate max-w-[200px]" title={row.estabelecimento}>
+                                                            {row.estabelecimento}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                            </>
+                                        )}
                                         {!isDesempenho && (
                                             <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                 {row.commercial_relevance ? (
@@ -405,10 +456,29 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         </td>
                                         {isDesempenho ? (
                                             <>
-                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_1}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center font-medium text-slate-800 dark:text-slate-200">{row.week_1}</td>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_2}</td>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_3}</td>
-                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center font-medium text-slate-800 dark:text-slate-200">{row.week_4}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_4}</td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    <span className={`font-semibold ${(row.pedidos_por_dia ?? 0) < 1 ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                        {(row.pedidos_por_dia ?? 0).toFixed(1)}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    {row.valor_contrato != null ? (
+                                                        <div className="flex flex-col items-center gap-0.5">
+                                                            <span className="font-medium text-slate-800 dark:text-slate-200">{formatarMoedaBRL(row.valor_contrato)}</span>
+                                                            {row.mrr_em_risco && (
+                                                                <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 ring-1 ring-inset ring-red-200 dark:ring-red-800/40">
+                                                                    MRR risco
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-400">—</span>
+                                                    )}
+                                                </td>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                     <span className="font-bold text-lg text-slate-900 dark:text-white">{row.total_pedidos}</span>
                                                 </td>
@@ -495,7 +565,6 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                             })}
                         </tbody>
                     </table>
-                </div>
             </div>
         </div>
     );

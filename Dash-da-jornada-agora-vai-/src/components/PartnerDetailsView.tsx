@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
-import { type EnrichedPerformanceRow, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel } from '../utils/calculations';
+import { formatarFormaPagamento, formatarMoedaBRL } from '../config/cdContracts';
+import { type EnrichedPerformanceRow, DESEMPENHO_WEEKS_COUNT, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel, getWeekValue } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep } from './MenuFunnel';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { getPartnerState, updateContactDetail, finishJourney, reopenJourney, type ContactDetail } from '../config/partnerState';
@@ -456,13 +457,18 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                 <h3 className="text-slate-900 dark:text-white font-bold text-lg mb-4">
                                     {isDesempenho ? 'Métricas de Desempenho' : 'Métricas de Onboarding'}
                                 </h3>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                <div className={`grid gap-6 ${isDesempenho ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7' : 'grid-cols-2 md:grid-cols-4'}`}>
                                     {isDesempenho ? (
                                         <>
                                             <div>
-                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pedidos (4 sem.)</p>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pedidos (12 sem.)</p>
                                                 <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.total_pedidos}</p>
                                                 <p className="text-xs text-slate-400 mt-1">Média: {(partner.media_semanal ?? 0).toFixed(1)}/sem</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Semana atual</p>
+                                                <p className="mt-1 text-2xl font-semibold text-primary">{partner.week_1}</p>
+                                                <p className="text-xs text-slate-400 mt-1">Últimos 7 dias (S1)</p>
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Tendência</p>
@@ -477,6 +483,24 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                             <div>
                                                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Desempenho</p>
                                                 <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.desempenho || '—'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Contrato (MRR)</p>
+                                                <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+                                                    {partner.valor_contrato != null ? formatarMoedaBRL(partner.valor_contrato) : '—'}
+                                                </p>
+                                                {partner.contrato_pagamento && (
+                                                    <p className="text-xs text-slate-400 mt-1">{formatarFormaPagamento(partner.contrato_pagamento)}</p>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pedidos/dia</p>
+                                                <p className={`mt-1 text-2xl font-semibold ${partner.mrr_em_risco ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                                                    {(partner.pedidos_por_dia ?? 0).toFixed(1)}
+                                                </p>
+                                                {partner.mrr_em_risco && (
+                                                    <p className="text-xs text-red-500 mt-1 font-medium">MRR em risco (&lt; 1/dia)</p>
+                                                )}
                                             </div>
                                         </>
                                     ) : (
@@ -529,32 +553,52 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                                     </div>
                                 )}
 
-                                {/* Progress Towards 30 */}
-                                <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                                    <div className="flex justify-between items-end mb-2">
-                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Progresso para a Meta de Ativação (30 Pedidos)</span>
-                                        <span className="text-sm font-bold text-slate-900 dark:text-white">{progressPercentage}%</span>
+                                {!isDesempenho && (
+                                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Progresso para a Meta de Ativação (30 Pedidos)</span>
+                                            <span className="text-sm font-bold text-slate-900 dark:text-white">{progressPercentage}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3">
+                                            <div className="bg-emerald-500 h-3 rounded-full transition-all" style={{ width: `${progressPercentage}%` }}></div>
+                                        </div>
                                     </div>
-                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3">
-                                        <div className="bg-emerald-500 h-3 rounded-full transition-all" style={{ width: `${progressPercentage}%` }}></div>
-                                    </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                                 {/* Section header */}
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-slate-900 dark:text-white font-bold text-lg">Pedidos por Semana (Primeiros 28 Dias)</h3>
+                                    <h3 className="text-slate-900 dark:text-white font-bold text-lg">
+                                        {isDesempenho
+                                            ? 'Pedidos por Semana (últimas 12 semanas)'
+                                            : 'Pedidos por Semana (Primeiros 28 Dias)'}
+                                    </h3>
                                 </div>
 
                                 {/* Week cards – static */}
-                                <div className="grid grid-cols-4 gap-4">
-                                    {([1, 2, 3, 4] as const).map(w => {
-                                        const key = `week_${w}` as 'week_1' | 'week_2' | 'week_3' | 'week_4';
+                                <div className={`grid gap-3 ${isDesempenho ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-6' : 'grid-cols-4'}`}>
+                                    {Array.from({ length: isDesempenho ? DESEMPENHO_WEEKS_COUNT : 4 }, (_, i) => i + 1).map(w => {
+                                        const pedidos = isDesempenho ? getWeekValue(partner, w) : partner[`week_${w}` as 'week_1' | 'week_2' | 'week_3' | 'week_4'];
+                                        const isCurrentWeek = isDesempenho && w === 1;
                                         return (
-                                            <div key={w} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800 shadow-sm">
-                                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Semana {w}</span>
-                                                <span className="text-2xl font-bold text-slate-900 dark:text-white">{partner[key]}</span>
+                                            <div
+                                                key={w}
+                                                className={`flex flex-col items-center justify-center p-3 sm:p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm ${
+                                                    isCurrentWeek
+                                                        ? 'border-primary/40 ring-2 ring-primary/20'
+                                                        : 'border-slate-100 dark:border-slate-800'
+                                                }`}
+                                            >
+                                                <span className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider mb-1 sm:mb-2 text-center ${isCurrentWeek ? 'text-primary' : 'text-slate-500'}`}>
+                                                    Semana {w}
+                                                    {isCurrentWeek && (
+                                                        <span className="block normal-case font-normal text-[9px] sm:text-[10px] mt-0.5">últimos 7 dias</span>
+                                                    )}
+                                                </span>
+                                                <span className={`text-xl sm:text-2xl font-bold ${isCurrentWeek ? 'text-primary' : 'text-slate-900 dark:text-white'}`}>
+                                                    {pedidos}
+                                                </span>
                                             </div>
                                         );
                                     })}

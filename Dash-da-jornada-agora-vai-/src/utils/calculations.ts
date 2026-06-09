@@ -1,4 +1,5 @@
 import type { PerformanceRow } from '../components/PerformanceTable';
+import { calcularPedidosPorDia, findContractForPartner, isMrrEmRisco, type ContractPayment, type ContractStatus } from '../config/cdContracts';
 import { getManagerForPartner, type ProductModeKey } from '../config/managerMapping';
 import { getPartnerState, type PartnerState } from '../config/partnerState';
 
@@ -15,13 +16,37 @@ export type CalculatedMetrics = {
     semanas_zeradas?: number;
     media_semanal?: number;
     risco_churn?: number;
+    /** Contrato CD */
+    valor_contrato?: number;
+    contrato_status?: ContractStatus;
+    contrato_pagamento?: ContractPayment;
+    contrato_vencimento?: string;
+    pedidos_por_dia?: number;
+    mrr_em_risco?: boolean;
 } & PartnerState;
 
 export type EnrichedPerformanceRow = PerformanceRow & CalculatedMetrics;
 
-// 1) Total_Pedidos
+export const DESEMPENHO_WEEKS_COUNT = 12;
+
+export function getWeekValue(partner: PerformanceRow, weekNum: number): number {
+    const key = `week_${weekNum}` as keyof PerformanceRow;
+    const val = partner[key];
+    return typeof val === 'number' ? val : 0;
+}
+
+// 1) Total_Pedidos (onboarding — primeiras 4 semanas)
 export const calculateTotalPedidos = (partner: PerformanceRow): number => {
     return (partner.week_1 || 0) + (partner.week_2 || 0) + (partner.week_3 || 0) + (partner.week_4 || 0);
+};
+
+/** Soma das 12 semanas na aba Todas as Lojas (S1 = semana atual) */
+export const calculateTotalPedidosDesempenho = (partner: PerformanceRow): number => {
+    let total = 0;
+    for (let w = 1; w <= DESEMPENHO_WEEKS_COUNT; w++) {
+        total += getWeekValue(partner, w);
+    }
+    return total;
 };
 
 // 2) Dias_Desde_Lancamento (Assuming 'today' is the current date when this runs, 
@@ -108,6 +133,7 @@ export const calculatePriorityStars = (
 
 export type TendenciaPedidos = 'queda' | 'estavel' | 'alta';
 
+/** Onboarding: semana 1 = primeira semana após lançamento */
 export const calculateTendenciaPedidos = (partner: PerformanceRow): TendenciaPedidos => {
     const { week_1: w1, week_2: w2, week_3: w3, week_4: w4 } = partner;
     const recentAvg = (w3 + w4) / 2;
@@ -115,6 +141,22 @@ export const calculateTendenciaPedidos = (partner: PerformanceRow): TendenciaPed
 
     if (w4 === 0 && w3 === 0 && (w1 + w2) > 0) return 'queda';
     if (w4 === 0 && w3 > 0) return 'queda';
+    if (recentAvg < olderAvg * 0.7 && olderAvg > 0) return 'queda';
+    if (recentAvg > olderAvg * 1.2 && recentAvg > 0) return 'alta';
+    return 'estavel';
+};
+
+/** Desempenho CD: semana 1 = últimos 7 dias (mais recente) */
+export const calculateTendenciaPedidosDesempenho = (partner: PerformanceRow): TendenciaPedidos => {
+    const w1 = partner.week_1;
+    const w2 = partner.week_2;
+    const w3 = partner.week_3;
+    const w4 = partner.week_4;
+    const recentAvg = (w1 + w2) / 2;
+    const olderAvg = (w3 + w4) / 2;
+
+    if (w1 === 0 && w2 === 0 && (w3 + w4) > 0) return 'queda';
+    if (w1 === 0 && w2 > 0) return 'queda';
     if (recentAvg < olderAvg * 0.7 && olderAvg > 0) return 'queda';
     if (recentAvg > olderAvg * 1.2 && recentAvg > 0) return 'alta';
     return 'estavel';
@@ -129,8 +171,22 @@ export const calculateSemanasZeradas = (partner: PerformanceRow): number => {
     return count;
 };
 
+/** Conta semanas consecutivas zeradas a partir da semana atual (S1) */
+export const calculateSemanasZeradasDesempenho = (partner: PerformanceRow): number => {
+    let count = 0;
+    for (let w = 1; w <= DESEMPENHO_WEEKS_COUNT; w++) {
+        if (getWeekValue(partner, w) === 0) count++;
+        else break;
+    }
+    return count;
+};
+
 export const calculateMediaSemanal = (partner: PerformanceRow): number => {
     return (partner.week_1 + partner.week_2 + partner.week_3 + partner.week_4) / 4;
+};
+
+export const calculateMediaSemanalDesempenho = (partner: PerformanceRow): number => {
+    return calculateTotalPedidosDesempenho(partner) / DESEMPENHO_WEEKS_COUNT;
 };
 
 export const parseDesempenhoPercentual = (raw: string): number | null => {
@@ -138,6 +194,8 @@ export const parseDesempenhoPercentual = (raw: string): number | null => {
     const num = parseFloat(raw.replace('%', '').replace(',', '.').trim());
     return isNaN(num) ? null : num;
 };
+
+const CHURN_WEEKLY_ORDERS_THRESHOLD = 7;
 
 /** Risco de churn (1=saudável, 5=crítico) baseado em tendência semanal */
 export const calculateRiscoChurn = (
@@ -150,14 +208,18 @@ export const calculateRiscoChurn = (
     if (partner.status === 'suspenso') return 5;
     if (semanasZeradas >= 2 && totalPedidos > 0) return 5;
     if (totalPedidos === 0) return 4;
+
+    const pedidosSemanaAtual = partner.week_1;
+    if (pedidosSemanaAtual < CHURN_WEEKLY_ORDERS_THRESHOLD) {
+        return pedidosSemanaAtual === 0 ? 5 : 4;
+    }
+
     if (tendencia === 'queda' && semanasZeradas >= 1) return 4;
     if (tendencia === 'queda') return 4;
 
     const desempPct = parseDesempenhoPercentual(partner.desempenho);
     if (desempPct != null && desempPct < 30) return 4;
     if (desempPct != null && desempPct < 50) return 3;
-
-    if (tendencia === 'estavel' && totalPedidos < 8) return 3;
 
     let score = tendencia === 'alta' ? 1 : 2;
     if (score > 1 && cityWeight >= 4) score = Math.min(5, score + 1);
@@ -201,10 +263,10 @@ export const enrichDesempenhoPartnerData = (
     noCityIndex?: number,
     productMode: ProductModeKey = 'cardapio_digital',
 ): EnrichedPerformanceRow => {
-    const total_pedidos = calculateTotalPedidos(partner);
-    const tendencia_pedidos = calculateTendenciaPedidos(partner);
-    const semanas_zeradas = calculateSemanasZeradas(partner);
-    const media_semanal = calculateMediaSemanal(partner);
+    const total_pedidos = calculateTotalPedidosDesempenho(partner);
+    const tendencia_pedidos = calculateTendenciaPedidosDesempenho(partner);
+    const semanas_zeradas = calculateSemanasZeradasDesempenho(partner);
+    const media_semanal = calculateMediaSemanalDesempenho(partner);
     const city_weight = getCityWeight(partner.cidade);
     const risco_churn = calculateRiscoChurn(partner, tendencia_pedidos, semanas_zeradas, total_pedidos, city_weight);
 
@@ -212,11 +274,13 @@ export const enrichDesempenhoPartnerData = (
     const indice_desempenho = desempPct != null
         ? desempPct / 100
         : media_semanal > 0
-            ? Math.min(1, total_pedidos / (media_semanal * 4))
+            ? Math.min(1, total_pedidos / (media_semanal * DESEMPENHO_WEEKS_COUNT))
             : 0;
 
     const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode);
     const state = getPartnerState(partner.estab_id || partner.estabelecimento);
+    const contrato = findContractForPartner(partner.estabelecimento);
+    const pedidos_por_dia = calcularPedidosPorDia(partner.week_1);
 
     return {
         ...partner,
@@ -233,6 +297,12 @@ export const enrichDesempenhoPartnerData = (
         media_semanal,
         analista,
         logo_url: logoUrl || partner.logo_url,
+        valor_contrato: contrato?.valorMensal,
+        contrato_status: contrato?.status,
+        contrato_pagamento: contrato?.formaPagamento,
+        contrato_vencimento: contrato?.vencimento,
+        pedidos_por_dia,
+        mrr_em_risco: isMrrEmRisco(pedidos_por_dia, contrato),
     };
 };
 

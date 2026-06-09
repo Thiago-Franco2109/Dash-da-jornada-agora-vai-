@@ -460,7 +460,9 @@ function looksLikeNumericValue(val: unknown): boolean {
     return !isNaN(Number(s)) && s !== '';
 }
 
-function parseWeekFromRow(row: Record<string, unknown>, weekNum: 1 | 2 | 3 | 4): number {
+const DESEMPENHO_WEEKS = 12;
+
+function parseWeekFromRow(row: Record<string, unknown>, weekNum: number): number {
     return parseWeekValue(findValue(
         row,
         `Week_${weekNum}`,
@@ -470,6 +472,35 @@ function parseWeekFromRow(row: Record<string, unknown>, weekNum: 1 | 2 | 3 | 4):
         `S${weekNum}`,
         `W${weekNum}`,
     ));
+}
+
+function parseWeeksFromHeaders(row: Record<string, unknown>, headerList: string[]): Record<string, number> {
+    const weeks: Record<string, number> = {};
+    for (let n = 1; n <= DESEMPENHO_WEEKS; n++) {
+        let val = parseWeekFromRow(row, n);
+        if (val === 0) {
+            val = parseWeekValue(findColumnByPattern(row, headerList, [
+                new RegExp(`^week[._\\s-]?${n}$`, 'i'),
+                new RegExp(`^semana[._\\s-]?${n}$`, 'i'),
+                new RegExp(`^s${n}$`, 'i'),
+                new RegExp(`^w${n}$`, 'i'),
+            ]));
+        }
+        weeks[`week_${n}`] = val;
+    }
+    return weeks;
+}
+
+function hasAnyWeekData(weeks: Record<string, number>): boolean {
+    return Object.values(weeks).some(v => v > 0);
+}
+
+function parseWeeksFromPosition(vals: unknown[], startIndex: number): Record<string, number> {
+    const weeks: Record<string, number> = {};
+    for (let n = 1; n <= DESEMPENHO_WEEKS; n++) {
+        weeks[`week_${n}`] = parseWeekValue(vals[startIndex + n - 1]);
+    }
+    return weeks;
 }
 
 function findColumnByPattern(row: Record<string, unknown>, headers: string[], patterns: RegExp[]): unknown {
@@ -505,31 +536,14 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
                 ? String(findValue(row, 'lancamento', 'Lancamento', 'Lançamento') || '').trim()
                 : '';
 
-            let week_1 = parseWeekFromRow(row, 1);
-            let week_2 = parseWeekFromRow(row, 2);
-            let week_3 = parseWeekFromRow(row, 3);
-            let week_4 = parseWeekFromRow(row, 4);
+            let weeks = parseWeeksFromHeaders(row, headerList);
 
-            if (week_1 === 0 && week_2 === 0 && week_3 === 0 && week_4 === 0) {
-                week_1 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?1|semana.?1|^s1$|^w1$/i]));
-                week_2 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?2|semana.?2|^s2$|^w2$/i]));
-                week_3 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?3|semana.?3|^s3$|^w3$/i]));
-                week_4 = parseWeekValue(findColumnByPattern(row, headerList, [/week.?4|semana.?4|^s4$|^w4$/i]));
-            }
-
-            // Posicional sem lançamento: E=desempenho ou W1, F–I=semanas
-            if (!hasLancamentoHeader && week_1 === 0 && week_2 === 0 && week_3 === 0 && week_4 === 0) {
+            if (!hasAnyWeekData(weeks)) {
                 const vals = headerList.map(h => row[h]);
-                if (looksLikeNumericValue(vals[4]) && looksLikeNumericValue(vals[5])) {
-                    week_1 = parseWeekValue(vals[4]);
-                    week_2 = parseWeekValue(vals[5]);
-                    week_3 = parseWeekValue(vals[6]);
-                    week_4 = parseWeekValue(vals[7]);
-                } else if (looksLikeNumericValue(vals[5])) {
-                    week_1 = parseWeekValue(vals[5]);
-                    week_2 = parseWeekValue(vals[6]);
-                    week_3 = parseWeekValue(vals[7]);
-                    week_4 = parseWeekValue(vals[8]);
+                if (!hasLancamentoHeader && looksLikeNumericValue(vals[4]) && looksLikeNumericValue(vals[5])) {
+                    weeks = parseWeeksFromPosition(vals, 4);
+                } else if (!hasLancamentoHeader && looksLikeNumericValue(vals[5])) {
+                    weeks = parseWeeksFromPosition(vals, 5);
                 }
             }
 
@@ -543,10 +557,18 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
                 status,
                 lancamento,
                 desempenho,
-                week_1,
-                week_2,
-                week_3,
-                week_4,
+                week_1: weeks.week_1,
+                week_2: weeks.week_2,
+                week_3: weeks.week_3,
+                week_4: weeks.week_4,
+                week_5: weeks.week_5,
+                week_6: weeks.week_6,
+                week_7: weeks.week_7,
+                week_8: weeks.week_8,
+                week_9: weeks.week_9,
+                week_10: weeks.week_10,
+                week_11: weeks.week_11,
+                week_12: weeks.week_12,
                 analista,
                 promo_status: normalizePromoStatus(rawPromo),
                 cupom_status: normalizePromoStatus(rawCupom),
@@ -563,29 +585,17 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
 
         let lancamento = '';
         let desempenho = '';
-        let week_1 = 0;
-        let week_2 = 0;
-        let week_3 = 0;
-        let week_4 = 0;
+        let weeks: Record<string, number>;
 
         if (looksLikeDateValue(arr[4])) {
             lancamento = String(arr[4]);
             desempenho = String(arr[5] ?? '');
-            week_1 = parseWeekValue(arr[6]);
-            week_2 = parseWeekValue(arr[7]);
-            week_3 = parseWeekValue(arr[8]);
-            week_4 = parseWeekValue(arr[9]);
+            weeks = parseWeeksFromPosition(arr, 6);
         } else if (looksLikeNumericValue(arr[4]) && looksLikeNumericValue(arr[5])) {
-            week_1 = parseWeekValue(arr[4]);
-            week_2 = parseWeekValue(arr[5]);
-            week_3 = parseWeekValue(arr[6]);
-            week_4 = parseWeekValue(arr[7]);
+            weeks = parseWeeksFromPosition(arr, 4);
         } else {
             desempenho = String(arr[4] ?? '');
-            week_1 = parseWeekValue(arr[5]);
-            week_2 = parseWeekValue(arr[6]);
-            week_3 = parseWeekValue(arr[7]);
-            week_4 = parseWeekValue(arr[8]);
+            weeks = parseWeeksFromPosition(arr, 5);
         }
 
         return {
@@ -595,10 +605,18 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
             status,
             lancamento,
             desempenho,
-            week_1,
-            week_2,
-            week_3,
-            week_4,
+            week_1: weeks.week_1,
+            week_2: weeks.week_2,
+            week_3: weeks.week_3,
+            week_4: weeks.week_4,
+            week_5: weeks.week_5,
+            week_6: weeks.week_6,
+            week_7: weeks.week_7,
+            week_8: weeks.week_8,
+            week_9: weeks.week_9,
+            week_10: weeks.week_10,
+            week_11: weeks.week_11,
+            week_12: weeks.week_12,
             analista: 'Desconhecido',
             promo_status: 'inativo' as const,
             cupom_status: 'inativo' as const,
