@@ -1,6 +1,13 @@
 import { type PerformanceRow } from '../components/PerformanceTable';
 import type { CarteiraRow } from '../types/carteira';
 import type { GatewaySheetCacheResult, GatewaySheetTable } from '../types/gatewaySheet';
+import {
+    mergeCidadesHeaderAndData,
+    normalizeCidadesGatewayPayload,
+    parseCarteiraFromGatewayTable,
+} from './cidadesSheet';
+import { mergeIndicadorHeaderAndData, normalizeIndicadorGatewayPayload } from './indicadorSheet';
+import { CARTEIRA_DATA_SOURCE, INDICADOR_DATA_SOURCE } from '../config/dataSource';
 import { supabase } from '../lib/supabase';
 
 export interface SyncResult {
@@ -12,9 +19,13 @@ export const CACHE_KEYS = {
     marketplace: 'partner_journey_data_cache_v5_marketplace',
     cd_novos: 'partner_journey_data_cache_v6_cd_novos',
     cd_desempenho: 'partner_journey_data_cache_v7_cd_desempenho',
-    carteira: 'partner_journey_data_cache_v11_carteira',
+    carteira: 'partner_journey_data_cache_v12_carteira',
     pedido_mensal: 'partner_journey_data_cache_v12_pedido_mensal',
     parceiro_mensal: 'partner_journey_data_cache_v17_parceiro_mensal',
+    crm: 'partner_journey_data_cache_v25_crm',
+    crm_indicador: 'partner_journey_data_cache_v25_crm_indicador',
+    crm_promo: 'partner_journey_data_cache_v25_crm_promo',
+    crm_cupom: 'partner_journey_data_cache_v25_crm_cupom',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;
@@ -103,9 +114,27 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2)
     return lastResponse!;
 }
 
-function buildQuotedSheetRange(tabName: string): string {
+function buildQuotedSheetRange(tabName: string, cellRange = 'A1:ZZ10000'): string {
     const safe = tabName.trim().replace(/'/g, "''");
-    return `'${safe}'!A1:ZZ10000`;
+    return `'${safe}'!${cellRange}`;
+}
+
+function buildIndicadorHeaderRange(tabName: string): string {
+    return buildQuotedSheetRange(tabName, 'A1:ZZ1');
+}
+
+function buildIndicadorDataRange(tabName: string): string {
+    const firstRow = INDICADOR_DATA_SOURCE.firstDataRow;
+    return buildQuotedSheetRange(tabName, `A${firstRow}:ZZ10000`);
+}
+
+function buildCidadesHeaderRange(tabName: string): string {
+    return buildQuotedSheetRange(tabName, 'A1:ZZ1');
+}
+
+function buildCidadesDataRange(tabName: string): string {
+    const firstRow = CARTEIRA_DATA_SOURCE.firstDataRow;
+    return buildQuotedSheetRange(tabName, `A${firstRow}:ZZ10000`);
 }
 
 type SheetRowParser = (rows: Record<string, unknown>[], headers?: string[]) => PerformanceRow[];
@@ -1212,29 +1241,25 @@ function parseCarteiraGatewayJson(json: Record<string, unknown>): CarteiraRow[] 
  * O Gateway usa a linha 1 como cabeçalho; o parser tolera título nas linhas 1–2.
  */
 export async function fetchCarteiraSheetData(sheetId: string, tabName: string): Promise<CarteiraRow[]> {
-    return enqueueSheetFetch(async () => {
-        const tab = tabName.trim();
-        const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tab)}`);
-        const response = await fetchWithRetry(url, getFetchOptions(), 0);
-
-        if (!response.ok) {
-            const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
-            if (response.status === 401) {
-                throw new Error(
-                    'Sessão não encontrada no Gateway. Faça login e tente novamente.',
-                );
-            }
-            throw new Error(formatSheetFetchError(response.status, errorJson));
-        }
-
-        const json = await response.json() as Record<string, unknown>;
-        const rows = parseCarteiraGatewayJson(json);
-        if (rows.length > 0) return rows;
-
-        throw new Error(
-            'Não foi possível ler a aba CIDADES. Na planilha, coloque os cabeçalhos (DIVISÃO, CIDADE, GRUPO, TOTAL…) na linha 1 da aba — o Gateway só reconhece a primeira linha como header.',
-        );
+    const table = await fetchGatewaySheetTable(sheetId, tabName, {
+        tabVariants: [
+            'CIDADES_FORMATADO',
+            'CIDADES Formatado',
+            'cidades_formatado',
+            'CIDADES',
+        ],
+        layout: 'cidades',
     });
+
+    const rows = parseCarteiraFromGatewayTable(table);
+    if (rows.length > 0) return rows;
+
+    const legacyRows = parseCarteiraGatewayJson({ data: { headers: table.headers, rows: table.rows } });
+    if (legacyRows.length > 0) return legacyRows;
+
+    throw new Error(
+        'Não foi possível ler a aba CIDADES/CIDADES_FORMATADO. Coloque os cabeçalhos (DIVISÃO, CIDADE, GRUPO, TOTAL…) na linha 1 — o Gateway só reconhece a primeira linha como header.',
+    );
 }
 
 export interface CarteiraCacheResult {
@@ -1268,53 +1293,295 @@ export function loadCarteiraCache(): CarteiraCacheResult | null {
     }
 }
 
-function parseGatewaySheetTableJson(json: Record<string, unknown>): GatewaySheetTable {
-    const data = json?.data as { headers?: string[]; rows?: Record<string, unknown>[] } | undefined;
-    if (data?.headers && Array.isArray(data.rows)) {
-        const headers = data.headers.map(h => String(h ?? '').trim()).filter(Boolean);
-        return { headers, rows: data.rows };
+/** Converte linha (array ou objeto) em objeto indexado pelos nomes das colunas */
+function mapRowToHeaderObject(
+    row: unknown,
+    headers: string[],
+): Record<string, unknown> | null {
+    if (row == null) return null;
+
+    if (Array.isArray(row)) {
+        const obj: Record<string, unknown> = {};
+        headers.forEach((header, index) => {
+            const key = header.trim() || `__col_${index}`;
+            obj[key] = row[index] ?? '';
+        });
+        return obj;
     }
 
-    const values = (json.values ?? (data as { values?: unknown[][] } | undefined)?.values) as unknown[][] | undefined;
+    if (typeof row === 'object') {
+        const record = row as Record<string, unknown>;
+        const keys = Object.keys(record);
+        const numericKeys = keys.length > 0 && keys.every(k => /^\d+$/.test(k));
+        if (numericKeys) {
+            const obj: Record<string, unknown> = {};
+            headers.forEach((header, index) => {
+                const key = header.trim() || `__col_${index}`;
+                obj[key] = record[String(index)] ?? record[index] ?? '';
+            });
+            return obj;
+        }
+        return record;
+    }
+
+    return null;
+}
+
+function normalizeGatewaySheetTable(headers: string[], rawRows: unknown[]): GatewaySheetTable {
+    const fullHeaders = headers.map(h => String(h ?? '').trim());
+    const rows = rawRows
+        .map(row => mapRowToHeaderObject(row, fullHeaders))
+        .filter((row): row is Record<string, unknown> => row != null)
+        .filter(row => Object.values(row).some(v => String(v ?? '').trim() !== ''));
+
+    return {
+        headers: fullHeaders.filter(Boolean),
+        orderedHeaders: fullHeaders,
+        rows,
+    };
+}
+
+type SheetTableLayout = 'indicador' | 'cidades' | 'default';
+
+function parseGatewaySheetTableJson(
+    json: Record<string, unknown>,
+    options?: { layout?: SheetTableLayout },
+): GatewaySheetTable {
+    const data = json?.data as { headers?: string[]; rows?: unknown[]; values?: unknown[][] } | undefined;
+    const values = (json.values ?? data?.values) as unknown[][] | undefined;
+
+    if (options?.layout === 'indicador') {
+        if (values?.length && Array.isArray(values[0])) {
+            return normalizeIndicadorGatewayPayload([], [], values);
+        }
+        if (data?.headers && Array.isArray(data.rows)) {
+            const headers = data.headers.map(h => String(h ?? '').trim());
+            return normalizeIndicadorGatewayPayload(headers, data.rows, values);
+        }
+    }
+
+    if (options?.layout === 'cidades') {
+        if (values?.length && Array.isArray(values[0])) {
+            return normalizeCidadesGatewayPayload([], [], values);
+        }
+        if (data?.headers && Array.isArray(data.rows)) {
+            const headers = data.headers.map(h => String(h ?? '').trim());
+            return normalizeCidadesGatewayPayload(headers, data.rows, values);
+        }
+    }
+
     if (values?.length && Array.isArray(values[0])) {
         const headers = values[0].map(cell => String(cell ?? '').trim());
-        const rows = values.slice(1)
-            .filter(row => row.some(cell => String(cell ?? '').trim() !== ''))
-            .map(row => {
-                const obj: Record<string, unknown> = {};
-                headers.forEach((header, index) => {
-                    if (header) obj[header] = row[index] ?? '';
-                });
-                return obj;
-            });
-        return { headers: headers.filter(Boolean), rows };
+        return normalizeGatewaySheetTable(headers, values.slice(1));
+    }
+
+    if (data?.headers && Array.isArray(data.rows)) {
+        const headers = data.headers.map(h => String(h ?? '').trim());
+        return normalizeGatewaySheetTable(headers, data.rows);
     }
 
     return { headers: [], rows: [] };
 }
 
-/**
- * GET /api/sheets/{sheetId}/{aba} — leitura genérica via Bigou Gateway
- */
-export async function fetchGatewaySheetTable(sheetId: string, tabName: string): Promise<GatewaySheetTable> {
-    return enqueueSheetFetch(async () => {
-        const tab = tabName.trim();
-        const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tab)}`);
-        const response = await fetchWithRetry(url, getFetchOptions(), 0);
+async function fetchTableFromGatewayVariants(
+    sheetId: string,
+    tabNames: string[],
+    parseOptions?: { layout?: SheetTableLayout },
+): Promise<GatewaySheetTable> {
+    const fetchOptions = getFetchOptions();
+    const uniqueTabs = [...new Set(tabNames.map(t => t.trim()).filter(Boolean))];
+    let lastError: Error | null = null;
 
-        if (!response.ok) {
-            const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
-            if (response.status === 401) {
-                throw new Error('Sessão não encontrada no Gateway. Faça login e tente novamente.');
+    for (const tab of uniqueTabs) {
+        const encodings = [
+            encodeSheetTabForGateway(tab),
+            encodeURIComponent(tab),
+        ].filter(Boolean);
+
+        for (const encoded of encodings) {
+            const url = apiUrl(`/api/sheets/${sheetId}/${encoded}`);
+            try {
+                const response = await fetchWithRetry(url, fetchOptions);
+                if (!response.ok) {
+                    const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+                    if (response.status === 401) {
+                        throw new Error('Sessão não encontrada no Gateway. Faça login e tente novamente.');
+                    }
+                    lastError = new Error(formatSheetFetchError(response.status, errorJson));
+                    continue;
+                }
+                const table = parseGatewaySheetTableJson(
+                    await response.json() as Record<string, unknown>,
+                    parseOptions,
+                );
+                if (table.rows.length > 0 || table.headers.length > 0) return table;
+            } catch (err) {
+                lastError = err as Error;
             }
-            throw new Error(formatSheetFetchError(response.status, errorJson));
+        }
+    }
+
+    throw lastError ?? new Error('Falha ao buscar planilha via Gateway');
+}
+
+async function fetchGoogleSheetValues(
+    sheetId: string,
+    quotedRange: string,
+    token: string,
+): Promise<unknown[][]> {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(quotedRange)}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json().catch(() => ({})) as { values?: unknown[][]; error?: { message?: string } };
+    if (!res.ok) {
+        throw new Error(json.error?.message || `Google API ${res.status}`);
+    }
+    return json.values ?? [];
+}
+
+async function fetchTableFromGoogleSheetsApiDirect(
+    sheetId: string,
+    tabName: string,
+    parseOptions?: { layout?: SheetTableLayout },
+): Promise<GatewaySheetTable> {
+    const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+    if (!token) throw new Error('Token indisponível para fallback Google API');
+
+    if (parseOptions?.layout === 'indicador') {
+        const [headerValues, dataValues] = await Promise.all([
+            fetchGoogleSheetValues(sheetId, buildIndicadorHeaderRange(tabName), token),
+            fetchGoogleSheetValues(sheetId, buildIndicadorDataRange(tabName), token),
+        ]);
+        const values = mergeIndicadorHeaderAndData(headerValues, dataValues);
+        return parseGatewaySheetTableJson({ values }, parseOptions);
+    }
+
+    if (parseOptions?.layout === 'cidades') {
+        const [headerValues, dataValues] = await Promise.all([
+            fetchGoogleSheetValues(sheetId, buildCidadesHeaderRange(tabName), token),
+            fetchGoogleSheetValues(sheetId, buildCidadesDataRange(tabName), token),
+        ]);
+        const values = mergeCidadesHeaderAndData(headerValues, dataValues);
+        return parseGatewaySheetTableJson({ values }, parseOptions);
+    }
+
+    const values = await fetchGoogleSheetValues(sheetId, buildQuotedSheetRange(tabName), token);
+    return parseGatewaySheetTableJson({ values }, parseOptions);
+}
+
+async function fetchTableFromNetlifySheetRead(
+    sheetId: string,
+    tabName: string,
+    tabVariants: string[] = [],
+    parseOptions?: { layout?: SheetTableLayout },
+): Promise<GatewaySheetTable> {
+    const tabs = [...new Set([tabName.trim(), ...tabVariants.map(t => t.trim()).filter(Boolean)])];
+    let lastError: Error | null = null;
+
+    for (const tab of tabs) {
+        try {
+            if (parseOptions?.layout === 'indicador' || parseOptions?.layout === 'cidades') {
+                const firstDataRow = parseOptions.layout === 'indicador'
+                    ? INDICADOR_DATA_SOURCE.firstDataRow
+                    : CARTEIRA_DATA_SOURCE.firstDataRow;
+                const headerParams = new URLSearchParams({ sheetId, tab, range: 'A1:ZZ1' });
+                const dataParams = new URLSearchParams({
+                    sheetId,
+                    tab,
+                    range: `A${firstDataRow}:ZZ10000`,
+                });
+                const [headerRes, dataRes] = await Promise.all([
+                    fetch(`/.netlify/functions/sheet-read?${headerParams.toString()}`, getFetchOptions()),
+                    fetch(`/.netlify/functions/sheet-read?${dataParams.toString()}`, getFetchOptions()),
+                ]);
+                if (!headerRes.ok || !dataRes.ok) {
+                    const err = await (headerRes.ok ? dataRes : headerRes).json().catch(() => ({})) as { error?: string };
+                    lastError = new Error(err.error || `sheet-read ${headerRes.status}/${dataRes.status}`);
+                    continue;
+                }
+                const headerJson = await headerRes.json() as { data?: { values?: unknown[][] } };
+                const dataJson = await dataRes.json() as { data?: { values?: unknown[][] } };
+                const values = parseOptions.layout === 'indicador'
+                    ? mergeIndicadorHeaderAndData(headerJson.data?.values ?? [], dataJson.data?.values ?? [])
+                    : mergeCidadesHeaderAndData(headerJson.data?.values ?? [], dataJson.data?.values ?? []);
+                const table = parseGatewaySheetTableJson({ values }, parseOptions);
+                if (table.rows.length > 0 || table.headers.length > 0) return table;
+                continue;
+            }
+
+            const params = new URLSearchParams({ sheetId, tab });
+            const res = await fetch(`/.netlify/functions/sheet-read?${params.toString()}`, getFetchOptions());
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({})) as { error?: string };
+                lastError = new Error(err.error || `sheet-read ${res.status}`);
+                continue;
+            }
+            const table = parseGatewaySheetTableJson(await res.json() as Record<string, unknown>, parseOptions);
+            if (table.rows.length > 0 || table.headers.length > 0) return table;
+        } catch (err) {
+            lastError = err as Error;
+        }
+    }
+
+    throw lastError ?? new Error('sheet-read falhou para todas as variantes de aba');
+}
+
+const EMPTY_GATEWAY_TABLE: GatewaySheetTable = { headers: [], rows: [] };
+
+export interface FetchGatewaySheetTableOptions {
+    tabVariants?: string[];
+    /** Se true, retorna tabela vazia em vez de lançar erro */
+    allowEmpty?: boolean;
+    /** Layout fixo: indicador (parceiros) ou cidades (carteira) */
+    layout?: SheetTableLayout;
+}
+
+/**
+ * GET /api/sheets/{sheetId}/{aba} — leitura genérica com fallbacks (Gateway → Google API → gviz)
+ */
+export async function fetchGatewaySheetTable(
+    sheetId: string,
+    tabName: string,
+    options?: FetchGatewaySheetTableOptions,
+): Promise<GatewaySheetTable> {
+    return enqueueSheetFetch(async () => {
+        const trimmedTab = tabName.trim();
+        const allTabNames = [...new Set([trimmedTab, ...(options?.tabVariants ?? [])])];
+
+        const parseOptions = options?.layout ? { layout: options.layout } : undefined;
+        const strategies: { name: string; run: () => Promise<GatewaySheetTable> }[] = [
+            { name: 'gateway', run: () => fetchTableFromGatewayVariants(sheetId, allTabNames, parseOptions) },
+            { name: 'google-api', run: () => fetchTableFromGoogleSheetsApiDirect(sheetId, trimmedTab, parseOptions) },
+            { name: 'sheet-read-gviz', run: () => fetchTableFromNetlifySheetRead(sheetId, trimmedTab, allTabNames, parseOptions) },
+        ];
+
+        let lastError: Error | null = null;
+
+        for (let i = 0; i < strategies.length; i++) {
+            const strategy = strategies[i];
+            const isLast = i === strategies.length - 1;
+            try {
+                const table = await strategy.run();
+                if (strategy.name !== 'gateway') {
+                    console.info(`[dataSync] Tabela "${trimmedTab}" carregada via fallback ${strategy.name} (${table.rows.length} linhas)`);
+                }
+                if (table.rows.length === 0 && table.headers.length === 0 && !options?.allowEmpty) {
+                    throw new Error(`A aba "${trimmedTab}" retornou vazia. Confira se os cabeçalhos estão na linha 1.`);
+                }
+                return table;
+            } catch (err) {
+                lastError = err as Error;
+                console.warn(`[dataSync] ${strategy.name} falhou para tabela "${trimmedTab}":`, lastError.message);
+                if (!isLast) continue;
+                if (options?.allowEmpty) {
+                    console.warn(`[dataSync] Aba opcional "${trimmedTab}" indisponível — usando tabela vazia.`);
+                    return EMPTY_GATEWAY_TABLE;
+                }
+                throw lastError;
+            }
         }
 
-        const table = parseGatewaySheetTableJson(await response.json() as Record<string, unknown>);
-        if (table.rows.length === 0 && table.headers.length === 0) {
-            throw new Error(`A aba "${tab}" retornou vazia. Confira se os cabeçalhos estão na linha 1.`);
-        }
-        return table;
+        if (options?.allowEmpty) return EMPTY_GATEWAY_TABLE;
+        throw lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
     });
 }
 

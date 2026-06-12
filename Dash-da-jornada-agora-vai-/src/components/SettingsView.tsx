@@ -89,8 +89,8 @@ function buildDataBases(): DataBaseLink[] {
         },
         {
             id: 'carteira',
-            name: 'Carteira (CIDADES)',
-            description: 'Resumo por cidade/grupo — cabeçalhos na linha 1 da aba CIDADES',
+            name: 'Carteira (CIDADES_FORMATADO)',
+            description: 'Resumo por cidade/grupo — cabeçalhos na linha 1 (DIVISÃO, CIDADE, GRUPO, TOTAL…)',
             tab: CARTEIRA_DATA_SOURCE.range,
             href: googleSheetUrl(CARTEIRA_DATA_SOURCE.sheetId),
             apiPath: gatewaySheetPath(CARTEIRA_DATA_SOURCE.sheetId, CARTEIRA_DATA_SOURCE.range),

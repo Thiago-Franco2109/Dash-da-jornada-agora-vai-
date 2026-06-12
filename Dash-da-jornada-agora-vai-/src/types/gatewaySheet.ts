@@ -2,6 +2,8 @@
 export interface GatewaySheetTable {
     headers: string[];
     rows: Record<string, unknown>[];
+    /** Ordem completa das colunas (A, B, C…) — preserva índices do INDICADOR */
+    orderedHeaders?: string[];
 }
 
 export interface GatewaySheetCacheResult {

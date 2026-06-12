@@ -16,6 +16,7 @@ import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import CarteiraView from './components/CarteiraView';
 import PedidoMensalView from './components/PedidoMensalView';
+import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
 import {
   PARTNER_DATA_SOURCES,
@@ -37,6 +38,7 @@ import { useStatusOverride } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
 import { useCarteiraData } from './hooks/useCarteiraData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
+import { useCrmData } from './hooks/useCrmData';
 
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
@@ -71,6 +73,7 @@ function App() {
     currentView === 'carteira' || currentView === 'pedido_mensal'
   );
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
+  const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const {
     data: desempenhoRawRows,
     isLoading: loadingDesempenho,
@@ -127,6 +130,17 @@ function App() {
     enabled: pedidoMensalTabActive,
   });
 
+  const {
+    partners: crmPartners,
+    parseInfo: crmParseInfo,
+    isLoading: loadingCrm,
+    isRefreshing: refreshingCrm,
+    error: crmError,
+    lastSyncTime: crmLastSync,
+    isUsingCache: crmUsingCache,
+    refreshData: refreshCrmData,
+  } = useCrmData({ enabled: crmTabActive });
+
   const { updateStatus } = useStatusOverride();
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
@@ -158,7 +172,7 @@ function App() {
     setAgeGroupFilter('all');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal' || currentView === 'crm')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
@@ -355,6 +369,22 @@ function App() {
             lastSyncTime={carteiraLastSync}
             onRefresh={refreshCarteiraData}
             managerFilter={managerFilter}
+          />
+        ) : currentView === 'crm' ? (
+          <CrmView
+            partners={crmPartners}
+            parseInfo={crmParseInfo}
+            isLoading={loadingCrm}
+            isRefreshing={refreshingCrm}
+            error={crmError}
+            isUsingCache={crmUsingCache}
+            lastSyncTime={crmLastSync}
+            onRefresh={refreshCrmData}
+            managerFilter={managerFilter}
+            searchQuery={searchQuery}
+            cityFilter={cityFilter}
+            setCityFilter={setCityFilter}
+            onStatusChange={handleStatusChange}
           />
         ) : currentView === 'pedido_mensal' ? (
           <PedidoMensalView

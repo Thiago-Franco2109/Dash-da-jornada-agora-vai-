@@ -20,6 +20,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         ...(!isCD ? [
             { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
             { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
+            { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
         ] : []),
         ...(isCD ? [{ id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }] : []),
         { id: 'reports', icon: 'assessment', label: 'Relatórios' },

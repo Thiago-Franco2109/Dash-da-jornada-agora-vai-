@@ -121,7 +121,7 @@ export default function CarteiraView({
                             Carteira
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 text-base">
-                            Visão por cidade e grupo — aba <strong>CIDADES</strong> via Bigou Gateway.
+                            Visão por cidade e grupo — aba <strong>CIDADES_FORMATADO</strong> via Bigou Gateway.
                         </p>
                         {managerFilter && (
                             <p className="text-xs text-primary font-semibold mt-1">

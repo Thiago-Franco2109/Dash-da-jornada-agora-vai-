@@ -58,10 +58,29 @@ export const LOGO_SHEET_SOURCE = {
     range: 'dados',
 } as const;
 
-/** Aba INDICADOR – contém status de promoção (col E) e cupom (col F) por parceiro */
+/**
+ * Aba INDICADOR_FORMATADO – valores estáticos, 1 linha = 1 parceiro.
+ * Gateway: GET /api/sheets/{sheetId}/INDICADOR_FORMATADO
+ * Linha 1: cabeçalho (CIDADE, ESTAB_ID, ESTABELECIMENTO…)
+ * Linha 2+: dados dos parceiros (sem linha de fórmulas)
+ */
 export const INDICADOR_DATA_SOURCE = {
     sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
-    range: 'INDICADOR',
+    range: 'INDICADOR_FORMATADO',
+    headerRow: 1,
+    firstDataRow: 2,
+} as const;
+
+/** Parceiros com promoção especial ativa */
+export const PROMO_ESPECIAL_DATA_SOURCE = {
+    sheetId: INDICADOR_DATA_SOURCE.sheetId,
+    range: 'PROMO-ESPECIAL',
+} as const;
+
+/** Parceiros com cupom ativo */
+export const CUPOM_PARCEIRO_DATA_SOURCE = {
+    sheetId: INDICADOR_DATA_SOURCE.sheetId,
+    range: 'CUPOM-PARCEIRO',
 } as const;
 
 /** Mapa cidade → ID (prioridade estratégica) */
@@ -70,10 +89,15 @@ export const CITY_IDS_DATA_SOURCE = {
     range: 'cidades-situação',
 } as const;
 
-/** Carteira — resumo por cidade/grupo (aba CIDADES) */
+/**
+ * Carteira — resumo por cidade/grupo.
+ * Preferir CIDADES_FORMATADO (cabeçalhos na linha 1); fallback para CIDADES.
+ */
 export const CARTEIRA_DATA_SOURCE = {
     sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
-    range: 'CIDADES',
+    range: 'CIDADES_FORMATADO',
+    headerRow: 1,
+    firstDataRow: 2,
 } as const;
 
 /** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
