@@ -35,7 +35,7 @@ function parseCSV(csvText: string): string[][] {
 
 function rowsToGatewayJson(values: string[][]) {
     if (values.length === 0) {
-        return { success: true, data: { headers: [], rows: [], count: 0 } };
+        return { success: true, data: { headers: [], rows: [], count: 0, values: [] } };
     }
     const headers = values[0].map(cell => String(cell ?? '').trim());
     const rows = values.slice(1).map(row => {
@@ -45,7 +45,7 @@ function rowsToGatewayJson(values: string[][]) {
         });
         return obj;
     });
-    return { success: true, data: { headers, rows, count: rows.length } };
+    return { success: true, data: { headers, rows, count: rows.length, values } };
 }
 
 function normalizeTabName(name: string): string {
@@ -81,8 +81,11 @@ async function listSheetTabs(sheetId: string, token: string): Promise<string[]> 
         .filter((t): t is string => Boolean(t));
 }
 
-async function fetchViaGviz(sheetId: string, tab: string, token: string): Promise<string[][]> {
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+async function fetchViaGviz(sheetId: string, tab: string, token: string, range?: string): Promise<string[][]> {
+    let gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+    if (range?.trim()) {
+        gvizUrl += `&range=${encodeURIComponent(range.trim())}`;
+    }
     const res = await fetch(gvizUrl, {
         headers: { Authorization: `Bearer ${token}` },
         redirect: 'follow',
@@ -107,6 +110,7 @@ export const handler: Handler = async (event) => {
 
     const sheetId = event.queryStringParameters?.sheetId?.trim();
     const tab = event.queryStringParameters?.tab?.trim();
+    const range = event.queryStringParameters?.range?.trim();
 
     if (!sheetId || !tab) {
         return { statusCode: 400, body: JSON.stringify({ error: 'Parâmetros sheetId e tab são obrigatórios' }) };
@@ -148,7 +152,7 @@ export const handler: Handler = async (event) => {
             };
         }
 
-        const values = await fetchViaGviz(sheetId, resolvedTab, token);
+        const values = await fetchViaGviz(sheetId, resolvedTab, token, range);
         return {
             statusCode: 200,
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Credentials': 'true' },

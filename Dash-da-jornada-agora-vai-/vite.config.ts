@@ -1,10 +1,17 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import dotenv from 'dotenv'
 import { GoogleAuth } from 'google-auth-library'
 
-dotenv.config()
+const appRoot = path.dirname(fileURLToPath(import.meta.url))
+const repoEnvDir = path.resolve(appRoot, '../..')
+
+// .env na raiz do clone (../../.env a partir desta pasta)
+dotenv.config({ path: path.join(repoEnvDir, '.env') })
+dotenv.config({ path: path.join(appRoot, '.env'), override: true })
 
 function parseCSV(csvText: string): string[][] {
   const rows: string[][] = []
@@ -54,6 +61,7 @@ function sheetReadDevPlugin(): Plugin {
           const parsed = new URL(rawUrl, 'http://localhost')
           const sheetId = parsed.searchParams.get('sheetId')?.trim()
           const tab = parsed.searchParams.get('tab')?.trim()
+          const range = parsed.searchParams.get('range')?.trim()
 
           if (!sheetId || !tab) {
             sendJson(400, { error: 'Parâmetros sheetId e tab são obrigatórios' })
@@ -64,7 +72,9 @@ function sheetReadDevPlugin(): Plugin {
           const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
           if (!clientEmail || !privateKey) {
-            sendJson(500, { error: 'Configure GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY no .env para a aba Todas as Lojas funcionar localmente' })
+            sendJson(500, {
+              error: 'Fallback local indisponível: configure GOOGLE_CLIENT_EMAIL e GOOGLE_PRIVATE_KEY no .env (raiz do repositório ou pasta do app). A aba Carteira usa o Gateway — faça login e confira VITE_API_ORIGIN.',
+            })
             return
           }
 
@@ -81,7 +91,8 @@ function sheetReadDevPlugin(): Plugin {
 
           for (const tabName of tabVariants) {
             try {
-              const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`
+              let gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`
+              if (range) gvizUrl += `&range=${encodeURIComponent(range)}`
               const apiRes = await fetch(gvizUrl, { headers: { Authorization: `Bearer ${tokenResult.token}` }, redirect: 'follow' })
               if (!apiRes.ok) {
                 lastError = `gviz ${apiRes.status}`
@@ -96,7 +107,7 @@ function sheetReadDevPlugin(): Plugin {
                 headers.forEach((header, index) => { obj[header] = row[index] != null ? String(row[index]) : '' })
                 return obj
               })
-              sendJson(200, { success: true, data: { headers, rows, count: rows.length } })
+              sendJson(200, { success: true, data: { headers, rows, count: rows.length, values } })
               return
             } catch (err: unknown) {
               lastError = err instanceof Error ? err.message : lastError
@@ -113,5 +124,6 @@ function sheetReadDevPlugin(): Plugin {
 }
 
 export default defineConfig({
+  envDir: repoEnvDir,
   plugins: [react(), tailwindcss(), sheetReadDevPlugin()],
 })

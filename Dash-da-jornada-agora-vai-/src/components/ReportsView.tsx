@@ -4,16 +4,15 @@ import type { EnrichedPerformanceRow } from '../utils/calculations';
 
 interface ReportsViewProps {
     data: EnrichedPerformanceRow[];
+    managerFilter?: string;
 }
 
-export default function ReportsView({ data }: ReportsViewProps) {
-    const [managerFilter, setManagerFilter] = useState('all');
+export default function ReportsView({ data, managerFilter = '' }: ReportsViewProps) {
     const [cityFilter, setCityFilter] = useState('all');
 
-    // Filtered data based on toolbar
     const filteredData = useMemo(() => {
         return data
-            .filter(row => managerFilter === 'all' || row.analista === managerFilter)
+            .filter(row => !managerFilter || row.analista === managerFilter)
             .filter(row => cityFilter === 'all' || row.cidade === cityFilter);
     }, [data, managerFilter, cityFilter]);
 
@@ -51,7 +50,6 @@ export default function ReportsView({ data }: ReportsViewProps) {
             .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
     }, [filteredData]);
 
-    const uniqueManagers = Array.from(new Set(data.map(d => d.analista))).filter(Boolean).sort();
     const uniqueCities = Array.from(new Set(data.map(d => d.cidade))).filter(Boolean).sort();
 
     return (
@@ -76,14 +74,11 @@ export default function ReportsView({ data }: ReportsViewProps) {
                             <span className="material-symbols-outlined text-slate-400 text-sm">filter_list</span>
                         </div>
                         
-                        <select 
-                            value={managerFilter}
-                            onChange={(e) => setManagerFilter(e.target.value)}
-                            className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-900 border-none rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer text-slate-700 dark:text-slate-200"
-                        >
-                            <option value="all">Todos os Gestores</option>
-                            {uniqueManagers.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
+                        {managerFilter && (
+                            <span className="text-xs font-bold px-3 py-2 bg-primary/10 text-primary rounded-xl">
+                                {managerFilter}
+                            </span>
+                        )}
 
                         <select 
                             value={cityFilter}
@@ -94,9 +89,9 @@ export default function ReportsView({ data }: ReportsViewProps) {
                             {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
 
-                        { (managerFilter !== 'all' || cityFilter !== 'all') && (
+                        {cityFilter !== 'all' && (
                             <button 
-                                onClick={() => { setManagerFilter('all'); setCityFilter('all'); }}
+                                onClick={() => setCityFilter('all')}
                                 className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
                                 title="Limpar filtros"
                             >

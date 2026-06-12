@@ -1,4 +1,6 @@
 import { type PerformanceRow } from '../components/PerformanceTable';
+import type { CarteiraRow } from '../types/carteira';
+import type { GatewaySheetCacheResult, GatewaySheetTable } from '../types/gatewaySheet';
 import { supabase } from '../lib/supabase';
 
 export interface SyncResult {
@@ -10,6 +12,9 @@ export const CACHE_KEYS = {
     marketplace: 'partner_journey_data_cache_v5_marketplace',
     cd_novos: 'partner_journey_data_cache_v6_cd_novos',
     cd_desempenho: 'partner_journey_data_cache_v7_cd_desempenho',
+    carteira: 'partner_journey_data_cache_v11_carteira',
+    pedido_mensal: 'partner_journey_data_cache_v12_pedido_mensal',
+    parceiro_mensal: 'partner_journey_data_cache_v17_parceiro_mensal',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;
@@ -971,4 +976,370 @@ export function mergeStatusOverridesIntoRows(rows: PerformanceRow[], map: Record
         }
         return row;
     });
+}
+
+function parseCarteiraInt(val: unknown): number {
+    if (val == null || val === '') return 0;
+    const n = parseInt(String(val).replace(/\D/g, ''), 10);
+    return Number.isNaN(n) ? 0 : n;
+}
+
+function parseCarteiraPercent(val: unknown): number {
+    if (val == null || val === '') return 0;
+    const raw = String(val).trim().replace(',', '.');
+    if (!raw) return 0;
+    if (raw.includes('%')) {
+        const n = parseFloat(raw.replace('%', ''));
+        return Number.isNaN(n) ? 0 : Math.round(n);
+    }
+    const n = parseFloat(raw);
+    if (Number.isNaN(n)) return 0;
+    if (n > 0 && n <= 1) return Math.round(n * 100);
+    return Math.round(n);
+}
+
+function gatewayRowsToCarteiraMatrix(
+    headers: string[],
+    rows: unknown[],
+): unknown[][] {
+    const matrix: unknown[][] = [headers];
+    for (const row of rows) {
+        if (Array.isArray(row)) {
+            matrix.push(row as unknown[]);
+            continue;
+        }
+        const obj = row as Record<string, unknown>;
+        const byHeader = headers.map(h => obj[h] ?? '');
+        const filled = byHeader.filter(c => String(c ?? '').trim() !== '').length;
+        if (filled <= 1 && Object.keys(obj).length > 1) {
+            matrix.push(Object.values(obj));
+        } else {
+            matrix.push(byHeader);
+        }
+    }
+    return matrix;
+}
+
+function looksLikeCarteiraHeaders(headers: string[]): boolean {
+    const cells = headers.map(h => normalizeCarteiraKey(String(h ?? '')));
+    return cells.some(c => c === 'cidade') && cells.some(c => c === 'grupo') && cells.some(c => c === 'total');
+}
+
+function parseCarteiraRowPositional(cells: unknown[]): CarteiraRow | null {
+    const cidade = String(cells[1] ?? '').trim();
+    const grupo = String(cells[2] ?? '').trim();
+    if (!cidade || !grupo || isCarteiraHeaderRow(cidade, grupo)) return null;
+
+    const total = parseCarteiraInt(cells[3]);
+    if (total === 0 && !cidade) return null;
+
+    return {
+        divisao: String(cells[0] ?? '').trim(),
+        cidade,
+        grupo,
+        total,
+        ativos: parseCarteiraInt(cells[4]),
+        suspenso: parseCarteiraInt(cells[5]),
+        pendente: parseCarteiraInt(cells[6]),
+        pctComPromo: parseCarteiraPercent(cells[7]),
+        promoAprovada: parseCarteiraInt(cells[8]),
+        semPromo: parseCarteiraInt(cells[9]),
+        pctComCupom: parseCarteiraPercent(cells[10]),
+        cupomAprovado: parseCarteiraInt(cells[11]),
+        semCupom: parseCarteiraInt(cells[12]),
+    };
+}
+
+function parseCarteiraPositionalFromMatrix(matrix: unknown[][]): CarteiraRow[] {
+    const headerIdx = findCarteiraHeaderRowIndex(matrix);
+    const startIdx = headerIdx >= 0 ? headerIdx + 1 : 0;
+    const parsed: CarteiraRow[] = [];
+
+    for (let i = startIdx; i < matrix.length; i++) {
+        const row = parseCarteiraRowPositional(matrix[i]);
+        if (row) parsed.push(row);
+    }
+    return parsed;
+}
+
+function isCarteiraHeaderRow(cidade: string, grupo: string): boolean {
+    const c = cidade.toLowerCase();
+    const g = grupo.toLowerCase();
+    return c === 'cidade' || g === 'grupo' || c.includes('trimestre') || c.includes('ºq') || g.includes('ºq');
+}
+
+function extractCarteiraValuesMatrix(json: Record<string, unknown>): unknown[][] | null {
+    const data = json.data as Record<string, unknown> | undefined;
+    const candidates = [data?.values, json.values, data?.rawValues, data?.raw];
+    for (const values of candidates) {
+        if (Array.isArray(values) && values.length > 0 && Array.isArray(values[0])) {
+            return values as unknown[][];
+        }
+    }
+    return null;
+}
+
+function findCarteiraHeaderRowIndex(matrix: unknown[][]): number {
+    for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+        const cells = matrix[i].map(cell => normalizeCarteiraKey(String(cell ?? '')));
+        const hasCidade = cells.some(c => c === 'cidade');
+        const hasGrupo = cells.some(c => c === 'grupo');
+        const hasTotal = cells.some(c => c === 'total');
+        if (hasCidade && hasGrupo && hasTotal) return i;
+    }
+    return -1;
+}
+
+function matrixToCarteiraRecords(matrix: unknown[][], headerIdx: number): Record<string, unknown>[] {
+    const headers = matrix[headerIdx].map(cell => String(cell ?? '').trim());
+    return matrix
+        .slice(headerIdx + 1)
+        .filter(row => row.some(cell => String(cell ?? '').trim() !== ''))
+        .map(row => {
+            const obj: Record<string, unknown> = {};
+            headers.forEach((header, index) => {
+                if (header) obj[header] = row[index] ?? '';
+            });
+            return obj;
+        });
+}
+
+/** A aba CIDADES tem título na linha 1 e cabeçalhos reais ~linha 3 — detecta pelo conteúdo. */
+function parseCarteiraFromValuesMatrix(matrix: unknown[][]): CarteiraRow[] {
+    const headerIdx = findCarteiraHeaderRowIndex(matrix);
+    if (headerIdx >= 0) {
+        const headers = matrix[headerIdx].map(cell => String(cell ?? '').trim());
+        const records = matrixToCarteiraRecords(matrix, headerIdx);
+        const parsed = parseCarteiraRows(records, headers);
+        if (parsed.length > 0) return parsed;
+    }
+    return parseCarteiraPositionalFromMatrix(matrix);
+}
+
+/** Parser da aba CIDADES (carteira por cidade/grupo) */
+export function parseCarteiraRows(rows: Record<string, unknown>[], _headers?: string[]): CarteiraRow[] {
+    const parsed: CarteiraRow[] = [];
+
+    for (const row of rows) {
+        const cidade = String(findCarteiraCell(row, 'CIDADE', 'Cidade', 'cidade') ?? '').trim();
+        const grupo = String(findCarteiraCell(row, 'GRUPO', 'Grupo', 'grupo') ?? '').trim();
+        if (!cidade || !grupo || isCarteiraHeaderRow(cidade, grupo)) continue;
+
+        const total = parseCarteiraInt(findCarteiraCell(row, 'TOTAL', 'Total', 'total'));
+        if (total === 0 && !cidade) continue;
+
+        parsed.push({
+            divisao: String(findCarteiraCell(row, 'DIVISÃO', 'DIVISAO', 'Divisão', 'divisao') ?? '').trim(),
+            cidade,
+            grupo,
+            total,
+            ativos: parseCarteiraInt(findCarteiraCell(row, 'ATIVOS', 'Ativos', 'ativos')),
+            suspenso: parseCarteiraInt(findCarteiraCell(row, 'SUSPENSO', 'Suspenso', 'suspenso')),
+            pendente: parseCarteiraInt(findCarteiraCell(row, 'PENDENTE', 'Pendente', 'pendente')),
+            pctComPromo: parseCarteiraPercent(findCarteiraCell(row, '% COM PROMO', 'COM PROMO', 'pct com promo')),
+            promoAprovada: parseCarteiraInt(findCarteiraCell(row, 'PROMO APROVADA', 'Promo Aprovada', 'promo aprovada')),
+            semPromo: parseCarteiraInt(findCarteiraCell(row, 'SEM PROMO', 'Sem Promo', 'sem promo')),
+            pctComCupom: parseCarteiraPercent(findCarteiraCell(row, '% COM CUPOM', 'COM CUPOM', 'pct com cupom')),
+            cupomAprovado: parseCarteiraInt(findCarteiraCell(row, 'CUPOM APROVADO', 'Cupom Aprovado', 'cupom aprovado')),
+            semCupom: parseCarteiraInt(findCarteiraCell(row, 'SEM CUPOM', 'Sem Cupom', 'sem cupom')),
+        });
+    }
+
+    return parsed;
+}
+
+function normalizeCarteiraKey(key: string): string {
+    return key
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[%_]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function findCarteiraCell(row: Record<string, unknown>, ...candidates: string[]): unknown {
+    const direct = findValue(row, ...candidates);
+    if (direct != null && direct !== '') return direct;
+
+    const normalizedCandidates = candidates.map(normalizeCarteiraKey);
+    for (const [key, value] of Object.entries(row)) {
+        if (value == null || value === '') continue;
+        const nk = normalizeCarteiraKey(key);
+        if (normalizedCandidates.some(c => nk === c || nk.includes(c) || c.includes(nk))) {
+            return value;
+        }
+    }
+    return undefined;
+}
+
+function parseCarteiraGatewayJson(json: Record<string, unknown>): CarteiraRow[] {
+    const matrix = extractCarteiraValuesMatrix(json);
+    if (matrix) {
+        const parsed = parseCarteiraFromValuesMatrix(matrix);
+        if (parsed.length > 0) return parsed;
+    }
+
+    const data = json?.data as { rows?: unknown[]; headers?: string[] } | undefined;
+    if (Array.isArray(data?.rows) && data.rows.length > 0 && Array.isArray(data.rows[0])) {
+        const parsed = parseCarteiraFromValuesMatrix(data.rows as unknown[][]);
+        if (parsed.length > 0) return parsed;
+    }
+
+    if (json?.data && typeof json.data === 'object') {
+        const payload = json.data as { rows?: Record<string, unknown>[]; headers?: string[] };
+        if (Array.isArray(payload.rows)) {
+            if (payload.headers && looksLikeCarteiraHeaders(payload.headers)) {
+                const parsed = parseCarteiraRows(payload.rows, payload.headers);
+                if (parsed.length > 0) return parsed;
+            }
+            if (payload.headers?.length) {
+                const matrix = gatewayRowsToCarteiraMatrix(payload.headers, payload.rows);
+                const parsed = parseCarteiraFromValuesMatrix(matrix);
+                if (parsed.length > 0) return parsed;
+            }
+        }
+    }
+    if (Array.isArray(json.rows)) {
+        const parsed = parseCarteiraRows(json.rows as Record<string, unknown>[]);
+        if (parsed.length > 0) return parsed;
+    }
+    return parseGatewayJson(json, parseCarteiraRows as unknown as SheetRowParser) as unknown as CarteiraRow[];
+}
+
+/**
+ * GET /api/sheets/{sheetId}/{aba} — Bigou Gateway (credentials: include)
+ * O Gateway usa a linha 1 como cabeçalho; o parser tolera título nas linhas 1–2.
+ */
+export async function fetchCarteiraSheetData(sheetId: string, tabName: string): Promise<CarteiraRow[]> {
+    return enqueueSheetFetch(async () => {
+        const tab = tabName.trim();
+        const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tab)}`);
+        const response = await fetchWithRetry(url, getFetchOptions(), 0);
+
+        if (!response.ok) {
+            const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+            if (response.status === 401) {
+                throw new Error(
+                    'Sessão não encontrada no Gateway. Faça login e tente novamente.',
+                );
+            }
+            throw new Error(formatSheetFetchError(response.status, errorJson));
+        }
+
+        const json = await response.json() as Record<string, unknown>;
+        const rows = parseCarteiraGatewayJson(json);
+        if (rows.length > 0) return rows;
+
+        throw new Error(
+            'Não foi possível ler a aba CIDADES. Na planilha, coloque os cabeçalhos (DIVISÃO, CIDADE, GRUPO, TOTAL…) na linha 1 da aba — o Gateway só reconhece a primeira linha como header.',
+        );
+    });
+}
+
+export interface CarteiraCacheResult {
+    data: CarteiraRow[];
+    lastSyncTime: Date;
+}
+
+export function saveCarteiraCache(result: CarteiraCacheResult): void {
+    try {
+        localStorage.setItem(CACHE_KEYS.carteira, JSON.stringify({
+            data: result.data,
+            lastSyncTime: result.lastSyncTime.toISOString(),
+        }));
+    } catch {
+        /* ignore */
+    }
+}
+
+export function loadCarteiraCache(): CarteiraCacheResult | null {
+    try {
+        const raw = localStorage.getItem(CACHE_KEYS.carteira);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed.data)) return null;
+        return {
+            data: parsed.data,
+            lastSyncTime: new Date(parsed.lastSyncTime),
+        };
+    } catch {
+        return null;
+    }
+}
+
+function parseGatewaySheetTableJson(json: Record<string, unknown>): GatewaySheetTable {
+    const data = json?.data as { headers?: string[]; rows?: Record<string, unknown>[] } | undefined;
+    if (data?.headers && Array.isArray(data.rows)) {
+        const headers = data.headers.map(h => String(h ?? '').trim()).filter(Boolean);
+        return { headers, rows: data.rows };
+    }
+
+    const values = (json.values ?? (data as { values?: unknown[][] } | undefined)?.values) as unknown[][] | undefined;
+    if (values?.length && Array.isArray(values[0])) {
+        const headers = values[0].map(cell => String(cell ?? '').trim());
+        const rows = values.slice(1)
+            .filter(row => row.some(cell => String(cell ?? '').trim() !== ''))
+            .map(row => {
+                const obj: Record<string, unknown> = {};
+                headers.forEach((header, index) => {
+                    if (header) obj[header] = row[index] ?? '';
+                });
+                return obj;
+            });
+        return { headers: headers.filter(Boolean), rows };
+    }
+
+    return { headers: [], rows: [] };
+}
+
+/**
+ * GET /api/sheets/{sheetId}/{aba} — leitura genérica via Bigou Gateway
+ */
+export async function fetchGatewaySheetTable(sheetId: string, tabName: string): Promise<GatewaySheetTable> {
+    return enqueueSheetFetch(async () => {
+        const tab = tabName.trim();
+        const url = apiUrl(`/api/sheets/${sheetId}/${encodeURIComponent(tab)}`);
+        const response = await fetchWithRetry(url, getFetchOptions(), 0);
+
+        if (!response.ok) {
+            const errorJson = await response.json().catch(() => ({})) as Record<string, unknown>;
+            if (response.status === 401) {
+                throw new Error('Sessão não encontrada no Gateway. Faça login e tente novamente.');
+            }
+            throw new Error(formatSheetFetchError(response.status, errorJson));
+        }
+
+        const table = parseGatewaySheetTableJson(await response.json() as Record<string, unknown>);
+        if (table.rows.length === 0 && table.headers.length === 0) {
+            throw new Error(`A aba "${tab}" retornou vazia. Confira se os cabeçalhos estão na linha 1.`);
+        }
+        return table;
+    });
+}
+
+export function saveGatewaySheetCache(cacheKey: string, result: GatewaySheetCacheResult): void {
+    try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+            data: result.data,
+            lastSyncTime: result.lastSyncTime.toISOString(),
+        }));
+    } catch {
+        /* ignore */
+    }
+}
+
+export function loadGatewaySheetCache(cacheKey: string): GatewaySheetCacheResult | null {
+    try {
+        const raw = localStorage.getItem(cacheKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed.data?.rows || !Array.isArray(parsed.data.rows)) return null;
+        return {
+            data: parsed.data as GatewaySheetTable,
+            lastSyncTime: new Date(parsed.lastSyncTime),
+        };
+    } catch {
+        return null;
+    }
 }

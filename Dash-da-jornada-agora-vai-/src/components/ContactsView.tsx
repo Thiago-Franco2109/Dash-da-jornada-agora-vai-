@@ -5,11 +5,11 @@ type SortConfig = { key: string; direction: 'asc' | 'desc' } | null;
 interface ContactsViewProps {
     data: EnrichedPerformanceRow[];
     onRowClick: (row: EnrichedPerformanceRow) => void;
+    managerFilter?: string;
 }
 
-export default function ContactsView({ data, onRowClick }: ContactsViewProps) {
+export default function ContactsView({ data, onRowClick, managerFilter = '' }: ContactsViewProps) {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'dias_desde_lancamento', direction: 'desc' });
-    const [managerFilter, setManagerFilter] = useState<string>('');
 
     // Filter partners that hit exactly 7, 14, 21 or 28 days today
     const contactsToday = useMemo(() => {
@@ -18,11 +18,6 @@ export default function ContactsView({ data, onRowClick }: ContactsViewProps) {
             return d === 7 || d === 14 || d === 21 || d === 28;
         });
     }, [data]);
-
-    const managers = useMemo(() => {
-        const unique = new Set(contactsToday.map(r => r.analista || 'Sem gestor'));
-        return Array.from(unique).sort();
-    }, [contactsToday]);
 
     const filteredAndSortedData = useMemo(() => {
         let result = [...contactsToday];
@@ -80,21 +75,12 @@ export default function ContactsView({ data, onRowClick }: ContactsViewProps) {
                     <p className="text-sm text-slate-500 dark:text-slate-400">Exibindo somente parceiros com contato agendado para hoje (D7, D14, D21, D28)</p>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <select 
-                            value={managerFilter}
-                            onChange={(e) => setManagerFilter(e.target.value)}
-                            className="appearance-none h-10 pl-4 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer"
-                        >
-                            <option value="">Filtrar por Responsável</option>
-                            {managers.map(m => (
-                                <option key={m} value={m}>{m}</option>
-                            ))}
-                        </select>
-                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px] pointer-events-none">expand_more</span>
-                    </div>
-                </div>
+                {managerFilter && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold">
+                        <span className="material-symbols-outlined text-[16px]">person</span>
+                        {managerFilter}
+                    </span>
+                )}
             </div>
 
             {/* Data Table Container */}

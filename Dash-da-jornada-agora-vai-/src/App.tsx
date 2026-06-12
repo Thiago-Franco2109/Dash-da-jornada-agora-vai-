@@ -14,22 +14,34 @@ import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
 import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
+import CarteiraView from './components/CarteiraView';
+import PedidoMensalView from './components/PedidoMensalView';
 import type { AppView } from './types/views';
-import { PARTNER_DATA_SOURCES, CD_DATA_SOURCES, CD_DESEMPENHO_SOURCES } from './config/dataSource';
+import {
+  PARTNER_DATA_SOURCES,
+  CD_DATA_SOURCES,
+  CD_DESEMPENHO_SOURCES,
+  PEDIDO_MENSAL_DATA_SOURCE,
+  PARCEIRO_MENSAL_DATA_SOURCE,
+} from './config/dataSource';
 import { enrichPartnerData, enrichDesempenhoPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
+import { useManagerSession } from './context/ManagerSessionContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
-import { identifyManagerFromUser, buildNoCityIndexMap } from './config/managerMapping';
+import { buildNoCityIndexMap } from './config/managerMapping';
 import { CACHE_KEYS } from './utils/dataSync';
 import { useStatusOverride } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
+import { useCarteiraData } from './hooks/useCarteiraData';
+import { useGatewaySheetData } from './hooks/useGatewaySheetData';
 
 function App() {
-  const { user, isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
+  const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
+  const { managerFilter, setManagerFilter } = useManagerSession();
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
@@ -39,7 +51,6 @@ function App() {
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [managerFilter, setManagerFilter] = useState('');
   const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
@@ -56,6 +67,10 @@ function App() {
 
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"
   const desempenhoTabActive = isAuthenticated && isCD && currentView === 'cd_desempenho';
+  const carteiraTabActive = isAuthenticated && !isCD && (
+    currentView === 'carteira' || currentView === 'pedido_mensal'
+  );
+  const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const {
     data: desempenhoRawRows,
     isLoading: loadingDesempenho,
@@ -70,6 +85,46 @@ function App() {
     skipSideData: false,
     enabled: desempenhoTabActive,
     syncProfile: 'cd_desempenho',
+  });
+
+  const {
+    rows: carteiraRows,
+    isLoading: loadingCarteira,
+    isRefreshing: refreshingCarteira,
+    error: carteiraError,
+    lastSyncTime: carteiraLastSync,
+    isUsingCache: carteiraUsingCache,
+    refreshData: refreshCarteiraData,
+  } = useCarteiraData({ enabled: carteiraTabActive });
+
+  const {
+    table: pedidoMensalTable,
+    isLoading: loadingPedidoMensal,
+    isRefreshing: refreshingPedidoMensal,
+    error: pedidoMensalError,
+    lastSyncTime: pedidoMensalLastSync,
+    isUsingCache: pedidoMensalUsingCache,
+    refreshData: refreshPedidoMensalData,
+  } = useGatewaySheetData({
+    sheetId: PEDIDO_MENSAL_DATA_SOURCE.sheetId,
+    tab: PEDIDO_MENSAL_DATA_SOURCE.range,
+    cacheKey: CACHE_KEYS.pedido_mensal,
+    enabled: pedidoMensalTabActive,
+  });
+
+  const {
+    table: parceiroMensalTable,
+    isLoading: loadingParceiroMensal,
+    isRefreshing: refreshingParceiroMensal,
+    error: parceiroMensalError,
+    lastSyncTime: parceiroMensalLastSync,
+    isUsingCache: parceiroMensalUsingCache,
+    refreshData: refreshParceiroMensalData,
+  } = useGatewaySheetData({
+    sheetId: PARCEIRO_MENSAL_DATA_SOURCE.sheetId,
+    tab: PARCEIRO_MENSAL_DATA_SOURCE.range,
+    cacheKey: CACHE_KEYS.parceiro_mensal,
+    enabled: pedidoMensalTabActive,
   });
 
   const { updateStatus } = useStatusOverride();
@@ -95,18 +150,7 @@ function App() {
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
   const { accessData, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
 
-  // 1.1 Automatic Manager Filter based on Google Account
-  useEffect(() => {
-    if (isAuthenticated && user && !managerFilter) {
-      const identifiedManager = identifyManagerFromUser(user);
-      if (identifiedManager) {
-        console.log(`[App] Gestor identificado: ${identifiedManager} (via conta: ${user.name || user.email})`);
-        setManagerFilter(identifiedManager);
-      }
-    }
-  }, [isAuthenticated, user, managerFilter]);
-
-  // Resetar filtros ao alternar entre Marketplace e Cardápio Digital
+  // Resetar filtros de tela ao alternar entre Marketplace e Cardápio Digital (gestor persiste na sessão)
   useEffect(() => {
     setCityFilter('');
     setSearchQuery('');
@@ -114,12 +158,8 @@ function App() {
     setAgeGroupFilter('all');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-
-    if (isAuthenticated && user) {
-      const identifiedManager = identifyManagerFromUser(user);
-      setManagerFilter(identifiedManager || '');
-    } else {
-      setManagerFilter('');
+    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal')) {
+      setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
       setCurrentView('dashboard');
@@ -129,7 +169,6 @@ function App() {
   useEffect(() => {
     if (currentView === 'cd_desempenho') {
       setSortConfig({ key: 'risco_churn', direction: 'desc' });
-      setManagerFilter('');
       setPriorityFilter('');
     }
   }, [currentView]);
@@ -302,10 +341,41 @@ function App() {
           <ProfileView />
         ) : currentView === 'contacts' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <ContactsView data={enrichedData} onRowClick={handleRowClick} />
+            <ContactsView data={enrichedData} onRowClick={handleRowClick} managerFilter={managerFilter} />
           </div>
         ) : currentView === 'reports' ? (
-          <ReportsView data={enrichedData} />
+          <ReportsView data={enrichedData} managerFilter={managerFilter} />
+        ) : currentView === 'carteira' ? (
+          <CarteiraView
+            rows={carteiraRows}
+            isLoading={loadingCarteira}
+            isRefreshing={refreshingCarteira}
+            error={carteiraError}
+            isUsingCache={carteiraUsingCache}
+            lastSyncTime={carteiraLastSync}
+            onRefresh={refreshCarteiraData}
+            managerFilter={managerFilter}
+          />
+        ) : currentView === 'pedido_mensal' ? (
+          <PedidoMensalView
+            pedidoTable={pedidoMensalTable}
+            parceiroTable={parceiroMensalTable}
+            isLoading={loadingPedidoMensal || loadingParceiroMensal}
+            isRefreshing={refreshingPedidoMensal || refreshingParceiroMensal}
+            error={[pedidoMensalError, parceiroMensalError].filter(Boolean).join(' · ') || null}
+            isUsingCache={pedidoMensalUsingCache || parceiroMensalUsingCache}
+            lastSyncTime={
+              pedidoMensalLastSync && parceiroMensalLastSync
+                ? (pedidoMensalLastSync > parceiroMensalLastSync ? pedidoMensalLastSync : parceiroMensalLastSync)
+                : pedidoMensalLastSync ?? parceiroMensalLastSync
+            }
+            onRefresh={() => {
+              refreshPedidoMensalData();
+              refreshParceiroMensalData();
+            }}
+            managerFilter={managerFilter}
+            carteiraRows={carteiraRows}
+          />
         ) : currentView === 'cd_desempenho' ? (
           currentSelectedRow ? (
             <div className="flex-1 min-h-0 overflow-y-auto">

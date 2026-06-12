@@ -17,6 +17,10 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
 
     const navItems: { id: AppView; icon: string; label: string }[] = [
         { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+        ...(!isCD ? [
+            { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
+            { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
+        ] : []),
         ...(isCD ? [{ id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }] : []),
         { id: 'reports', icon: 'assessment', label: 'Relatórios' },
         { id: 'contacts', icon: 'contact_phone', label: 'Contatos' },

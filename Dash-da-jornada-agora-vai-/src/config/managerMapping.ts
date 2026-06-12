@@ -155,6 +155,29 @@ export function identifyManagerFromUser(user: { name?: string; email?: string })
     return null;
 }
 
+/** Cidades cuja gestão efetiva pertence ao gestor informado. */
+export function getCitiesForManager(manager: Manager, mode: ProductModeKey = 'marketplace'): string[] {
+    const overrides = getManagerOverrides(mode);
+    const allCities = new Set([
+        ...Object.keys(INITIAL_CITY_MANAGER_MAP),
+        ...Object.keys(overrides),
+    ]);
+
+    return Array.from(allCities)
+        .filter(city => getEffectiveManager(city, '', mode) === manager)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+export function cityBelongsToManager(
+    city: string,
+    manager: Manager,
+    mode: ProductModeKey = 'marketplace',
+): boolean {
+    const trimmed = (city || '').trim();
+    if (!trimmed) return false;
+    return getEffectiveManager(trimmed, '', mode) === manager;
+}
+
 /** Retorna mapa estável de índice para parceiros sem cidade (ordem alfabética por nome). */
 export function buildNoCityIndexMap<T extends { cidade?: string; estab_id?: string; estabelecimento: string }>(
     rows: T[],

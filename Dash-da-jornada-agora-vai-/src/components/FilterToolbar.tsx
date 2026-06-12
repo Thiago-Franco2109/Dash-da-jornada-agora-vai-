@@ -62,7 +62,7 @@ export default function FilterToolbar({
                     value={managerFilter}
                     onChange={(e) => setManagerFilter(e.target.value)}
                 >
-                    <option value="">Gestor: Todos</option>
+                    <option value="">Gestor: Todos (sessão)</option>
                     {managers.map((manager) => (
                         <option key={manager} value={manager}>{manager}</option>
                     ))}

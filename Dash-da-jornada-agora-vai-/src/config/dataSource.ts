@@ -64,5 +64,36 @@ export const INDICADOR_DATA_SOURCE = {
     range: 'INDICADOR',
 } as const;
 
+/** Mapa cidade → ID (prioridade estratégica) */
+export const CITY_IDS_DATA_SOURCE = {
+    sheetId: '1ht9dNFXse4tQEJkMP62cuqbFcJwoFSC40RRmZYAY9zg',
+    range: 'cidades-situação',
+} as const;
+
+/** Carteira — resumo por cidade/grupo (aba CIDADES) */
+export const CARTEIRA_DATA_SOURCE = {
+    sheetId: '1xmaLRjv7kbVjIdSlX0QiKzh2umRAGmLkia4LfYRT7aU',
+    range: 'CIDADES',
+} as const;
+
 /** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
 export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.sheetId;
+
+// ── Planilha mestre (ligação com banco) ───────────────────────
+
+/** Planilha central — espelho / export do banco de dados */
+export const MASTER_DATA_SOURCE = {
+    sheetId: '13pX9998D6yRJuJ7IsS33iYMzA804sZ81lDanJaCpM_c',
+} as const;
+
+/** Pedidos mensais — aba PEDIDO_MENSAL da planilha mestre */
+export const PEDIDO_MENSAL_DATA_SOURCE = {
+    sheetId: MASTER_DATA_SOURCE.sheetId,
+    range: 'PEDIDO_MENSAL',
+} as const;
+
+/** Parceiro mensal — GMV, comissão e métricas por estabelecimento/período */
+export const PARCEIRO_MENSAL_DATA_SOURCE = {
+    sheetId: MASTER_DATA_SOURCE.sheetId,
+    range: (import.meta.env.VITE_PARCEIRO_MENSAL_TAB as string | undefined)?.trim() || 'PARCEIRO_MENSAL',
+} as const;
