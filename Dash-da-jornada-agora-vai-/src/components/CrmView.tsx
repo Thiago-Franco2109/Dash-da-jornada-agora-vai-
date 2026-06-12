@@ -5,6 +5,16 @@ import type { CrmPartner, CrmPipelineStage, CrmParseInfo } from '../types/crm';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import { crmCitiesMatch, formatBRL, normalizeCrmCity } from '../utils/crmData';
+import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
+import {
+    computeTopCitiesByGmv,
+    getOfertasDaCasaStatusMeta,
+    isTopPriorityCity,
+    OFERTAS_DA_CASA_CAMPAIGN,
+    OFERTAS_DA_CASA_STATUS_OPTIONS,
+} from '../config/crmCampaigns';
+import { useCityIds } from '../hooks/useCityIds';
+import type { OfertasDaCasaStatus } from '../types/crmCampaigns';
 
 interface CrmViewProps {
     partners: CrmPartner[];
@@ -133,6 +143,9 @@ export default function CrmView({
     onPartnerStatusChange,
 }: CrmViewProps) {
     const { getNote, upsertNote, registerContact } = useCrmNotes();
+    const { getStatus: getOfertasStatus, setStatus: setOfertasStatus } = useOfertasDaCasa();
+    const { getCmsPromoUrl } = useCityIds();
+    const topCities = useMemo(() => computeTopCitiesByGmv(partners, 5), [partners]);
     const [stageFilter, setStageFilter] = useState<CrmPipelineStage>('all');
     const [internalCityFilter, setInternalCityFilter] = useState('');
     const cityFilter = setCityFilterProp !== undefined ? (cityFilterProp ?? '') : internalCityFilter;
@@ -298,6 +311,14 @@ export default function CrmView({
         }
     };
 
+    const ofertasPendentesTop5 = useMemo(() => {
+        return activePartnersInCity.filter(row => {
+            if (!isTopPriorityCity(row.cidade, topCities)) return false;
+            const st = getOfertasStatus(row.partnerId);
+            return st !== 'participando';
+        }).length;
+    }, [activePartnersInCity, topCities, getOfertasStatus]);
+
     const gmvHeader = partners[0]?.gmvMesLabel || parseInfo?.gmvColumn || 'GMV';
 
     const formatGmv = (row: CrmPartner) => {
@@ -405,6 +426,21 @@ export default function CrmView({
                     )}
                 </div>
 
+                {topCities.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 text-sm">
+                        <span className="material-symbols-outlined text-amber-600 shrink-0">home_work</span>
+                        <p className="text-amber-900 dark:text-amber-200 flex-1">
+                            <span className="font-bold">Ofertas da casa</span>
+                            {' · '}Top 5 GMV: {topCities.join(', ')}
+                            {ofertasPendentesTop5 > 0 && (
+                                <span className="ml-1 font-semibold">
+                                    — {ofertasPendentesTop5.toLocaleString('pt-BR')} parceiro(s) ativo(s) ainda sem participação
+                                </span>
+                            )}
+                        </p>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                     {[
                         { label: 'Parceiros ativos', value: kpis.total, icon: 'store', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
@@ -496,7 +532,7 @@ export default function CrmView({
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse min-w-[1100px]">
+                            <table className="w-full text-left border-collapse min-w-[1250px]">
                                 <thead>
                                     <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Parceiro</th>
@@ -506,6 +542,7 @@ export default function CrmView({
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">GMV {gmvHeader}</th>
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Promoção</th>
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Cupom PARC.</th>
+                                        <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Ofertas da casa</th>
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Último contato</th>
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Follow-up</th>
                                         <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Notas</th>
@@ -586,6 +623,32 @@ export default function CrmView({
                                                                 {row.cupomCount} cupom(ns) cadastrado(s)
                                                             </span>
                                                         )}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-4">
+                                                    <div className="flex flex-col items-center gap-1 min-w-[130px]">
+                                                        {isTopPriorityCity(row.cidade, topCities) && (
+                                                            <span className="text-[9px] font-bold uppercase text-amber-600">Top 5 GMV</span>
+                                                        )}
+                                                        <select
+                                                            value={getOfertasStatus(id)}
+                                                            onChange={e => setOfertasStatus(id, e.target.value as OfertasDaCasaStatus, 'manual')}
+                                                            className={`w-full h-8 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-bold px-2 ${getOfertasDaCasaStatusMeta(getOfertasStatus(id)).badge}`}
+                                                        >
+                                                            {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            ))}
+                                                        </select>
+                                                        <a
+                                                            href={getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, row.cidade)}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline"
+                                                            title="Abrir campanha Ofertas da casa no CMS"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[14px]">launch</span>
+                                                            CMS
+                                                        </a>
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-400">

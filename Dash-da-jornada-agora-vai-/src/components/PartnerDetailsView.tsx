@@ -7,6 +7,10 @@ import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { getPartnerState, updateContactDetail, finishJourney, reopenJourney, type ContactDetail } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
 import { useCityIds } from '../hooks/useCityIds';
+import type { CrmPartner } from '../types/crm';
+import type { PromoStatus } from '../hooks/useStatusOverride';
+import PartnerPromoCrmSection from './PartnerPromoCrmSection';
+import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
 
 interface PartnerDetailsViewProps {
     partner: EnrichedPerformanceRow;
@@ -15,6 +19,10 @@ interface PartnerDetailsViewProps {
     dailyAccessData?: StoreAccessData;
     onRefresh: () => void;
     viewContext?: 'journey' | 'desempenho';
+    crmPartner?: CrmPartner | null;
+    topCities?: string[];
+    onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
+    onNavigateToCrm?: () => void;
 }
 
 type TabKey = 'geral' | 'contatos' | 'promocoes' | 'historico';
@@ -54,7 +62,17 @@ const STATUS_OPTIONS = [
     { value: 'negado' as const, label: 'Negado', color: 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 border border-red-200/50 dark:border-red-900/30' },
 ];
 
-export default function PartnerDetailsView({ partner, onBack, dailyAccessData, onRefresh, viewContext = 'journey' }: PartnerDetailsViewProps) {
+export default function PartnerDetailsView({
+    partner,
+    onBack,
+    dailyAccessData,
+    onRefresh,
+    viewContext = 'journey',
+    crmPartner,
+    topCities = [],
+    onStatusChange,
+    onNavigateToCrm,
+}: PartnerDetailsViewProps) {
     const isDesempenho = viewContext === 'desempenho';
     const [activeTab, setActiveTab] = useState<TabKey>('geral');
     
@@ -222,7 +240,8 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
     const { getCmsPromoUrl, getLocalidadeId, loading: cityIdsLoading } = useCityIds();
 
     const BASE_PROMO_URL = 'https://admin.bigou.com.br/campanha/promocao/cadastro/26';
-    const promoUrl     = getCmsPromoUrl(BASE_PROMO_URL, partner.cidade);
+    const promoUrl = getCmsPromoUrl(BASE_PROMO_URL, partner.cidade);
+    const ofertasDaCasaUrl = getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, partner.cidade);
     const localidadeId = getLocalidadeId(partner.cidade);
 
     // Cupom: vai direto para a aba de cupons do estabelecimento
@@ -943,127 +962,18 @@ export default function PartnerDetailsView({ partner, onBack, dailyAccessData, o
                 )}
 
                 {activeTab === 'promocoes' && (
-                    <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        <div className="bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-8">
-                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
-                                <span className="material-symbols-outlined text-violet-500 text-3xl">local_offer</span>
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Promoções & Cupons</h2>
-                                    <p className="text-slate-500 dark:text-slate-400 text-sm">Gerenciamento de atrativos no cardápio para impulsionar conversão</p>
-                                </div>
-                            </div>
-
-                            <div className="grid gap-6">
-                                {/* Promoção */}
-                                <div className="flex items-center justify-between p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <div className="flex items-center gap-4">
-                                        <div className="size-12 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                                            <span className="material-symbols-outlined text-[24px]">percent</span>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-3">
-                                                <h4 className="text-lg font-bold text-slate-800 dark:text-white">Promoção Ativa</h4>
-                                                {partner.promo_status === 'ativo' && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
-                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                        Ativo no Painel
-                                                    </span>
-                                                )}
-                                                {partner.promo_status === 'aguardando' && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
-                                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
-                                                        Aguardando Configuração
-                                                    </span>
-                                                )}
-                                                {(!partner.promo_status || partner.promo_status === 'inativo') && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
-                                                        <span className="material-symbols-outlined text-[14px]">remove_circle</span>
-                                                        Não Configurado
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Garante que o parceiro possua descontos diretos em produtos no cardápio.</p>
-                                        </div>
-                                    </div>
-                                    <a 
-                                        href={promoUrl}
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="flex flex-col items-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors min-w-[140px]"
-                                        title={localidadeId ? `Abre com localidade_id=${localidadeId}` : cityIdsLoading ? 'Carregando ID da cidade...' : 'ID da cidade não encontrado — link genérico'}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-[18px]">launch</span>
-                                            Gerenciar no CMS
-                                        </span>
-                                        {localidadeId ? (
-                                            <span className="text-[10px] font-normal text-indigo-400 dark:text-indigo-500">
-                                                localidade_id={localidadeId}
-                                            </span>
-                                        ) : cityIdsLoading ? (
-                                            <span className="text-[10px] font-normal text-indigo-300 animate-pulse">carregando cidade...</span>
-                                        ) : (
-                                            <span className="text-[10px] font-normal text-amber-500">⚠ cidade não mapeada</span>
-                                        )}
-                                    </a>
-                                </div>
-
-                                {/* Cupom */}
-                                <div className="flex items-center justify-between p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 shadow-sm">
-                                    <div className="flex items-center gap-4">
-                                        <div className="size-12 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                                            <span className="material-symbols-outlined text-[24px]">confirmation_number</span>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-3">
-                                                <h4 className="text-lg font-bold text-slate-800 dark:text-white">Cupom Exclusivo</h4>
-                                                {partner.cupom_status === 'ativo' && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
-                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                        Ativo no Painel
-                                                    </span>
-                                                )}
-                                                {partner.cupom_status === 'aguardando' && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
-                                                        <span className="material-symbols-outlined text-[14px]">schedule</span>
-                                                        Aguardando Configuração
-                                                    </span>
-                                                )}
-                                                {(!partner.cupom_status || partner.cupom_status === 'inativo') && (
-                                                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
-                                                        <span className="material-symbols-outlined text-[14px]">remove_circle</span>
-                                                        Não Configurado
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Cupons exclusivos para primeira compra ou retenção de clientes.</p>
-                                        </div>
-                                    </div>
-                                    <a
-                                        href={cupomUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex flex-col items-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors min-w-[140px]"
-                                        title={localidadeId ? `Abre com localidade_id=${localidadeId}` : cityIdsLoading ? 'Carregando ID da cidade...' : 'ID da cidade não encontrado — link genérico'}
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-[18px]">launch</span>
-                                            Gerenciar no CMS
-                                        </span>
-                                        {localidadeId ? (
-                                            <span className="text-[10px] font-normal text-indigo-400 dark:text-indigo-500">
-                                                localidade_id={localidadeId}
-                                            </span>
-                                        ) : cityIdsLoading ? (
-                                            <span className="text-[10px] font-normal text-indigo-300 animate-pulse">carregando cidade...</span>
-                                        ) : (
-                                            <span className="text-[10px] font-normal text-amber-500">⚠ cidade não mapeada</span>
-                                        )}
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <PartnerPromoCrmSection
+                        partner={partner}
+                        crmPartner={crmPartner}
+                        topCities={topCities}
+                        promoUrl={promoUrl}
+                        ofertasDaCasaUrl={ofertasDaCasaUrl}
+                        cupomUrl={cupomUrl}
+                        localidadeId={localidadeId != null ? String(localidadeId) : null}
+                        cityIdsLoading={cityIdsLoading}
+                        onStatusChange={onStatusChange}
+                        onNavigateToCrm={onNavigateToCrm}
+                    />
                 )}
 
                 {activeTab === 'historico' && (

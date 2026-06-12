@@ -18,6 +18,8 @@ import CarteiraView from './components/CarteiraView';
 import PedidoMensalView from './components/PedidoMensalView';
 import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
+import type { CrmPartner } from './types/crm';
+import { computeTopCitiesByGmv } from './config/crmCampaigns';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -74,6 +76,7 @@ function App() {
   );
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
+  const crmDataEnabled = isAuthenticated && !isCD && (crmTabActive || selectedRow !== null);
   const {
     data: desempenhoRawRows,
     isLoading: loadingDesempenho,
@@ -139,7 +142,19 @@ function App() {
     lastSyncTime: crmLastSync,
     isUsingCache: crmUsingCache,
     refreshData: refreshCrmData,
-  } = useCrmData({ enabled: crmTabActive });
+  } = useCrmData({ enabled: crmDataEnabled });
+
+  const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
+
+  const crmPartnerForSelected = useMemo((): CrmPartner | null => {
+    if (!selectedRow || isCD) return null;
+    const estabId = String(selectedRow.estab_id ?? '').trim();
+    const nome = selectedRow.estabelecimento?.trim();
+    return crmPartners.find(p =>
+      (estabId && p.estabId === estabId) ||
+      (nome && p.estabelecimento === nome),
+    ) ?? null;
+  }, [selectedRow, crmPartners, isCD]);
 
   const { updateStatus } = useStatusOverride();
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
@@ -448,6 +463,14 @@ function App() {
                 onBack={() => setSelectedRow(null)}
                 dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
                 onRefresh={() => setMappingVersion(v => v + 1)}
+                crmPartner={crmPartnerForSelected}
+                topCities={topCitiesByGmv}
+                onStatusChange={handleStatusChange}
+                onNavigateToCrm={() => {
+                  setCityFilter(currentSelectedRow.cidade);
+                  setSelectedRow(null);
+                  setCurrentView('crm');
+                }}
               />
               </div>
             ) : (
