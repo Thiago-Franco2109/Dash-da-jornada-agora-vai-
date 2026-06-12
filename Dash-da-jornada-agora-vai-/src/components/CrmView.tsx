@@ -13,6 +13,7 @@ import {
     OFERTAS_DA_CASA_CAMPAIGN,
     OFERTAS_DA_CASA_STATUS_OPTIONS,
 } from '../config/crmCampaigns';
+import { isParceiroContratoAtivo, normalizeParceiroContratoStatus } from '../utils/parceirosSheet';
 import { useCityIds } from '../hooks/useCityIds';
 import type { OfertasDaCasaStatus } from '../types/crmCampaigns';
 
@@ -110,20 +111,20 @@ function StatusDropdown({
     );
 }
 
-function isParceiroAtivo(status: string): boolean {
-    const s = status.toLowerCase();
-    return s.includes('ativo') && !s.includes('inativo');
-}
-
 function partnerStatusBadge(status: string) {
-    const s = status.toLowerCase();
-    if (isParceiroAtivo(status)) {
-        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+    const norm = normalizeParceiroContratoStatus(status);
+    switch (norm) {
+        case 'ativo':
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400';
+        case 'pendente':
+            return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400';
+        case 'suspenso':
+            return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+        case 'cancelado':
+            return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+        default:
+            return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
     }
-    if (s.includes('susp')) {
-        return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-    }
-    return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
 }
 
 export default function CrmView({
@@ -150,7 +151,7 @@ export default function CrmView({
     const [internalCityFilter, setInternalCityFilter] = useState('');
     const cityFilter = setCityFilterProp !== undefined ? (cityFilterProp ?? '') : internalCityFilter;
     const setCityFilter = setCityFilterProp ?? setInternalCityFilter;
-    const [statusParceiroFilter, setStatusParceiroFilter] = useState<'all' | 'ativo' | 'suspenso'>('all');
+    const [statusParceiroFilter, setStatusParceiroFilter] = useState<'all' | 'ativo' | 'pendente' | 'suspenso' | 'cancelado'>('all');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editNotes, setEditNotes] = useState('');
     const [editFollowUp, setEditFollowUp] = useState('');
@@ -173,7 +174,7 @@ export default function CrmView({
     const activeCountByCity = useMemo(() => {
         const map = new Map<string, number>();
         partners.forEach(p => {
-            if (!isParceiroAtivo(p.statusParceiro)) return;
+            if (!isParceiroContratoAtivo(p.statusParceiro)) return;
             const city = normalizeCrmCity(p.cidade);
             if (!city) return;
             map.set(city, (map.get(city) ?? 0) + 1);
@@ -187,7 +188,7 @@ export default function CrmView({
     }, [partners, cityFilter]);
 
     const activePartnersInCity = useMemo(
-        () => partnersInCity.filter(row => isParceiroAtivo(row.statusParceiro)),
+        () => partnersInCity.filter(row => isParceiroContratoAtivo(row.statusParceiro)),
         [partnersInCity],
     );
 
@@ -199,8 +200,10 @@ export default function CrmView({
                 const q = searchQuery.toLowerCase();
                 if (!row.estabelecimento.toLowerCase().includes(q) && !row.cidade.toLowerCase().includes(q)) return false;
             }
-            if (statusParceiroFilter === 'ativo' && !isParceiroAtivo(row.statusParceiro)) return false;
-            if (statusParceiroFilter === 'suspenso' && !row.statusParceiro.toLowerCase().includes('susp')) return false;
+            if (statusParceiroFilter !== 'all') {
+                const norm = normalizeParceiroContratoStatus(row.statusParceiro);
+                if (norm !== statusParceiroFilter) return false;
+            }
             return true;
         });
     }, [partnersInCity, stageFilter, searchQuery, statusParceiroFilter, localStatus]);
@@ -336,7 +339,7 @@ export default function CrmView({
                             CRM — Prospecção de Promoções
                         </h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            Todos os parceiros da aba INDICADOR_FORMATADO, cruzados com PROMO-ESPECIAL e CUPOM-PARCEIRO.
+                            Parceiros do INDICADOR_FORMATADO · status via aba PARCEIROS · cruzamento PROMO-ESPECIAL e CUPOM-PARCEIRO.
                         </p>
                         {parseInfo && (
                             <p className="text-[11px] text-slate-400 mt-1">
@@ -344,6 +347,9 @@ export default function CrmView({
                                     ? `${kpis.total.toLocaleString('pt-BR')} parceiros ativos em ${cityFilter}`
                                     : `${kpis.total.toLocaleString('pt-BR')} parceiros ativos · ${kpis.cities} cidades`}
                                 {parseInfo.gmvColumn ? ` · GMV: coluna "${parseInfo.gmvColumn}"` : ''}
+                                {parseInfo.parceirosRows > 0
+                                    ? ` · status PARCEIROS: ${parseInfo.parceirosMatched}/${parseInfo.parsedPartners} casados`
+                                    : ''}
                             </p>
                         )}
                     </div>
@@ -470,7 +476,9 @@ export default function CrmView({
                     >
                         <option value="all">Status parceiro: Todos</option>
                         <option value="ativo">Somente ativos</option>
+                        <option value="pendente">Somente pendentes</option>
                         <option value="suspenso">Somente suspensos</option>
+                        <option value="cancelado">Somente cancelados</option>
                     </select>
                     <select
                         value={sortKey}
@@ -522,7 +530,7 @@ export default function CrmView({
                     {isLoading && partners.length === 0 ? (
                         <div className="flex flex-col items-center justify-center p-16">
                             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4" />
-                            <p className="text-slate-500 text-sm">Carregando INDICADOR_FORMATADO, PROMO-ESPECIAL e CUPOM-PARCEIRO…</p>
+                            <p className="text-slate-500 text-sm">Carregando INDICADOR_FORMATADO, PARCEIROS, PROMO-ESPECIAL e CUPOM-PARCEIRO…</p>
                         </div>
                     ) : sorted.length === 0 ? (
                         <div className="flex flex-col items-center justify-center p-16 text-center">

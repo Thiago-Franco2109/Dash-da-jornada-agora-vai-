@@ -40,6 +40,8 @@ export interface CrmParseInfo {
     indicadorRows: number;
     promoEspecialRows: number;
     cupomParceiroRows: number;
+    parceirosRows: number;
+    parceirosMatched: number;
     indicadorHeaders: string[];
     gmvColumn: string | null;
     parsedPartners: number;

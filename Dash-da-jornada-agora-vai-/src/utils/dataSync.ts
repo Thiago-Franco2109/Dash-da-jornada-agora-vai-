@@ -22,10 +22,11 @@ export const CACHE_KEYS = {
     carteira: 'partner_journey_data_cache_v12_carteira',
     pedido_mensal: 'partner_journey_data_cache_v12_pedido_mensal',
     parceiro_mensal: 'partner_journey_data_cache_v17_parceiro_mensal',
-    crm: 'partner_journey_data_cache_v25_crm',
-    crm_indicador: 'partner_journey_data_cache_v25_crm_indicador',
-    crm_promo: 'partner_journey_data_cache_v25_crm_promo',
-    crm_cupom: 'partner_journey_data_cache_v25_crm_cupom',
+    crm: 'partner_journey_data_cache_v26_crm',
+    crm_indicador: 'partner_journey_data_cache_v26_crm_indicador',
+    crm_promo: 'partner_journey_data_cache_v26_crm_promo',
+    crm_cupom: 'partner_journey_data_cache_v26_crm_cupom',
+    crm_parceiros: 'partner_journey_data_cache_v26_crm_parceiros',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;

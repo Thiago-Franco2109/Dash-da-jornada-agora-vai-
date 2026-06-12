@@ -7,6 +7,7 @@ import {
     resolveSheetColumn,
 } from './sheetColumnMatch';
 import { normalizeEstabId } from './indicadorSheet';
+import { buildParceirosStatusMap, resolveParceiroStatusFromMap } from './parceirosSheet';
 import { getManagerForPartner } from '../config/managerMapping';
 
 /**
@@ -268,6 +269,7 @@ export function parseCrmPartners(
     indicador: GatewaySheetTable,
     promoEspecial: GatewaySheetTable,
     cupomParceiro: GatewaySheetTable,
+    parceiros: GatewaySheetTable,
     options?: {
         logoMap?: Record<string, string>;
         statusOverrides?: Record<string, { promo: string; cupom: string }>;
@@ -276,11 +278,13 @@ export function parseCrmPartners(
     const ordered = orderedHeadersOf(indicador);
     const promoMap = buildPromoEspecialMap(promoEspecial);
     const cupomMap = buildCupomParceiroMap(cupomParceiro);
+    const parceirosStatusMap = buildParceirosStatusMap(parceiros);
     const logoMap = options?.logoMap ?? {};
     const overrides = options?.statusOverrides ?? {};
 
     const partners: CrmPartner[] = [];
     let skipped = 0;
+    let parceirosMatched = 0;
 
     for (const row of indicador.rows) {
         const parsed = parseIndicadorRow(row, ordered);
@@ -312,6 +316,8 @@ export function parseCrmPartners(
 
         const gmvValue = parseBRL(parsed.gmvRaw);
         const analista = getManagerForPartner(parsed.cidade, 'Desconhecido', undefined, 'marketplace');
+        const statusParceiro = resolveParceiroStatusFromMap(parsed.estabId, parceirosStatusMap, parsed.contrato);
+        if (parceirosStatusMap.has(lookupKey)) parceirosMatched++;
 
         const logoUrl =
             logoMap[partnerId] ||
@@ -324,7 +330,7 @@ export function parseCrmPartners(
             cidade: normalizeCrmCity(parsed.cidade),
             estabId: parsed.estabId,
             estabelecimento: parsed.estabelecimento,
-            statusParceiro: parsed.contrato,
+            statusParceiro,
             indiceGmv: gmvValue > 0 ? gmvValue : null,
             indiceGmvRaw: parsed.gmvRaw || '—',
             gmvMesLabel: parsed.gmvCol ?? '',
@@ -357,6 +363,8 @@ export function parseCrmPartners(
             indicadorRows: indicador.rows.length,
             promoEspecialRows: promoEspecial.rows.length,
             cupomParceiroRows: cupomParceiro.rows.length,
+            parceirosRows: parceiros.rows.length,
+            parceirosMatched,
             indicadorHeaders: ordered.slice(0, 12).map((h, i) => h.trim() || `col ${i}`),
             gmvColumn: findGmvMonthColumns(ordered)[0] ?? null,
             parsedPartners: partners.length,

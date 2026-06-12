@@ -121,3 +121,12 @@ export const PARCEIRO_MENSAL_DATA_SOURCE = {
     sheetId: MASTER_DATA_SOURCE.sheetId,
     range: (import.meta.env.VITE_PARCEIRO_MENSAL_TAB as string | undefined)?.trim() || 'PARCEIRO_MENSAL',
 } as const;
+
+/**
+ * Status do contrato por parceiro (ativo, pendente, suspenso, cancelado).
+ * Gateway: GET /api/sheets/{sheetId}/PARCEIROS
+ */
+export const PARCEIROS_DATA_SOURCE = {
+    sheetId: MASTER_DATA_SOURCE.sheetId,
+    range: 'PARCEIROS',
+} as const;

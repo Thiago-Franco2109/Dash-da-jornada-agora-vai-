@@ -9,6 +9,7 @@ import {
     MASTER_DATA_SOURCE,
     PEDIDO_MENSAL_DATA_SOURCE,
     PARCEIRO_MENSAL_DATA_SOURCE,
+    PARCEIROS_DATA_SOURCE,
     CITY_IDS_DATA_SOURCE,
 } from '../config/dataSource';
 
@@ -112,6 +113,15 @@ function buildDataBases(): DataBaseLink[] {
             tab: PARCEIRO_MENSAL_DATA_SOURCE.range,
             href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
             apiPath: gatewaySheetPath(PARCEIRO_MENSAL_DATA_SOURCE.sheetId, PARCEIRO_MENSAL_DATA_SOURCE.range),
+            kind: 'sheet',
+        },
+        {
+            id: 'parceiros',
+            name: 'Parceiros — status do contrato (planilha mestre)',
+            description: 'Status ativo, pendente, suspenso ou cancelado por estabelecimento',
+            tab: PARCEIROS_DATA_SOURCE.range,
+            href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
+            apiPath: gatewaySheetPath(PARCEIROS_DATA_SOURCE.sheetId, PARCEIROS_DATA_SOURCE.range),
             kind: 'sheet',
         },
         {

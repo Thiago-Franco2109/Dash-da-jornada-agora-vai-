@@ -3,6 +3,7 @@ import {
     INDICADOR_DATA_SOURCE,
     PROMO_ESPECIAL_DATA_SOURCE,
     CUPOM_PARCEIRO_DATA_SOURCE,
+    PARCEIROS_DATA_SOURCE,
     LOGO_SHEET_SOURCE,
 } from '../config/dataSource';
 import type { CrmPartner, CrmParseInfo } from '../types/crm';
@@ -121,7 +122,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             );
             saveGatewaySheetCache(CACHE_KEYS.crm_indicador, { data: indicador, lastSyncTime: new Date() });
 
-            const [promoEspecial, cupomParceiro, logoMap, statusOverrides] = await Promise.all([
+            const [promoEspecial, cupomParceiro, parceiros, logoMap, statusOverrides] = await Promise.all([
                 fetchOptionalCrmSheet(
                     PROMO_ESPECIAL_DATA_SOURCE.sheetId,
                     PROMO_ESPECIAL_DATA_SOURCE.range,
@@ -134,6 +135,12 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                     ['CUPOM-PARCEIRO', 'CUPOM_PARCEIRO', 'CUPOM PARCEIRO', 'CUPOM-PARC'],
                     CACHE_KEYS.crm_cupom,
                 ),
+                fetchOptionalCrmSheet(
+                    PARCEIROS_DATA_SOURCE.sheetId,
+                    PARCEIROS_DATA_SOURCE.range,
+                    ['PARCEIROS', 'Parceiros'],
+                    CACHE_KEYS.crm_parceiros,
+                ),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch(() => ({} as Record<string, string>)),
                 fetchStatusOverridesMap().catch(() => ({})),
             ]);
@@ -142,6 +149,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                 indicador,
                 promoEspecial,
                 cupomParceiro,
+                parceiros,
                 { logoMap, statusOverrides },
             );
 
@@ -175,10 +183,12 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             if (indicadorCache?.data?.rows?.length) {
                 const promoCache = loadGatewaySheetCache(CACHE_KEYS.crm_promo);
                 const cupomCache = loadGatewaySheetCache(CACHE_KEYS.crm_cupom);
+                const parceirosCache = loadGatewaySheetCache(CACHE_KEYS.crm_parceiros);
                 const { partners: parsed, parseInfo: info } = parseCrmPartners(
                     indicadorCache.data,
                     promoCache?.data ?? EMPTY_TABLE,
                     cupomCache?.data ?? EMPTY_TABLE,
+                    parceirosCache?.data ?? EMPTY_TABLE,
                 );
                 if (parsed.length > 0) {
                     setPartners(parsed);

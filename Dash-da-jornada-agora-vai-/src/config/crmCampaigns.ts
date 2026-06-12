@@ -1,6 +1,7 @@
 import type { CrmPartner } from '../types/crm';
 import type { OfertasDaCasaStatus } from '../types/crmCampaigns';
 import { normalizeCrmCity } from '../utils/crmData';
+import { isParceiroContratoAtivo } from '../utils/parceirosSheet';
 
 export const OFERTAS_DA_CASA_CAMPAIGN = {
     id: 'ofertas_da_casa',
@@ -31,8 +32,7 @@ export function computeTopCitiesByGmv(partners: CrmPartner[], limit = 5): string
     for (const partner of partners) {
         const city = normalizeCrmCity(partner.cidade);
         if (!city) continue;
-        const st = partner.statusParceiro.toLowerCase();
-        if (!st.includes('ativo') || st.includes('inativo')) continue;
+        if (!isParceiroContratoAtivo(partner.statusParceiro)) continue;
         totals.set(city, (totals.get(city) ?? 0) + (partner.indiceGmv ?? 0));
     }
 
