@@ -19,6 +19,7 @@ export const CACHE_KEYS = {
     marketplace: 'partner_journey_data_cache_v5_marketplace',
     cd_novos: 'partner_journey_data_cache_v6_cd_novos',
     cd_desempenho: 'partner_journey_data_cache_v7_cd_desempenho',
+    mp_desempenho: 'partner_journey_data_cache_v8_mp_desempenho',
     carteira: 'partner_journey_data_cache_v12_carteira',
     pedido_mensal: 'partner_journey_data_cache_v12_pedido_mensal',
     parceiro_mensal: 'partner_journey_data_cache_v17_parceiro_mensal',

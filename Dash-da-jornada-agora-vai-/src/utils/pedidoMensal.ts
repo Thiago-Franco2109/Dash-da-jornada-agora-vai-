@@ -240,30 +240,33 @@ export function buildCitySummaries(rows: PedidoMensalRow[], monthKeyFilter = '')
 }
 
 export function buildPedidoMensalSeries(rows: PedidoMensalRow[]): PedidoMensalMonthPoint[] {
-    const map = new Map<string, PedidoMensalMonthPoint>();
+    const map = new Map<string, PedidoMensalMonthPoint & { estabSet: Set<string> }>();
 
     for (const row of rows) {
         if (!row.monthStart) continue;
         const key = sheetMonthKey(row.monthStart);
-        const existing = map.get(key);
-        if (existing) {
-            existing.pedidosAceitos += row.pedidosAceitos;
-            existing.pedidosCancelados += row.pedidosCancelados;
-            existing.comissaoLiq += row.comissaoLiq;
-            existing.lojas += 1;
-        } else {
-            map.set(key, {
+        let entry = map.get(key);
+        if (!entry) {
+            entry = {
                 monthStart: row.monthStart,
                 label: format(row.monthStart, 'MMM/yy', { locale: ptBR }),
-                pedidosAceitos: row.pedidosAceitos,
-                pedidosCancelados: row.pedidosCancelados,
-                comissaoLiq: row.comissaoLiq,
-                lojas: 1,
-            });
+                pedidosAceitos: 0,
+                pedidosCancelados: 0,
+                comissaoLiq: 0,
+                lojas: 0,
+                estabSet: new Set<string>(),
+            };
+            map.set(key, entry);
         }
+        if (row.estabelecimento) entry.estabSet.add(row.estabelecimento);
+        entry.pedidosAceitos += row.pedidosAceitos;
+        entry.pedidosCancelados += row.pedidosCancelados;
+        entry.comissaoLiq += row.comissaoLiq;
     }
 
-    return Array.from(map.values()).sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
+    return Array.from(map.values())
+        .map(({ estabSet, ...point }) => ({ ...point, lojas: estabSet.size }))
+        .sort((a, b) => a.monthStart.getTime() - b.monthStart.getTime());
 }
 
 export function filterPedidoMensalRows(

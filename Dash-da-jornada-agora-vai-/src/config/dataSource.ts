@@ -43,6 +43,14 @@ export const CD_DATA_SOURCES = [
     CD_NOVOS_DATA_SOURCE,
 ];
 
+/** Marketplace — desempenho de todos os parceiros (pedidos semanais) */
+export const MARKETPLACE_DESEMPENHO_DATA_SOURCE = {
+    sheetId: THIAGO_DATA_SOURCE.sheetId,
+    range: (import.meta.env.VITE_MP_DESEMPENHO_TAB as string | undefined)?.trim() || 'TODOS_DESEMPENHO',
+};
+
+export const MARKETPLACE_DESEMPENHO_SOURCES = [MARKETPLACE_DESEMPENHO_DATA_SOURCE];
+
 /** Fonte da aba Todas as Lojas (referência estável para o hook) */
 export const CD_DESEMPENHO_SOURCES = [CD_DESEMPENHO_DATA_SOURCE];
 

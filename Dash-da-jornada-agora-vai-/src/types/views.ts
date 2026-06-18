@@ -4,6 +4,8 @@ export type AppView =
     | 'pedido_mensal'
     | 'crm'
     | 'cd_desempenho'
+    | 'churn'
+    | 'todos_parceiros'
     | 'settings'
     | 'about'
     | 'managers'

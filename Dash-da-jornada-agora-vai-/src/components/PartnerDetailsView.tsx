@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
 import { formatarFormaPagamento, formatarMoedaBRL } from '../config/cdContracts';
 import { type EnrichedPerformanceRow, DESEMPENHO_WEEKS_COUNT, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel, getWeekValue } from '../utils/calculations';
-import MenuFunnel, { type FunnelStep } from './MenuFunnel';
+import MenuFunnel, { type FunnelStep, type MenuFunnelSourceLink } from './MenuFunnel';
+import { ACCESS_DATA_SOURCE, THIAGO_DATA_SOURCE } from '../config/dataSource';
 import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { getPartnerState, updateContactDetail, finishJourney, reopenJourney, type ContactDetail } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
@@ -268,6 +269,34 @@ export default function PartnerDetailsView({
         const endStr = `${format(end, 'yyyy-MM-dd')} 23:59:59`;
         return `https://admin.bigou.com.br/relatorio/pedidos?data_inicio=${encodeURIComponent(startStr)}&data_fim=${encodeURIComponent(endStr)}&estabelecimentos=${estabId}`;
     };
+
+    const funnelSourceLinks: MenuFunnelSourceLink[] = (() => {
+        const links: MenuFunnelSourceLink[] = [
+            {
+                href: `https://docs.google.com/spreadsheets/d/${ACCESS_DATA_SOURCE.sheetId}/edit`,
+                label: 'Planilha de acessos',
+                description: `Aba "${ACCESS_DATA_SOURCE.range}" — acessos únicos por dia`,
+                icon: 'table_chart',
+            },
+            {
+                href: `https://docs.google.com/spreadsheets/d/${THIAGO_DATA_SOURCE.sheetId}/edit`,
+                label: 'Planilha de onboarding',
+                description: `Aba "${THIAGO_DATA_SOURCE.range}" — pedidos confirmados por semana`,
+                icon: 'description',
+            },
+        ];
+
+        if (partner.estab_id) {
+            links.unshift({
+                href: getReportsUrl(partner.estab_id),
+                label: 'Analytics Bigou',
+                description: 'Relatório de pedidos desta loja (últimos 28 dias)',
+                icon: 'assessment',
+            });
+        }
+
+        return links;
+    })();
 
     // ---- Funil: apenas dados reais das planilhas integradas (acessos + pedidos) ----
     const orders = partner.total_pedidos;
@@ -686,7 +715,7 @@ export default function PartnerDetailsView({
                         {/* Análise do Cardápio – full width funnel */}
                         <div className="lg:col-span-3 mt-2">
                             {funnel.length > 0 ? (
-                                <MenuFunnel steps={funnel} />
+                                <MenuFunnel steps={funnel} sourceLinks={funnelSourceLinks} />
                             ) : (
                                 <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 flex flex-col items-center gap-3 text-center">
                                     <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-5xl">analytics</span>

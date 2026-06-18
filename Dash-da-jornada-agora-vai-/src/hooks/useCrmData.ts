@@ -13,6 +13,7 @@ import {
     fetchGatewaySheetTable,
     fetchPartnerLogoMap,
     fetchStatusOverridesMap,
+    fetchRelevanceMap,
     saveGatewaySheetCache,
     loadGatewaySheetCache,
     CACHE_KEYS,
@@ -21,6 +22,7 @@ import {
 interface CrmCachePayload {
     partners: CrmPartner[];
     parseInfo: CrmParseInfo;
+    relevanceMap: Record<string, number>;
     lastSyncTime: Date;
 }
 
@@ -35,6 +37,7 @@ function loadCrmCache(): CrmCachePayload | null {
         return {
             partners: parsed.partners,
             parseInfo: parsed.parseInfo,
+            relevanceMap: parsed.relevanceMap ?? {},
             lastSyncTime: new Date(parsed.lastSyncTime),
         };
     } catch {
@@ -47,6 +50,7 @@ function saveCrmCache(payload: CrmCachePayload): void {
         localStorage.setItem(CACHE_KEYS.crm, JSON.stringify({
             partners: payload.partners,
             parseInfo: payload.parseInfo,
+            relevanceMap: payload.relevanceMap,
             lastSyncTime: payload.lastSyncTime.toISOString(),
         }));
     } catch {
@@ -81,6 +85,7 @@ interface UseCrmDataOptions {
 export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
     const [partners, setPartners] = useState<CrmPartner[]>([]);
     const [parseInfo, setParseInfo] = useState<CrmParseInfo | null>(null);
+    const [relevanceMap, setRelevanceMap] = useState<Record<string, number>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -96,6 +101,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
         if (hasCache) {
             setPartners(cached!.partners);
             setParseInfo(cached!.parseInfo);
+            setRelevanceMap(cached!.relevanceMap ?? {});
             setLastSyncTime(cached!.lastSyncTime);
             setIsUsingCache(true);
             setIsLoading(false);
@@ -122,7 +128,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             );
             saveGatewaySheetCache(CACHE_KEYS.crm_indicador, { data: indicador, lastSyncTime: new Date() });
 
-            const [promoEspecial, cupomParceiro, parceiros, logoMap, statusOverrides] = await Promise.all([
+            const [promoEspecial, cupomParceiro, parceiros, logoMap, statusOverrides, relevance] = await Promise.all([
                 fetchOptionalCrmSheet(
                     PROMO_ESPECIAL_DATA_SOURCE.sheetId,
                     PROMO_ESPECIAL_DATA_SOURCE.range,
@@ -143,6 +149,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                 ),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch(() => ({} as Record<string, string>)),
                 fetchStatusOverridesMap().catch(() => ({})),
+                fetchRelevanceMap().catch(() => ({})),
             ]);
 
             const { partners: parsed, parseInfo: info } = parseCrmPartners(
@@ -164,9 +171,10 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             const syncTime = new Date();
             setPartners(parsed);
             setParseInfo(info);
+            setRelevanceMap(relevance);
             setLastSyncTime(syncTime);
             setIsUsingCache(false);
-            saveCrmCache({ partners: parsed, parseInfo: info, lastSyncTime: syncTime });
+            saveCrmCache({ partners: parsed, parseInfo: info, relevanceMap: relevance, lastSyncTime: syncTime });
 
             if (parsed.length === 0) {
                 setError(
@@ -197,12 +205,14 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                 } else if (hasCache && cached) {
                     setPartners(cached.partners);
                     setParseInfo(cached.parseInfo);
+                    setRelevanceMap(cached.relevanceMap ?? {});
                     setLastSyncTime(cached.lastSyncTime);
                     setIsUsingCache(true);
                 }
             } else if (hasCache && cached) {
                 setPartners(cached.partners);
                 setParseInfo(cached.parseInfo);
+                setRelevanceMap(cached.relevanceMap ?? {});
                 setLastSyncTime(cached.lastSyncTime);
                 setIsUsingCache(true);
             }
@@ -221,6 +231,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
         if (cached?.partners?.length) {
             setPartners(cached.partners);
             setParseInfo(cached.parseInfo);
+            setRelevanceMap(cached.relevanceMap ?? {});
             setLastSyncTime(cached.lastSyncTime);
             setIsUsingCache(true);
             setIsLoading(false);
@@ -231,6 +242,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
     return {
         partners,
         parseInfo,
+        relevanceMap,
         isLoading,
         isRefreshing,
         error,

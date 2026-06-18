@@ -31,6 +31,10 @@ export type PerformanceRow = {
     total_avaliacoes?: number;
     /** Relevância Comercial (1-5) vinda do Supabase */
     commercial_relevance?: number;
+    /** INDICADOR col. G+ — rótulo do mês mais recente (ex. jun./26) */
+    pedidos_mes_label?: string;
+    /** Valor bruto da célula de pedidos do mês */
+    pedidos_mes_raw?: string;
 };
 
 export type SortConfig = {
@@ -44,8 +48,10 @@ interface PerformanceTableProps {
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => void;
-    /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD (churn) */
-    variant?: 'journey' | 'desempenho';
+    /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD; indicador = carteira INDICADOR_FORMATADO */
+    variant?: 'journey' | 'desempenho' | 'indicador';
+    /** Cabeçalho da coluna de pedidos mensais (ex. jun./26) */
+    pedidosMesHeader?: string;
 }
 
 type ActiveDropdown = { rowIndex: number; field: 'promo' | 'cupom' } | null;
@@ -164,8 +170,10 @@ function StatusDropdown({
 // ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onStatusChange, variant = 'journey' }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onStatusChange, variant = 'journey', pedidosMesHeader }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
+    const isIndicador = variant === 'indicador';
+    const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
     const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
 
     // Fecha dropdown ao pressionar Escape
@@ -298,7 +306,25 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('status')}>
                                     Status {renderSortIcon('status')}
                                 </th>
-                                {isDesempenho ? (
+                                {isIndicador ? (
+                                    <>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
+                                            {pedidosColLabel} {renderSortIcon('total_pedidos')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Promo
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                            Cupom
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('risco_churn')}>
+                                            Risco {renderSortIcon('risco_churn')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('analista')}>
+                                            Gestor {renderSortIcon('analista')}
+                                        </th>
+                                    </>
+                                ) : isDesempenho ? (
                                     <>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('week_1')}>
                                             S1 <span className="normal-case font-normal text-[10px] text-primary">(atual)</span> {renderSortIcon('week_1')}
@@ -366,7 +392,13 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700 bg-white dark:bg-slate-900">
                             {data.map((row, index) => {
-                                const isTopPriority = index < 10 && (isDesempenho ? ((row.risco_churn ?? 0) >= 4 || row.mrr_em_risco) : row.priority_stars >= 4);
+                                const isTopPriority = index < 10 && (
+                                    isDesempenho
+                                        ? ((row.risco_churn ?? 0) >= 4 || row.mrr_em_risco)
+                                        : isIndicador
+                                            ? ((row.risco_churn ?? 0) >= 4)
+                                            : row.priority_stars >= 4
+                                );
                                 const partnerId = row.estab_id || row.estabelecimento;
 
                                 const renderContactDots = () => {
@@ -454,7 +486,51 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 {row.status}
                                             </span>
                                         </td>
-                                        {isDesempenho ? (
+                                        {isIndicador ? (
+                                            <>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    <span className={`font-bold text-lg ${(row.total_pedidos ?? 0) <= 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                                                        {row.pedidos_mes_raw && row.pedidos_mes_raw !== '—'
+                                                            ? row.pedidos_mes_raw
+                                                            : (row.total_pedidos ?? 0)}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                    <StatusDropdown
+                                                        rowIndex={index}
+                                                        totalRows={data.length}
+                                                        field="promo"
+                                                        partnerId={partnerId}
+                                                        currentStatus={row.promo_status}
+                                                        activeDropdown={activeDropdown}
+                                                        setActiveDropdown={setActiveDropdown}
+                                                        onStatusChange={onStatusChange}
+                                                    >
+                                                        {renderIndicadorBadge(row.promo_status)}
+                                                    </StatusDropdown>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                    <StatusDropdown
+                                                        rowIndex={index}
+                                                        totalRows={data.length}
+                                                        field="cupom"
+                                                        partnerId={partnerId}
+                                                        currentStatus={row.cupom_status}
+                                                        activeDropdown={activeDropdown}
+                                                        setActiveDropdown={setActiveDropdown}
+                                                        onStatusChange={onStatusChange}
+                                                    >
+                                                        {renderIndicadorBadge(row.cupom_status)}
+                                                    </StatusDropdown>
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
+                                                    {renderStars(row.risco_churn ?? row.priority_stars)}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">
+                                                    {row.analista || '—'}
+                                                </td>
+                                            </>
+                                        ) : isDesempenho ? (
                                             <>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center font-medium text-slate-800 dark:text-slate-200">{row.week_1}</td>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-600 dark:text-slate-300">{row.week_2}</td>

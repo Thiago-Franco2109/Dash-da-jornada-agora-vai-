@@ -14,6 +14,7 @@ import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
 import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
+import AllPartnersView from './components/AllPartnersView';
 import CarteiraView from './components/CarteiraView';
 import PedidoMensalView from './components/PedidoMensalView';
 import CrmView from './components/CrmView';
@@ -28,6 +29,7 @@ import {
   PARCEIRO_MENSAL_DATA_SOURCE,
 } from './config/dataSource';
 import { enrichPartnerData, enrichDesempenhoPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
+import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
@@ -70,13 +72,15 @@ function App() {
   });
 
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"
-  const desempenhoTabActive = isAuthenticated && isCD && currentView === 'cd_desempenho';
+  const desempenhoTabActive = isAuthenticated && isCD && (currentView === 'cd_desempenho' || currentView === 'churn');
   const carteiraTabActive = isAuthenticated && !isCD && (
     currentView === 'carteira' || currentView === 'pedido_mensal'
   );
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
-  const crmDataEnabled = isAuthenticated && !isCD && (crmTabActive || selectedRow !== null);
+  const crmDataEnabled = isAuthenticated && !isCD && (
+    crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null
+  );
   const {
     data: desempenhoRawRows,
     isLoading: loadingDesempenho,
@@ -136,6 +140,7 @@ function App() {
   const {
     partners: crmPartners,
     parseInfo: crmParseInfo,
+    relevanceMap: crmRelevanceMap,
     isLoading: loadingCrm,
     isRefreshing: refreshingCrm,
     error: crmError,
@@ -160,19 +165,24 @@ function App() {
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
   const handleStatusChange = async (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: any) => {
-    const activeRows = currentView === 'cd_desempenho' ? desempenhoRawRows : rawRows;
+    const isIndicadorView = !isCD && (currentView === 'churn' || currentView === 'todos_parceiros');
+    const activeRows = currentView === 'cd_desempenho' || (currentView === 'churn' && isCD)
+      ? desempenhoRawRows
+      : isIndicadorView
+        ? []
+        : rawRows;
     const row = activeRows.find(r => (r.estab_id || r.estabelecimento) === partnerId);
     if (row) {
         if (field === 'promo_status_override') row.promo_status = newStatus;
         if (field === 'cupom_status_override') row.cupom_status = newStatus;
         setForceRender(prev => prev + 1);
     }
-    
-    // Save to Supabase
+
     const success = await updateStatus(partnerId, field, newStatus);
     if (!success) {
-        // Option to revert or show error
         console.error("Falha ao salvar o novo status no Supabase");
+    } else if (isIndicadorView) {
+        refreshCrmData();
     }
   };
 
@@ -187,20 +197,13 @@ function App() {
     setAgeGroupFilter('all');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal' || currentView === 'crm')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
       setCurrentView('dashboard');
     }
   }, [mode]);
-
-  useEffect(() => {
-    if (currentView === 'cd_desempenho') {
-      setSortConfig({ key: 'risco_churn', direction: 'desc' });
-      setPriorityFilter('');
-    }
-  }, [currentView]);
 
   // Failsafe: se houver erro de autenticação em qualquer hook, força logout
   useEffect(() => {
@@ -246,13 +249,35 @@ function App() {
       });
   }, [rawRows, mappingVersion, showFinished, forceRender, mode]);
 
+  const indicadorEnrichedData = useMemo(
+    () => crmPartnersToEnrichedRows(crmPartners, crmRelevanceMap),
+    [crmPartners, crmRelevanceMap, forceRender],
+  );
+
+  const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
+
+  useEffect(() => {
+    if (currentView === 'cd_desempenho' || currentView === 'churn') {
+      setSortConfig({
+        key: !isCD ? 'risco_churn' : 'risco_churn',
+        direction: 'desc',
+      });
+      setPriorityFilter('');
+    }
+    if (currentView === 'todos_parceiros') {
+      setSortConfig({ key: 'estabelecimento', direction: 'asc' });
+      setPriorityFilter('');
+    }
+  }, [currentView, isCD]);
+
   const enrichedDesempenhoData = useMemo(() => {
-    if (!isCD) return [];
+    if (desempenhoRawRows.length === 0) return [];
     const noCityIndexMap = buildNoCityIndexMap(desempenhoRawRows);
+    const enrichMode = isCD ? mode : 'cardapio_digital';
     return desempenhoRawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
-      return enrichDesempenhoPartnerData(row, undefined, noCityIndex, mode);
+      return enrichDesempenhoPartnerData(row, undefined, noCityIndex, enrichMode);
     }).filter((row: EnrichedPerformanceRow) => {
       const status = row.status?.toLowerCase().trim() || '';
       return status !== 'cancelado' && status !== 'cancelada';
@@ -316,7 +341,11 @@ function App() {
     setSortConfig({ key, direction });
   };
 
-  const activeEnrichedPool = currentView === 'cd_desempenho' ? enrichedDesempenhoData : enrichedData;
+  const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros'
+    ? (isCD ? enrichedDesempenhoData : indicadorEnrichedData)
+    : currentView === 'cd_desempenho'
+      ? enrichedDesempenhoData
+      : enrichedData;
 
   const currentSelectedRow = selectedRow
     ? (activeEnrichedPool.find(r => r.estabelecimento === selectedRow.estabelecimento) ?? selectedRow)
@@ -325,7 +354,7 @@ function App() {
   const handleRowClick = (row: EnrichedPerformanceRow) => {
     const latest = activeEnrichedPool.find(r => r.estabelecimento === row.estabelecimento) ?? row;
     setSelectedRow(latest);
-    if (currentView !== 'dashboard' && currentView !== 'cd_desempenho') {
+    if (currentView !== 'dashboard' && currentView !== 'cd_desempenho' && currentView !== 'churn' && currentView !== 'todos_parceiros') {
       setCurrentView('dashboard');
     }
   };
@@ -421,6 +450,93 @@ function App() {
             managerFilter={managerFilter}
             carteiraRows={carteiraRows}
           />
+        ) : currentView === 'todos_parceiros' ? (
+          currentSelectedRow ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+            <PartnerDetailsView
+              partner={currentSelectedRow}
+              onBack={() => setSelectedRow(null)}
+              dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+              onRefresh={() => setMappingVersion(v => v + 1)}
+              viewContext={undefined}
+              crmPartner={crmPartnerForSelected}
+              topCities={topCitiesByGmv}
+              onStatusChange={handleStatusChange}
+              onNavigateToCrm={() => {
+                setCityFilter(currentSelectedRow.cidade);
+                setSelectedRow(null);
+                setCurrentView('crm');
+              }}
+            />
+            </div>
+          ) : (
+            <AllPartnersView
+              data={indicadorEnrichedData}
+              isLoading={loadingCrm}
+              isRefreshing={refreshingCrm}
+              error={crmError}
+              isUsingCache={crmUsingCache}
+              lastSyncTime={crmLastSync}
+              onRefresh={refreshCrmData}
+              searchQuery={searchQuery}
+              cityFilter={cityFilter}
+              setCityFilter={setCityFilter}
+              priorityFilter={priorityFilter}
+              setPriorityFilter={setPriorityFilter}
+              managerFilter={managerFilter}
+              setManagerFilter={setManagerFilter}
+              sortConfig={sortConfig}
+              requestSort={requestSort}
+              onRowClick={handleRowClick}
+              onStatusChange={handleStatusChange}
+              dataSourceLabel="INDICADOR_FORMATADO"
+              pedidosMesHeader={indicadorPedidosMesHeader}
+            />
+          )
+        ) : currentView === 'churn' ? (
+          currentSelectedRow ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+            <PartnerDetailsView
+              partner={currentSelectedRow}
+              onBack={() => setSelectedRow(null)}
+              dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+              onRefresh={() => setMappingVersion(v => v + 1)}
+              viewContext={isCD ? 'desempenho' : undefined}
+              crmPartner={!isCD ? crmPartnerForSelected : null}
+              topCities={!isCD ? topCitiesByGmv : undefined}
+              onStatusChange={handleStatusChange}
+              onNavigateToCrm={!isCD ? () => {
+                setCityFilter(currentSelectedRow.cidade);
+                setSelectedRow(null);
+                setCurrentView('crm');
+              } : undefined}
+            />
+            </div>
+          ) : (
+            <CDDesempenhoView
+              data={isCD ? enrichedDesempenhoData : indicadorEnrichedData}
+              isLoading={isCD ? loadingDesempenho : loadingCrm}
+              isRefreshing={isCD ? refreshingDesempenho : refreshingCrm}
+              error={isCD ? desempenhoError : crmError}
+              isUsingCache={isCD ? desempenhoUsingCache : crmUsingCache}
+              lastSyncTime={isCD ? desempenhoLastSync : crmLastSync}
+              onRefresh={isCD ? refreshDesempenhoData : refreshCrmData}
+              searchQuery={searchQuery}
+              cityFilter={cityFilter}
+              setCityFilter={setCityFilter}
+              priorityFilter={priorityFilter}
+              setPriorityFilter={setPriorityFilter}
+              managerFilter={managerFilter}
+              setManagerFilter={setManagerFilter}
+              sortConfig={sortConfig}
+              requestSort={requestSort}
+              onRowClick={handleRowClick}
+              onStatusChange={handleStatusChange}
+              preset="churn"
+              dataSource={isCD ? 'cd_desempenho' : 'indicador'}
+              pedidosMesHeader={indicadorPedidosMesHeader}
+            />
+          )
         ) : currentView === 'cd_desempenho' ? (
           currentSelectedRow ? (
             <div className="flex-1 min-h-0 overflow-y-auto">
@@ -452,6 +568,8 @@ function App() {
               requestSort={requestSort}
               onRowClick={handleRowClick}
               onStatusChange={handleStatusChange}
+              preset="all"
+              dataSource="cd_desempenho"
             />
           )
         ) : (

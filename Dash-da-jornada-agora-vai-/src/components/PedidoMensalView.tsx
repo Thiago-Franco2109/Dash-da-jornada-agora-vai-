@@ -132,6 +132,7 @@ export default function PedidoMensalView({
     const [okrFilter, setOkrFilter] = useState<OkrCategoryFilter>('');
     const [cityFilter, setCityFilter] = useState('');
     const [partnerFilter, setPartnerFilter] = useState('');
+    const [citySearch, setCitySearch] = useState('');
 
     const cityOkrMap = useMemo(() => buildCityOkrMap(carteiraRows), [carteiraRows]);
     const hasOkrRegistry = cityOkrMap.size > 0;
@@ -178,6 +179,14 @@ export default function PedidoMensalView({
         return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
     }, [allPedidoRows, allParceiroRows]);
 
+    useEffect(() => {
+        if (months.length === 0) return;
+        setMonthFilter(prev => {
+            if (prev && months.some(m => m.key === prev)) return prev;
+            return months[0].key;
+        });
+    }, [months]);
+
     const scopedPedidoRows = useMemo(
         () => (monthFilter
             ? allPedidoRows.filter(r => matchesSheetMonthFilter(r.monthStart, monthFilter))
@@ -196,6 +205,12 @@ export default function PedidoMensalView({
         () => buildMergedCitySummaries(allPedidoRows, allParceiroRows, monthFilter),
         [allPedidoRows, allParceiroRows, monthFilter],
     );
+
+    const filteredCitySummaries = useMemo(() => {
+        const query = citySearch.trim().toLowerCase();
+        if (!query) return citySummaries;
+        return citySummaries.filter(c => c.cidade.toLowerCase().includes(query));
+    }, [citySummaries, citySearch]);
 
     const partnersInCity = useMemo(() => {
         if (!cityFilter) return [];
@@ -216,6 +231,7 @@ export default function PedidoMensalView({
     useEffect(() => {
         setCityFilter('');
         setPartnerFilter('');
+        setCitySearch('');
     }, [okrFilter]);
 
     useEffect(() => {
@@ -268,6 +284,8 @@ export default function PedidoMensalView({
     const totalComissao = citySummaries.reduce((s, c) => s + c.comissaoLiq, 0);
     const totalGmv = citySummaries.reduce((s, c) => s + c.gmv, 0);
     const totalGmvBruto = citySummaries.reduce((s, c) => s + c.gmvBruto, 0);
+    const totalPedidos = citySummaries.reduce((s, c) => s + c.pedidosAceitos, 0);
+    const selectedMonthLabel = months.find(m => m.key === monthFilter)?.label;
     const hasData = allPedidoRows.length > 0 || allParceiroRows.length > 0;
     const gmvMissing =
         parceiroParseInfo.rowCount > 0
@@ -332,7 +350,7 @@ export default function PedidoMensalView({
                         {' '}Confira se os cabeçalhos estão na linha 1 e me diga o nome exato da coluna de GMV.
                     </div>
                 )}
-                {!gmvMissing && parceiroParseInfo.rowCount > 0 && parceiroParseInfo.gmvColumn && (
+                {import.meta.env.DEV && !gmvMissing && parceiroParseInfo.rowCount > 0 && parceiroParseInfo.gmvColumn && (
                     <p className="mt-3 text-xs text-slate-400">
                         PARCEIRO_MENSAL: {parceiroParseInfo.rowCount} linhas · {parceiroParseInfo.rowsWithMonth} com mês · {parceiroParseInfo.rowsWithGmv} com GMV · coluna {parceiroParseInfo.gmvColumn}
                         {parceiroParseInfo.totalGmvBruto > 0 && ` · bruto ${formatPedidoMensalBRL(parceiroParseInfo.totalGmvBruto)}`}
@@ -369,6 +387,20 @@ export default function PedidoMensalView({
                         ))}
                     </select>
                 </label>
+
+                {!cityFilter && (
+                    <label className="flex flex-col gap-1 text-sm min-w-[200px]">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">Buscar cidade</span>
+                        <input
+                            type="search"
+                            value={citySearch}
+                            onChange={e => setCitySearch(e.target.value)}
+                            placeholder="Filtrar na tabela…"
+                            disabled={isLoading || citySummaries.length === 0}
+                            className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+                        />
+                    </label>
+                )}
 
                 <label className="flex flex-col gap-1 text-sm min-w-[220px]">
                     <span className="text-slate-600 dark:text-slate-400 font-medium">Cidade (detalhe)</span>
@@ -411,14 +443,16 @@ export default function PedidoMensalView({
                     </div>
                 ) : !cityFilter ? (
                     <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
                             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-blue-50/50 dark:bg-blue-900/10">
                                 <p className="text-xs text-slate-500 uppercase tracking-wide">GMV líq. total</p>
                                 <p className="text-2xl font-bold text-blue-700 dark:text-blue-400 mt-1">
                                     {formatPedidoMensalBRL(totalGmv)}
                                 </p>
                                 <p className="text-xs text-slate-400 mt-1">
-                                    {monthFilter ? 'No mês selecionado' : 'Soma de todos os períodos'}
+                                    {monthFilter
+                                        ? (selectedMonthLabel ? `Em ${selectedMonthLabel}` : 'No mês selecionado')
+                                        : 'Soma de todos os períodos'}
                                 </p>
                             </div>
                             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-indigo-50/50 dark:bg-indigo-900/10">
@@ -435,6 +469,13 @@ export default function PedidoMensalView({
                                 </p>
                                 <p className="text-xs text-slate-400 mt-1">Aba PEDIDO_MENSAL</p>
                             </div>
+                            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-primary/5 dark:bg-primary/10">
+                                <p className="text-xs text-slate-500 uppercase tracking-wide">Pedidos aceitos</p>
+                                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+                                    {totalPedidos.toLocaleString('pt-BR')}
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1">Aba PEDIDO_MENSAL</p>
+                            </div>
                             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50/50 dark:bg-slate-800/30">
                                 <p className="text-xs text-slate-500 uppercase tracking-wide">Cidades</p>
                                 <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{citySummaries.length}</p>
@@ -445,9 +486,23 @@ export default function PedidoMensalView({
                             <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                                 <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                                     Resultado por cidade
+                                    {citySearch.trim() && (
+                                        <span className="ml-2 font-normal text-slate-400">
+                                            ({filteredCitySummaries.length} de {citySummaries.length})
+                                        </span>
+                                    )}
                                 </h2>
                                 <span className="text-xs text-slate-400">Clique em uma cidade para ver evolução</span>
                             </div>
+                            {citySummaries.length === 0 ? (
+                                <p className="text-center text-sm text-slate-500 py-12 px-4">
+                                    Nenhuma cidade com dados para os filtros selecionados.
+                                </p>
+                            ) : filteredCitySummaries.length === 0 ? (
+                                <p className="text-center text-sm text-slate-500 py-12 px-4">
+                                    Nenhuma cidade corresponde a &ldquo;{citySearch.trim()}&rdquo;.
+                                </p>
+                            ) : (
                             <div className="overflow-x-auto">
                                 <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                                     <thead className="bg-slate-100 dark:bg-slate-800">
@@ -462,7 +517,7 @@ export default function PedidoMensalView({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                        {citySummaries.map(row => {
+                                        {filteredCitySummaries.map(row => {
                                             const okrCat = getCityOkrCategory(row.cidade, cityOkrMap);
                                             return (
                                             <tr
@@ -497,6 +552,7 @@ export default function PedidoMensalView({
                                     </tbody>
                                 </table>
                             </div>
+                            )}
                         </div>
                     </>
                 ) : series.length === 0 && detailRows.length === 0 ? (
