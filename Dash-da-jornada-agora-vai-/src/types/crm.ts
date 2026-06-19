@@ -47,3 +47,40 @@ export interface CrmParseInfo {
     parsedPartners: number;
     skippedRows: number;
 }
+
+export type CrmViewMode = 'dashboard' | 'kanban' | 'list' | 'table' | 'calendar';
+
+export type CrmGoalMetric = 'promo_ativa_rate' | 'promo_ativa_count' | 'pending_max' | 'offered_max';
+
+export interface CrmGoal {
+    id: string;
+    scope: 'manager' | 'city';
+    scopeKey: string;
+    metric: CrmGoalMetric;
+    target: number;
+    updatedAt: string;
+}
+
+export interface CrmPipelineAggregate {
+    key: string;
+    label: string;
+    total: number;
+    aguardando: number;
+    ofertei: number;
+    negado: number;
+    ativo: number;
+    inativo: number;
+    semCupom: number;
+    overdueFollowUps: number;
+}
+
+export type CrmFollowUpAlertLevel = 'overdue' | 'today' | 'upcoming';
+
+export interface CrmFollowUpAlert {
+    partnerId: string;
+    partner: CrmPartner;
+    nextFollowUp: string;
+    level: CrmFollowUpAlertLevel;
+    daysOffset: number;
+    notes?: string;
+}
