@@ -148,9 +148,11 @@ export function formatarFormaPagamento(forma: ContractPayment): string {
 export interface MRRMetrics {
     mrrTotal: number;
     mrrEmRisco: number;
+    mrrSeguro: number;
     mrrEmRiscoPct: number;
     lojasComContrato: number;
     lojasEmRisco: number;
+    lojasSeguras: number;
     contratosAtivos: number;
 }
 
@@ -167,21 +169,25 @@ export function calcularMRRContratosAtivos(): { mrrTotal: number; contratosAtivo
 }
 
 export function calcularMRRMetrics(
-    rows: Array<{ valor_contrato?: number; contrato_status?: ContractStatus; mrr_em_risco?: boolean }>,
+    rows: Array<{ valor_contrato?: number; contrato_status?: ContractStatus; mrr_em_risco?: boolean; week_1?: number }>,
 ): MRRMetrics {
     const { mrrTotal: mrrTotalCadastro, contratosAtivos } = calcularMRRContratosAtivos();
 
     const comContrato = rows.filter(r => r.valor_contrato != null && r.contrato_status === 'em_dia');
     const emRisco = comContrato.filter(r => r.mrr_em_risco);
+    const seguras = comContrato.filter(r => (r.week_1 ?? 0) > 7);
     const mrrEmRisco = emRisco.reduce((sum, r) => sum + (r.valor_contrato ?? 0), 0);
+    const mrrSeguro = seguras.reduce((sum, r) => sum + (r.valor_contrato ?? 0), 0);
     const mrrMatched = comContrato.reduce((sum, r) => sum + (r.valor_contrato ?? 0), 0);
 
     return {
         mrrTotal: mrrTotalCadastro,
         mrrEmRisco,
+        mrrSeguro,
         mrrEmRiscoPct: mrrMatched > 0 ? (mrrEmRisco / mrrMatched) * 100 : 0,
         lojasComContrato: comContrato.length,
         lojasEmRisco: emRisco.length,
+        lojasSeguras: seguras.length,
         contratosAtivos,
     };
 }

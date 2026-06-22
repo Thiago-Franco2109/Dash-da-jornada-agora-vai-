@@ -28,7 +28,12 @@ import {
   PEDIDO_MENSAL_DATA_SOURCE,
   PARCEIRO_MENSAL_DATA_SOURCE,
 } from './config/dataSource';
-import { enrichPartnerData, enrichDesempenhoPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
+import { enrichPartnerData, enrichDesempenhoPartnerData, matchesPromoCupomFilter, type EnrichedPerformanceRow } from './utils/calculations';
+import {
+    buildAllPromoCupomFilterOptions,
+    countPromoCupomFilter,
+    type PromoCupomFilterValue,
+} from './config/promoCupomFilter';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
@@ -58,6 +63,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
+  const [promoCupomFilter, setPromoCupomFilter] = useState<PromoCupomFilterValue | ''>('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
 
@@ -195,6 +201,7 @@ function App() {
     setSearchQuery('');
     setPriorityFilter('');
     setAgeGroupFilter('all');
+    setPromoCupomFilter('');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
     if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
@@ -288,17 +295,30 @@ function App() {
   const uniqueCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
   const uniqueManagers = Array.from(new Set(enrichedData.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
-  // Base filtered data (without period tab filter)
-  const baseFilteredData = useMemo(() => {
+  const dataBeforePromoCupomFilter = useMemo(() => {
     return enrichedData.filter((row: EnrichedPerformanceRow) => {
-      let matches = true;
-      if (cityFilter && row.cidade !== cityFilter) matches = false;
-      if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) matches = false;
-      if (priorityFilter && row.priority_stars.toString() !== priorityFilter) matches = false;
-      if (managerFilter && row.analista !== managerFilter) matches = false;
-      return matches;
+      if (cityFilter && row.cidade !== cityFilter) return false;
+      if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (priorityFilter && row.priority_stars.toString() !== priorityFilter) return false;
+      if (managerFilter && row.analista !== managerFilter) return false;
+      return true;
     });
   }, [enrichedData, cityFilter, searchQuery, priorityFilter, managerFilter]);
+
+  const baseFilteredData = useMemo(() => {
+    if (!promoCupomFilter) return dataBeforePromoCupomFilter;
+    return dataBeforePromoCupomFilter.filter(row =>
+      matchesPromoCupomFilter(row, promoCupomFilter),
+    );
+  }, [dataBeforePromoCupomFilter, promoCupomFilter]);
+
+  const promoCupomFilterCounts = useMemo(() => {
+    const counts: Partial<Record<PromoCupomFilterValue, number>> = {};
+    for (const opt of buildAllPromoCupomFilterOptions()) {
+      counts[opt.value] = countPromoCupomFilter(dataBeforePromoCupomFilter, opt.value);
+    }
+    return counts;
+  }, [dataBeforePromoCupomFilter]);
 
   // Filter Data
   let filteredTableData = baseFilteredData.filter((row: EnrichedPerformanceRow) => {
@@ -650,6 +670,10 @@ function App() {
                   managerFilter={managerFilter}
                   setManagerFilter={setManagerFilter}
                   managers={uniqueManagers}
+                  showPromoCupomFilter={!isCD}
+                  promoCupomFilter={promoCupomFilter}
+                  setPromoCupomFilter={setPromoCupomFilter}
+                  promoCupomFilterCounts={promoCupomFilterCounts}
                 />
                 </div>
 

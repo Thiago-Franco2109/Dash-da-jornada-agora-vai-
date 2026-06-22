@@ -208,7 +208,7 @@ export default function CDDesempenhoView({
                 )}
 
                 {data.length > 0 && (
-                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`mt-6 grid grid-cols-1 sm:grid-cols-2 ${!isChurnPreset && !isMarketplace && !isIndicador ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
                         {isChurnPreset && isIndicador ? (
                             <>
                                 <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10 p-4 shadow-sm">
@@ -298,6 +298,13 @@ export default function CDDesempenhoView({
                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">MRR total</p>
                                     <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{formatarMoedaBRL(mrrMetrics.mrrTotal)}</p>
                                     <p className="text-xs text-slate-400 mt-1">{mrrMetrics.contratosAtivos} contratos ativos no cadastro</p>
+                                </div>
+                                <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-900/10 p-4 shadow-sm">
+                                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MRR seguro</p>
+                                    <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">{formatarMoedaBRL(mrrMetrics.mrrSeguro)}</p>
+                                    <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-1">
+                                        {mrrMetrics.lojasSeguras} lojas com &gt; 7 pedidos/semana
+                                    </p>
                                 </div>
                                 <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10 p-4 shadow-sm">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">MRR em risco</p>
