@@ -1,5 +1,6 @@
 
 export type Manager = 'THIAGO' | 'LAÍS' | 'DESCONHECIDO';
+export type ProductModeKey = 'marketplace' | 'cardapio_digital';
 
 export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     // LAÍS
@@ -46,38 +47,96 @@ export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     'Natividade': 'THIAGO',
 };
 
-const STORAGE_KEY = 'city_manager_overrides';
+const OVERRIDES_KEY_PREFIX = 'city_manager_overrides';
+const NO_CITY_SPLIT_KEY_PREFIX = 'no_city_manager_split';
 
-export function getManagerOverrides(): Record<string, Manager> {
+export interface NoCityManagerSplit {
+    /** Quantidade de parceiros sem cidade atribuídos ao Thiago (ordem alfabética); o restante vai para Laís */
+    thiagoCount: number;
+}
+
+function overridesStorageKey(mode: ProductModeKey): string {
+    return `${OVERRIDES_KEY_PREFIX}_${mode}`;
+}
+
+function noCitySplitStorageKey(mode: ProductModeKey): string {
+    return `${NO_CITY_SPLIT_KEY_PREFIX}_${mode}`;
+}
+
+export function getManagerOverrides(mode: ProductModeKey = 'marketplace'): Record<string, Manager> {
     try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        return stored ? JSON.parse(stored) : {};
+        const stored = localStorage.getItem(overridesStorageKey(mode));
+        if (stored) return JSON.parse(stored);
+
+        // Migra chave legada do marketplace
+        if (mode === 'marketplace') {
+            const legacy = localStorage.getItem('city_manager_overrides');
+            if (legacy) {
+                localStorage.setItem(overridesStorageKey(mode), legacy);
+                return JSON.parse(legacy);
+            }
+        }
     } catch {
         return {};
     }
+    return {};
 }
 
-export function saveManagerOverride(city: string, manager: Manager) {
-    const overrides = getManagerOverrides();
+export function saveManagerOverride(city: string, manager: Manager, mode: ProductModeKey = 'marketplace') {
+    const overrides = getManagerOverrides(mode);
     if (manager === 'DESCONHECIDO') {
         delete overrides[city];
     } else {
         overrides[city] = manager;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
+    localStorage.setItem(overridesStorageKey(mode), JSON.stringify(overrides));
 }
 
-export function getEffectiveManager(city: string, originalManager: string): string {
-    const overrides = getManagerOverrides();
+export function getNoCityManagerSplit(mode: ProductModeKey = 'marketplace'): NoCityManagerSplit {
+    try {
+        const stored = localStorage.getItem(noCitySplitStorageKey(mode));
+        if (stored) return JSON.parse(stored);
+    } catch { /* ignore */ }
+    return { thiagoCount: 0 };
+}
+
+export function saveNoCityManagerSplit(split: NoCityManagerSplit, mode: ProductModeKey = 'marketplace') {
+    localStorage.setItem(noCitySplitStorageKey(mode), JSON.stringify({
+        thiagoCount: Math.max(0, split.thiagoCount),
+    }));
+}
+
+export function getEffectiveManager(city: string, originalManager: string, mode: ProductModeKey = 'marketplace'): string {
+    const overrides = getManagerOverrides(mode);
     if (overrides[city]) return overrides[city];
-    
+
     if (INITIAL_CITY_MANAGER_MAP[city]) return INITIAL_CITY_MANAGER_MAP[city];
 
-    // Fallback normalizado para evitar duplicidade de nomes
     const norm = String(originalManager || '').trim().toUpperCase();
     if (norm === 'THIAGO' || norm === 'LAÍS') return norm;
-    
+
     return originalManager || 'Desconhecido';
+}
+
+/**
+ * Resolve o gestor de um parceiro, incluindo distribuição configurável para parceiros sem cidade.
+ * Padrão sem cidade: Laís (thiagoCount define quantos vão para Thiago, por ordem alfabética).
+ */
+export function getManagerForPartner(
+    city: string,
+    originalManager: string,
+    noCityIndex: number | undefined,
+    mode: ProductModeKey = 'marketplace',
+): string {
+    const trimmedCity = (city || '').trim();
+    if (trimmedCity) {
+        return getEffectiveManager(trimmedCity, originalManager, mode);
+    }
+
+    if (noCityIndex === undefined) return 'LAÍS';
+
+    const split = getNoCityManagerSplit(mode);
+    return noCityIndex < split.thiagoCount ? 'THIAGO' : 'LAÍS';
 }
 
 /**
@@ -86,14 +145,51 @@ export function getEffectiveManager(city: string, originalManager: string): stri
 export function identifyManagerFromUser(user: { name?: string; email?: string }): string | null {
     const nameStr = (user.name || '').trim().toUpperCase();
     const emailStr = (user.email || '').trim().toUpperCase();
-    
-    // Mapeamento direto ou detecção por palavra-chave no nome
+
     if (nameStr.includes('THIAGO')) return 'THIAGO';
     if (nameStr.includes('LAIS') || nameStr.includes('LAÍS')) return 'LAÍS';
 
-    // Fallback: detecção pelo e-mail
     if (emailStr.includes('THIAGO')) return 'THIAGO';
     if (emailStr.includes('LAIS') || emailStr.includes('LAÍS')) return 'LAÍS';
-    
+
     return null;
+}
+
+/** Cidades cuja gestão efetiva pertence ao gestor informado. */
+export function getCitiesForManager(manager: Manager, mode: ProductModeKey = 'marketplace'): string[] {
+    const overrides = getManagerOverrides(mode);
+    const allCities = new Set([
+        ...Object.keys(INITIAL_CITY_MANAGER_MAP),
+        ...Object.keys(overrides),
+    ]);
+
+    return Array.from(allCities)
+        .filter(city => getEffectiveManager(city, '', mode) === manager)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+export function cityBelongsToManager(
+    city: string,
+    manager: Manager,
+    mode: ProductModeKey = 'marketplace',
+): boolean {
+    const trimmed = (city || '').trim();
+    if (!trimmed) return false;
+    return getEffectiveManager(trimmed, '', mode) === manager;
+}
+
+/** Retorna mapa estável de índice para parceiros sem cidade (ordem alfabética por nome). */
+export function buildNoCityIndexMap<T extends { cidade?: string; estab_id?: string; estabelecimento: string }>(
+    rows: T[],
+): Map<string, number> {
+    const noCity = rows
+        .filter(r => !(r.cidade || '').trim())
+        .sort((a, b) => (a.estabelecimento || '').localeCompare(b.estabelecimento || '', 'pt-BR'));
+
+    const map = new Map<string, number>();
+    noCity.forEach((row, index) => {
+        const key = row.estab_id || row.estabelecimento;
+        map.set(key, index);
+    });
+    return map;
 }

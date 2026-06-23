@@ -3,11 +3,17 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
+import { ProductModeProvider } from './context/ProductModeContext.tsx'
+import { ManagerSessionProvider } from './context/ManagerSessionContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <ManagerSessionProvider>
+        <ProductModeProvider>
+          <App />
+        </ProductModeProvider>
+      </ManagerSessionProvider>
     </AuthProvider>
   </StrictMode>,
 )

@@ -1,12 +1,28 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ACCESS_DATA_SOURCE } from '../config/dataSource';
+import { encodeSheetTabForGateway } from '../utils/dataSync';
 
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? 'https://sheets-api-production-0097.up.railway.app')
+    .trim()
+    .replace(/\/+$/, '');
 
 function apiUrl(path: string) {
     if (!path.startsWith("/")) path = `/${path}`;
     return `${API_ORIGIN}${path}`;
 }
+
+function getFetchOptions(): RequestInit {
+    const token = sessionStorage.getItem("auth_token");
+    const options: RequestInit = { credentials: "include" as RequestCredentials };
+    if (token) {
+        options.headers = {
+            ...options.headers,
+            "Authorization": `Bearer ${token}`
+        };
+    }
+    return options;
+}
+
 
 // Detecta se uma string é uma coluna de data no formato "YYYY-M-D" ou "YYYY-MM-DD"
 function isDateColumn(key: string): boolean {
@@ -22,13 +38,14 @@ export interface StoreAccessData {
     raw: Record<string, any>;  // linha completa da planilha
 }
 
-export function useDailyAccessSync() {
+export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {}) {
     const [accessData, setAccessData] = useState<Record<string, StoreAccessData>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
     const performSync = useCallback(async () => {
+        if (!enabled) return;
         if (!ACCESS_DATA_SOURCE.sheetId) {
             setError("Access Sheet ID is missing.");
             setIsLoading(false);
@@ -39,8 +56,9 @@ export function useDailyAccessSync() {
             setIsLoading(true);
             setError(null);
 
-            const url = apiUrl(`/api/sheets/${ACCESS_DATA_SOURCE.sheetId}/${encodeURIComponent(ACCESS_DATA_SOURCE.range)}`);
-            const res = await fetch(url, { credentials: "include" });
+            const url = apiUrl(`/api/sheets/${ACCESS_DATA_SOURCE.sheetId}/${encodeSheetTabForGateway(ACCESS_DATA_SOURCE.range)}`);
+            const res = await fetch(url, getFetchOptions());
+
 
             if (!res.ok) {
                 throw new Error(`Failed to fetch access data: ${res.status} ${res.statusText}`);
@@ -106,12 +124,13 @@ export function useDailyAccessSync() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [enabled]);
 
-    // Initial load
+    // Initial load — só executa quando enabled for true
     useEffect(() => {
-        performSync();
-    }, [performSync]);
+        if (enabled) performSync();
+        else setIsLoading(false);
+    }, [performSync, enabled]);
 
     return {
         accessData,

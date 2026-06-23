@@ -3,90 +3,194 @@ import { type PerformanceRow } from '../components/PerformanceTable';
 import { LOGO_SHEET_SOURCE } from '../config/dataSource';
 import {
     fetchGoogleSheetsData,
+    fetchCDDesempenhoSheetData,
     fetchPartnerLogoMap,
     mergeLogoMapIntoRows,
+    fetchAvaliacoesMap,
+    mergeAvaliacoesMapIntoRows,
+    fetchRelevanceMap,
+    mergeRelevanceMapIntoRows,
+    fetchStatusOverridesMap,
+    mergeStatusOverridesIntoRows,
     saveToCache,
     loadFromCache,
     type SyncResult,
 } from '../utils/dataSync';
 
-interface UseDataSyncOptions {
+interface DataSourceConfig {
     sheetId: string;
     range?: string;
-    autoRefreshIntervalMs?: number; // fallback interval, e.g., 60 * 60 * 1000 for 1 hour
 }
 
-export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshIntervalMs = 3600000 }: UseDataSyncOptions) {
+interface UseDataSyncOptions {
+    sources: DataSourceConfig[];
+    cacheKey?: string;
+    /** Pula logos, avaliações, relevância e overrides — reduz chamadas à API */
+    skipSideData?: boolean;
+    /** Perfil de leitura — evita passar callbacks instáveis que causam loop de render */
+    syncProfile?: 'default' | 'cd_desempenho';
+    /** Atraso antes do primeiro fetch (evita 429 ao abrir abas em sequência) */
+    fetchDelayMs?: number;
+    autoRefreshIntervalMs?: number;
+    enabled?: boolean;
+}
+
+export function useDataSync({
+    sources,
+    cacheKey,
+    skipSideData = false,
+    syncProfile = 'default',
+    fetchDelayMs = 0,
+    autoRefreshIntervalMs = 3600000,
+    enabled = true,
+}: UseDataSyncOptions) {
     const [data, setData] = useState<PerformanceRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
     const [isUsingCache, setIsUsingCache] = useState(false);
 
     const performSync = useCallback(async () => {
-        if (!sheetId) {
-            setError("Sheet ID is missing.");
+        if (!enabled) return;
+        if (!sources || sources.length === 0) {
+            setError("No data sources provided.");
             setIsLoading(false);
             return;
         }
 
-        try {
+        const cached = loadFromCache(cacheKey);
+        const hasCache = !!(cached?.data?.length);
+
+        if (hasCache) {
+            setData(cached!.data);
+            setLastSyncTime(cached!.lastSyncTime);
+            setIsUsingCache(true);
+            setIsLoading(false);
+            setIsRefreshing(true);
+        } else {
             setIsLoading(true);
+        }
+
+        try {
             setError(null);
-            setIsUsingCache(false);
 
-            const [fetchedData, logoMap] = await Promise.all([
-                fetchGoogleSheetsData(sheetId, range),
-                fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
-                    console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
-                    return {} as Record<string, string>;
-                }),
-            ]);
+            let flatFetchedData: PerformanceRow[];
 
-            const mergedData = mergeLogoMapIntoRows(fetchedData, logoMap);
+            if (syncProfile === 'cd_desempenho') {
+                const src = sources[0];
+                flatFetchedData = await fetchCDDesempenhoSheetData(
+                    src.sheetId,
+                    src.range ?? 'CD_TODOS_DESEMPENHO',
+                );
+            } else {
+                flatFetchedData = (await Promise.all(
+                    sources.map(source =>
+                        fetchGoogleSheetsData(source.sheetId, source.range || 'NOVOS!A6:Z100')
+                    )
+                )).flat();
+            }
 
-            const syncResult: SyncResult = {
-                data: mergedData,
-                lastSyncTime: new Date(),
-            };
+            if (skipSideData) {
+                const syncResult: SyncResult = {
+                    data: flatFetchedData,
+                    lastSyncTime: new Date(),
+                };
+                setData(syncResult.data);
+                setLastSyncTime(syncResult.lastSyncTime);
+                setIsUsingCache(false);
+                saveToCache(syncResult, cacheKey);
+            } else {
+                const [fetchedLogoMap, fetchedAvaliacoesMap, fetchedRelevanceMap, fetchedStatusOverridesMap] = await Promise.all([
+                    fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch((err) => {
+                        console.warn('[useDataSync] Planilha de logos indisponível; usando só logos da planilha principal.', err);
+                        return {} as Record<string, string>;
+                    }),
+                    fetchAvaliacoesMap().catch((err) => {
+                        console.warn('[useDataSync] Planilha de avaliações indisponível.', err);
+                        return {} as Record<string, number>;
+                    }),
+                    fetchRelevanceMap().catch((err) => {
+                        console.warn('[useDataSync] Supabase relevance map indisponível.', err);
+                        return {} as Record<string, number>;
+                    }),
+                    fetchStatusOverridesMap().catch((err) => {
+                        console.warn('[useDataSync] Supabase status overrides indisponível.', err);
+                        return {} as Record<string, { promo: string; cupom: string }>;
+                    }),
+                ]);
 
-            setData(syncResult.data);
-            setLastSyncTime(syncResult.lastSyncTime);
-            saveToCache(syncResult);
+                let mergedData = mergeLogoMapIntoRows(flatFetchedData, fetchedLogoMap);
+                mergedData = mergeAvaliacoesMapIntoRows(mergedData, fetchedAvaliacoesMap);
+                mergedData = mergeRelevanceMapIntoRows(mergedData, fetchedRelevanceMap);
+                mergedData = mergeStatusOverridesIntoRows(mergedData, fetchedStatusOverridesMap);
+
+                const syncResult: SyncResult = {
+                    data: mergedData,
+                    lastSyncTime: new Date(),
+                };
+
+                setData(syncResult.data);
+                setLastSyncTime(syncResult.lastSyncTime);
+                setIsUsingCache(false);
+                saveToCache(syncResult, cacheKey);
+            }
 
         } catch (err: any) {
             console.error("Data sync failed:", err);
             setError(err.message || "Failed to synchronize data.");
 
-            // Load from cache on failure if available and not already loaded
-            const cached = loadFromCache();
-            if (cached) {
-                setData(cached.data);
-                setLastSyncTime(cached.lastSyncTime);
+            if (hasCache) {
+                setData(cached!.data);
+                setLastSyncTime(cached!.lastSyncTime);
                 setIsUsingCache(true);
+            } else {
+                const fallback = loadFromCache(cacheKey);
+                if (fallback) {
+                    setData(fallback.data);
+                    setLastSyncTime(fallback.lastSyncTime);
+                    setIsUsingCache(true);
+                }
             }
         } finally {
             setIsLoading(false);
+            setIsRefreshing(false);
         }
-    }, [sheetId, range]);
+    }, [sources, cacheKey, enabled, skipSideData, syncProfile]);
 
-    // Initial load
+    // Initial load — com delay opcional para evitar rajadas de requisição
     useEffect(() => {
-        performSync();
-    }, [performSync]);
+        if (!enabled) {
+            setIsLoading(false);
+            return;
+        }
 
-    // Setup interval for fallback refresh
+        const cached = loadFromCache(cacheKey);
+        if (cached?.data?.length) {
+            setData(cached.data);
+            setLastSyncTime(cached.lastSyncTime);
+            setIsUsingCache(true);
+            setIsLoading(false);
+        }
+
+        const timeoutId = setTimeout(() => {
+            performSync();
+        }, fetchDelayMs);
+
+        return () => clearTimeout(timeoutId);
+    }, [performSync, enabled, fetchDelayMs, cacheKey]);
+
     useEffect(() => {
-        if (!autoRefreshIntervalMs) return;
+        if (!autoRefreshIntervalMs || !enabled) return;
         const intervalId = setInterval(() => {
             performSync();
         }, autoRefreshIntervalMs);
 
         return () => clearInterval(intervalId);
-    }, [performSync, autoRefreshIntervalMs]);
+    }, [performSync, autoRefreshIntervalMs, enabled]);
 
-    // Setup scheduled daily refresh at 08:05 AM America/Sao_Paulo
     useEffect(() => {
+        if (!enabled) return;
         const scheduleNextRefresh = () => {
             const now = new Date();
             const target = new Date(now);
@@ -107,14 +211,15 @@ export function useDataSync({ sheetId, range = 'NOVOS!A6:Z100', autoRefreshInter
         const timeoutId = scheduleNextRefresh();
 
         return () => clearTimeout(timeoutId);
-    }, [performSync]);
+    }, [performSync, enabled]);
 
     return {
         data,
         isLoading,
+        isRefreshing,
         error,
         lastSyncTime,
         isUsingCache,
-        refreshData: () => performSync()
+        refreshData: () => performSync(),
     };
 }

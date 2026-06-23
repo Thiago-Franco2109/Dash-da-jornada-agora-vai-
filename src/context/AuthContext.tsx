@@ -5,7 +5,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 // ---------------------------------------------------------------------------
 export interface User {
   email: string;
-  name: string;
+  name?: string;
   picture?: string;
   role?: string;
 }
@@ -18,14 +18,16 @@ interface AuthState {
   logout: () => void;
 }
 
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN ?? "https://bigou-sheets-api.netlify.app";
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "https://sheets-api-production-0097.up.railway.app")
+  .trim()
+  .replace(/\/+$/, '');
 
 function apiUrl(path: string) {
   if (!path.startsWith("/")) path = `/${path}`;
   return `${API_ORIGIN}${path}`;
 }
 
-const fetchOptions: RequestInit = { credentials: "include" as RequestCredentials };
+const fetchOptionsBase: RequestInit = { credentials: "include" as RequestCredentials };
 
 // ---------------------------------------------------------------------------
 // Context
@@ -39,11 +41,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchSession = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(apiUrl("/auth/me"), fetchOptions);
+
+      // 1. Tenta pegar token da URL (fallback cross-site)
+      const hash = window.location.hash;
+      let token = sessionStorage.getItem("auth_token") || localStorage.getItem("auth_token") || "";
+      
+      if (hash.startsWith("#token=")) {
+        token = hash.split("token=")[1];
+        console.log("[Auth] Token detectado na URL:", token.substring(0, 10) + "...");
+        
+        const keepLoggedIn = localStorage.getItem("want_keep_logged_in") === "true";
+        if (keepLoggedIn) {
+            localStorage.setItem("auth_token", token);
+        } else {
+            sessionStorage.setItem("auth_token", token);
+        }
+        // Limpa a URL para estética/segurança
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      } else if (token) {
+        console.log("[Auth] Usando token do storage");
+      }
+
+      // 2. Prepara headers (se tiver token, usa Bearer)
+      const options: RequestInit = { ...fetchOptionsBase };
+      if (token) {
+        options.headers = {
+          ...options.headers,
+          "Authorization": `Bearer ${token}`
+        };
+      }
+
+      const res = await fetch(apiUrl("/auth/me"), options);
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user || data); // Dependendo do backend, pode ser req.user ou {user: ...}
+        let foundUser = data.user || data;
+        
+        // Mapeia estrutura bruta do Google Profile (passport.js) caso a API retorne assim, mas sem forçar erro se não tiver
+        if (foundUser && !foundUser.email && foundUser.emails && foundUser.emails.length > 0) {
+            foundUser = {
+                ...foundUser,
+                email: foundUser.emails[0].value,
+                name: foundUser.displayName || foundUser.name,
+                picture: foundUser.photos && foundUser.photos.length > 0 ? foundUser.photos[0].value : foundUser.picture
+            };
+        }
+
+        // Aceita o usuário independentemente de ter email ou não (evita loop de login)
+        setUser(foundUser);
       } else {
+        if (res.status === 401) {
+          console.warn("[Auth] Sessão inválida ou expirada (401)");
+        }
         setUser(null);
       }
     } catch (error) {
@@ -63,16 +111,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = `${API_ORIGIN}/auth/login?redirect=${encodeURIComponent(window.location.origin)}`;
   }, []);
 
-  const logout = useCallback(async () => {
-    try {
-      // Opcional: Chama endpoint de logout caso o gateway o possua
-      await fetch(apiUrl("/auth/logout"), { method: 'POST', ...fetchOptions }).catch(() => {});
-    } catch (e) {
-      console.error(e);
-    }
+  const logout = useCallback(() => {
+    // Limpa o token armazenado localmente
+    sessionStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_token");
+    
+    // Atualiza o estado
     setUser(null);
-    // Removemos state do frontend e podemos também redirecionar para endpoint GET logout se necessário
-    // window.location.href = `${API_ORIGIN}/auth/logout?redirect=${encodeURIComponent(window.location.origin)}`;
+    
+    // Redireciona para a raiz para forçar a renderização do LoginPage
+    window.location.href = "/";
   }, []);
 
   return (

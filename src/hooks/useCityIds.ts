@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { encodeSheetTabForGateway } from '../utils/dataSync';
 
 // ─── Configuração do mesmo Gateway usado pelo restante do app ──────────────
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? 'https://sheets-api-production-0097.up.railway.app')
@@ -59,7 +60,7 @@ async function fetchCityIdMap(): Promise<CityIdMap> {
     if (_fetchPromise) return _fetchPromise;
 
     _fetchPromise = (async () => {
-        const url = apiUrl(`/api/sheets/${SHEET_ID}/${encodeURIComponent(TAB_NAME)}`);
+        const url = apiUrl(`/api/sheets/${SHEET_ID}/${encodeSheetTabForGateway(TAB_NAME)}`);
         const res = await fetch(url, getFetchOptions());
         if (!res.ok) throw new Error(`Cidades sheet: ${res.status} ${res.statusText}`);
 
