@@ -63,6 +63,7 @@ export function crmPartnerToEnrichedRow(
         commercial_relevance: relevance,
         pedidos_mes_label: partner.gmvMesLabel,
         pedidos_mes_raw: partner.indiceGmvRaw,
+        gmv_mensal: partner.gmvMensal,
         dias_desde_lancamento: 0,
         total_pedidos: pedidosMes,
         pedidos_esperados: 0,

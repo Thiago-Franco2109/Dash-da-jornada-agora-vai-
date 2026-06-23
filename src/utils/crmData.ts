@@ -58,6 +58,8 @@ interface ParsedIndicadorRow {
     cupomRaw: string;
     gmvRaw: string;
     gmvCol: string | null;
+    /** Série mês a mês em ordem cronológica (mais antigo → mais recente) */
+    gmvSeries: { label: string; value: number }[];
 }
 
 function orderedHeadersOf(table: GatewaySheetTable): string[] {
@@ -168,6 +170,12 @@ export function parseIndicadorRow(
     const gmvCol = gmvCols[0] ?? orderedHeaders[INDICADOR_IDX.gmv] ?? null;
     const gmvRaw = gmvCol ? cellText(row, gmvCol) : cellByPosition(row, orderedHeaders, INDICADOR_IDX.gmv);
 
+    // Série histórica: as colunas vêm do mês mais recente para o mais antigo
+    // na planilha; invertemos para ordem cronológica (antigo → recente).
+    const gmvSeries = gmvCols
+        .map(col => ({ label: col.trim(), value: parseBRL(cellText(row, col)) }))
+        .reverse();
+
     return {
         cidade,
         estabId,
@@ -177,6 +185,7 @@ export function parseIndicadorRow(
         cupomRaw: cellByPosition(row, orderedHeaders, INDICADOR_IDX.cupom, [...INDICADOR_NAMES.cupom]),
         gmvRaw,
         gmvCol,
+        gmvSeries,
     };
 }
 
@@ -334,6 +343,7 @@ export function parseCrmPartners(
             indiceGmv: gmvValue > 0 ? gmvValue : null,
             indiceGmvRaw: parsed.gmvRaw || '—',
             gmvMesLabel: parsed.gmvCol ?? '',
+            gmvMensal: parsed.gmvSeries,
             promoResumo: formatAprovAguarSummary(promoCounts),
             cupomResumo: formatAprovAguarSummary(cupomCounts),
             promoItensAtivos: promoSheet?.itemCount ?? 0,

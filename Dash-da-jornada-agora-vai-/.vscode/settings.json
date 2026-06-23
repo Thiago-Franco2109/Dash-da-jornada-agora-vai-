@@ -1,9 +1,0 @@
-{
-  "git.ignoreMissingGitWarnings": true,
-  "files.exclude": {
-    "**/.env.git": true
-  },
-  "search.exclude": {
-    "**/.env": true
-  }
-}

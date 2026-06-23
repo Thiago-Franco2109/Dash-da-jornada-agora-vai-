@@ -1,22 +1,36 @@
 import { useState } from 'react';
+import { useProductMode } from '../context/ProductModeContext';
+import type { AppView } from '../types/views';
 
 interface NavigationSidebarProps {
-    currentView: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports';
-    onNavigate: (view: 'dashboard' | 'settings' | 'about' | 'managers' | 'profile' | 'contacts' | 'reports') => void;
+    currentView: AppView;
+    onNavigate: (view: AppView) => void;
 }
 
 export default function NavigationSidebar({ currentView, onNavigate }: NavigationSidebarProps) {
     const [isPinned, setIsPinned] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
+    const { theme, isCD } = useProductMode();
 
     const isExpanded = isPinned || isHovered;
+    const sc = theme.sidebarClasses;
 
-    const navItems = [
+    const navItems: { id: AppView; icon: string; label: string }[] = [
         { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+        ...(!isCD ? [
+            { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
+            { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
+            { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
+            { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
+            { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
+        ] : [
+            { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' },
+            { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
+        ]),
         { id: 'reports', icon: 'assessment', label: 'Relatórios' },
         { id: 'contacts', icon: 'contact_phone', label: 'Contatos' },
         { id: 'managers', icon: 'badge', label: 'Gestores' },
-    ] as const;
+    ];
 
     const secondaryItems = [
         { id: 'settings', icon: 'settings', label: 'Configurações' },
@@ -25,12 +39,12 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
 
     return (
         <aside 
-            className={`flex flex-col h-full bg-emerald-800 text-white transition-all duration-300 ease-in-out z-20 shrink-0 border-r border-emerald-900 shadow-xl relative ${isExpanded ? 'w-64' : 'w-16'}`}
+            className={`flex flex-col h-full text-white transition-all duration-300 ease-in-out z-20 shrink-0 shadow-xl relative ${sc.bg} ${sc.border} border-r ${isExpanded ? 'w-64' : 'w-16'}`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
             {/* Pin Toggle */}
-            <div className={`flex items-center h-12 border-b border-emerald-700/50 shrink-0 transition-all duration-300 ${isExpanded ? 'justify-end px-3' : 'justify-center'}`}>
+            <div className={`flex items-center h-12 border-b ${sc.pinBorder} shrink-0 transition-all duration-300 ${isExpanded ? 'justify-end px-3' : 'justify-center'}`}>
                 {isExpanded ? (
                     <button 
                         onClick={() => setIsPinned(!isPinned)} 
@@ -53,7 +67,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
                     <button 
                         key={item.id}
                         onClick={() => onNavigate(item.id)}
-                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-emerald-50 hover:bg-white/10 hover:text-white font-medium'}`}
+                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? `${sc.activeItem} shadow-sm font-bold` : 'text-white/90 hover:bg-white/10 hover:text-white font-medium'}`}
                         title={!isExpanded ? item.label : undefined}
                     >
                         <span className="material-symbols-outlined shrink-0 text-[22px]">{item.icon}</span>
@@ -65,13 +79,13 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
 
 
 
-                <div className="mt-8 mb-4 h-px bg-emerald-600/50 mx-2" />
+                <div className={`mt-8 mb-4 h-px ${sc.divider} mx-2`} />
 
                 {secondaryItems.map(item => (
                     <button 
                         key={item.id}
                         onClick={() => onNavigate(item.id)}
-                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? 'bg-white text-emerald-700 shadow-sm font-bold' : 'text-emerald-50 hover:bg-white/10 hover:text-white font-medium'}`}
+                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? `${sc.activeItem} shadow-sm font-bold` : 'text-white/90 hover:bg-white/10 hover:text-white font-medium'}`}
                         title={!isExpanded ? item.label : undefined}
                     >
                         <span className="material-symbols-outlined shrink-0 text-[22px]">{item.icon}</span>
@@ -83,12 +97,12 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
             </nav>
 
             {/* Footer Links */}
-            <div className="p-2 border-t border-emerald-600/50 shrink-0">
+            <div className={`p-2 border-t ${sc.footerBorder} shrink-0`}>
                 <a 
                     href="https://dashboad-onboarding.netlify.app/" 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap text-emerald-50 hover:bg-white/10 hover:text-white font-medium group"
+                    className="flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap text-white/90 hover:bg-white/10 hover:text-white font-medium group"
                     title={!isExpanded ? 'Área Administrativa' : undefined}
                 >
                     <span className="material-symbols-outlined shrink-0 text-[22px]">admin_panel_settings</span>

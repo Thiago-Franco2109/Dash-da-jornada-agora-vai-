@@ -20,6 +20,8 @@ export interface CrmPartner {
     indiceGmv: number | null;
     indiceGmvRaw: string;
     gmvMesLabel: string;
+    /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
+    gmvMensal?: { label: string; value: number }[];
     /** Resumo INDICADOR col. PROMOÇÃO — ex. "APROV: 1 · AGUAR: 1" */
     promoResumo: string;
     /** Resumo INDICADOR col. CUPOM PARC. */

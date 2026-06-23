@@ -17,3 +17,63 @@ body {
   font-family: 'Manrope', sans-serif;
   @apply bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display antialiased;
 }
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+}
+
+/* Cabeçalho fixo nas tabelas de jornada e desempenho */
+.performance-table thead th {
+  @apply sticky top-0 z-20 bg-slate-50 dark:bg-slate-800;
+  box-shadow: 0 1px 0 0 rgb(226 232 240), 0 4px 6px -4px rgb(15 23 42 / 0.08);
+}
+
+.dark .performance-table thead th {
+  box-shadow: 0 1px 0 0 rgb(51 65 85), 0 4px 6px -4px rgb(0 0 0 / 0.25);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Modo compacto da aba Índice (INDICADOR / Todos os Parceiros
+   Marketplace): fontes e espaçamentos menores para caber mais
+   lojas na tela. Aplicado só nessa tabela via .performance-table--compact,
+   sem afetar as abas de Jornada e Desempenho.
+   ────────────────────────────────────────────────────────────── */
+.performance-table--compact thead th {
+  @apply py-2;
+  font-size: 10px;
+}
+
+.performance-table--compact tbody td {
+  @apply py-1.5;
+  font-size: 12px;
+}
+
+/* logo / placeholder menores reduzem a altura de cada linha */
+.performance-table--compact tbody td .size-10 {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.performance-table--compact tbody td .size-10 .material-symbols-outlined {
+  font-size: 16px;
+}
+
+/* valores em destaque (pedidos do mês) proporcionais ao novo tamanho */
+.performance-table--compact tbody td .text-lg {
+  font-size: 0.95rem;
+  line-height: 1.25rem;
+}
+
+/* nome do estabelecimento pode ocupar mais largura útil em fonte menor */
+.performance-table--compact tbody td .max-w-\[200px\] {
+  max-width: 260px;
+}

@@ -1,7 +1,15 @@
 
-import { useState, useMemo } from 'react';
-import { INITIAL_CITY_MANAGER_MAP, saveManagerOverride, getManagerOverrides, type Manager } from '../config/managerMapping';
+import { useState, useMemo, useEffect } from 'react';
+import {
+    INITIAL_CITY_MANAGER_MAP,
+    saveManagerOverride,
+    getManagerOverrides,
+    getNoCityManagerSplit,
+    saveNoCityManagerSplit,
+    type Manager,
+} from '../config/managerMapping';
 import { type EnrichedPerformanceRow } from '../utils/calculations';
+import { useProductMode } from '../context/ProductModeContext';
 
 interface ManagersViewProps {
     data: EnrichedPerformanceRow[];
@@ -9,25 +17,46 @@ interface ManagersViewProps {
 }
 
 export default function ManagersView({ data, onMappingChange }: ManagersViewProps) {
-    const [overrides, setOverrides] = useState(getManagerOverrides());
+    const { mode, theme } = useProductMode();
+    const [overrides, setOverrides] = useState(getManagerOverrides(mode));
+    const [noCitySplit, setNoCitySplit] = useState(getNoCityManagerSplit(mode));
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Prepara a lista de todas as cidades existentes nos dados, mais as do mapa inicial
+    useEffect(() => {
+        setOverrides(getManagerOverrides(mode));
+        setNoCitySplit(getNoCityManagerSplit(mode));
+    }, [mode]);
+
+    const noCityCount = useMemo(
+        () => data.filter(d => !(d.cidade || '').trim()).length,
+        [data],
+    );
+
     const allCities = useMemo(() => {
-        const fromData = Array.from(new Set(data.map(d => d.cidade)));
+        const fromData = Array.from(new Set(data.map(d => d.cidade).filter(Boolean)));
         const fromInitial = Object.keys(INITIAL_CITY_MANAGER_MAP);
         return Array.from(new Set([...fromData, ...fromInitial])).sort();
     }, [data]);
 
-    const filteredCities = allCities.filter(city => 
-        city.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredCities = allCities.filter(city =>
+        city.toLowerCase().includes(searchTerm.toLowerCase()),
     );
 
     const handleManagerChange = (city: string, manager: Manager) => {
-        saveManagerOverride(city, manager);
-        setOverrides(getManagerOverrides());
-        onMappingChange(); // Avisa o App para re-processar os dados
+        saveManagerOverride(city, manager, mode);
+        setOverrides(getManagerOverrides(mode));
+        onMappingChange();
     };
+
+    const handleNoCitySplitChange = (thiagoCount: number) => {
+        const clamped = Math.max(0, Math.min(thiagoCount, noCityCount));
+        const split = { thiagoCount: clamped };
+        saveNoCityManagerSplit(split, mode);
+        setNoCitySplit(split);
+        onMappingChange();
+    };
+
+    const laisCount = Math.max(0, noCityCount - noCitySplit.thiagoCount);
 
     return (
         <div className="p-4 md:p-8 max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -38,10 +67,55 @@ export default function ManagersView({ data, onMappingChange }: ManagersViewProp
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Gestão por Cidade</h1>
-                        <p className="text-slate-500 text-sm">Defina qual gestor é responsável por cada cidade. Isso afeta os filtros e relatórios.</p>
+                        <p className="text-slate-500 text-sm">
+                            Defina qual gestor é responsável por cada cidade em <strong>{theme.label}</strong>.
+                            Isso afeta os filtros e relatórios.
+                        </p>
                     </div>
                 </div>
             </header>
+
+            {/* Parceiros sem cidade */}
+            <div className="mb-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                    <div className="flex items-center gap-3 mb-1">
+                        <span className="material-symbols-outlined text-amber-500">location_off</span>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Parceiros sem cidade</h2>
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Parceiros sem cidade definida são atribuídos por padrão à <strong>Laís</strong>.
+                        Defina quantos ficam com cada gestor (ordem alfabética pelo nome do estabelecimento).
+                    </p>
+                </div>
+                <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-6">
+                    <div className="flex items-center gap-4">
+                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                            Com THIAGO:
+                        </label>
+                        <input
+                            type="number"
+                            min={0}
+                            max={noCityCount}
+                            value={noCitySplit.thiagoCount}
+                            onChange={(e) => handleNoCitySplitChange(parseInt(e.target.value, 10) || 0)}
+                            className="w-24 text-sm font-medium rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-sm">
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 font-medium">
+                            <span className="material-symbols-outlined text-[16px]">person</span>
+                            Thiago: <strong>{noCitySplit.thiagoCount}</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 font-medium">
+                            <span className="material-symbols-outlined text-[16px]">person</span>
+                            Laís: <strong>{laisCount}</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-medium">
+                            Total sem cidade: <strong>{noCityCount}</strong>
+                        </span>
+                    </div>
+                </div>
+            </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
@@ -71,7 +145,7 @@ export default function ManagersView({ data, onMappingChange }: ManagersViewProp
                                 const override = overrides[city];
                                 const initial = INITIAL_CITY_MANAGER_MAP[city];
                                 const effective = override || initial || 'DESCONHECIDO';
-                                
+
                                 return (
                                     <tr key={city} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
                                         <td className="px-6 py-4">
@@ -125,6 +199,7 @@ export default function ManagersView({ data, onMappingChange }: ManagersViewProp
                     <h4 className="text-sm font-bold text-blue-900 dark:text-blue-300 mb-1">Como funciona o Gestor Responsável?</h4>
                     <p className="text-xs text-blue-800/70 dark:text-blue-400/70 leading-relaxed">
                         As planilhas vêm com um gestor preenchido. Se você alterar nesta tela, o dashboard passará a ignorar o que está na planilha e usará a sua definição personalizada para aquela cidade.
+                        As configurações são salvas separadamente para Marketplace e Cardápio Digital.
                     </p>
                 </div>
             </footer>

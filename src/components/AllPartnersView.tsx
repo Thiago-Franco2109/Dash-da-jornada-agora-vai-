@@ -61,6 +61,22 @@ export default function AllPartnersView({
         if (priorityFilter && priority.toString() !== priorityFilter) return false;
         if (managerFilter && row.analista !== managerFilter) return false;
         return true;
+    }).sort((a, b) => {
+        if (!sortConfig) return 0;
+        const { key, direction } = sortConfig;
+        let aVal: unknown = a[key as keyof typeof a];
+        let bVal: unknown = b[key as keyof typeof b];
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return direction === 'asc' ? 1 : -1;
+        if (bVal == null) return direction === 'asc' ? -1 : 1;
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+            return direction === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        const aStr = String(aVal).toLowerCase();
+        const bStr = String(bVal).toLowerCase();
+        if (aStr < bStr) return direction === 'asc' ? -1 : 1;
+        if (aStr > bStr) return direction === 'asc' ? 1 : -1;
+        return 0;
     });
 
     const uniqueCities = Array.from(new Set(data.map(r => r.cidade).filter(Boolean))).sort();
