@@ -4,6 +4,7 @@ import { ptBR } from 'date-fns/locale/pt-BR';
 import { calcularMRRMetrics, formatarMoedaBRL } from '../config/cdContracts';
 import FilterToolbar from './FilterToolbar';
 import PerformanceTable, { type SortConfig } from './PerformanceTable';
+import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { isIndicadorChurnAtRisk } from '../utils/indicadorPerformance';
 
@@ -25,7 +26,7 @@ interface CDDesempenhoViewProps {
     sortConfig: SortConfig;
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
-    onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => void;
+    onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => void;
     preset?: 'all' | 'churn';
     /** cd_desempenho | marketplace (jornada) | indicador (INDICADOR_FORMATADO) */
     dataSource?: 'cd_desempenho' | 'marketplace' | 'indicador';

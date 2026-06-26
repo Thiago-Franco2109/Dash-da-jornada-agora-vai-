@@ -4,6 +4,14 @@ import { getCityWeight } from './calculations';
 import { getPartnerState } from '../config/partnerState';
 import { isParceiroContratoAtivo } from './parceirosSheet';
 
+function campaignStatusesFromPartner(partner: CrmPartner) {
+    return partner.campaignStatuses ?? {
+        ofertas_da_casa: partner.campaigns.ofertas_da_casa.status,
+        super_promos: partner.campaigns.super_promos.status,
+        cupons_destaque: partner.campaigns.cupons_destaque.status,
+    };
+}
+
 /** Score de risco (1–5) com base no volume de pedidos do mês mais recente (col. G+) */
 export function computeIndicadorChurnScore(pedidosMes: number | null | undefined): number {
     const p = pedidosMes ?? 0;
@@ -58,8 +66,9 @@ export function crmPartnerToEnrichedRow(
         week_4: 0,
         logo_url: partner.logoUrl,
         analista: partner.analista,
-        promo_status: partner.promoStatus,
-        cupom_status: partner.cupomStatus,
+        campaign_statuses: campaignStatusesFromPartner(partner),
+        promo_status: partner.campaigns.super_promos.status,
+        cupom_status: partner.campaigns.cupons_destaque.status,
         commercial_relevance: relevance,
         pedidos_mes_label: partner.gmvMesLabel,
         pedidos_mes_raw: partner.indiceGmvRaw,

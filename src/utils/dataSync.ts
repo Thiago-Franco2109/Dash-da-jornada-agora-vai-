@@ -432,6 +432,17 @@ export function normalizePromoStatus(raw: any): 'ativo' | 'aguardando' | 'inativ
     return 'inativo';
 }
 
+function buildLegacyCampaignStatuses(
+    promo: ReturnType<typeof normalizePromoStatus>,
+    cupom: ReturnType<typeof normalizePromoStatus>,
+): PerformanceRow['campaign_statuses'] {
+    return {
+        ofertas_da_casa: 'aguardando',
+        super_promos: promo,
+        cupons_destaque: cupom,
+    };
+}
+
 /**
  * Processas as rows retornadas pelo Gateway.
  */
@@ -464,6 +475,10 @@ function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): Perf
                 analista,
                 promo_status: normalizePromoStatus(rawPromo),
                 cupom_status: normalizePromoStatus(rawCupom),
+                campaign_statuses: buildLegacyCampaignStatuses(
+                    normalizePromoStatus(rawPromo),
+                    normalizePromoStatus(rawCupom),
+                ),
                 ...(logo_url ? { logo_url } : {}),
             };
         }).filter(isValidPartnerRow);
@@ -608,6 +623,10 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
                 analista,
                 promo_status: normalizePromoStatus(rawPromo),
                 cupom_status: normalizePromoStatus(rawCupom),
+                campaign_statuses: buildLegacyCampaignStatuses(
+                    normalizePromoStatus(rawPromo),
+                    normalizePromoStatus(rawCupom),
+                ),
             };
         }).filter(isValidPartnerRow);
     }
@@ -656,6 +675,7 @@ export function parseCDDesempenhoRows(rows: Record<string, unknown>[], headers?:
             analista: 'Desconhecido',
             promo_status: 'inativo' as const,
             cupom_status: 'inativo' as const,
+            campaign_statuses: buildLegacyCampaignStatuses('inativo', 'inativo'),
         };
     }).filter(isValidPartnerRow);
 }
@@ -686,6 +706,10 @@ function validateAndMapData(rawData: any[]): PerformanceRow[] {
             analista,
             promo_status: normalizePromoStatus(rawPromo),
             cupom_status: normalizePromoStatus(rawCupom),
+            campaign_statuses: buildLegacyCampaignStatuses(
+                normalizePromoStatus(rawPromo),
+                normalizePromoStatus(rawCupom),
+            ),
             ...(logo_url ? { logo_url } : {})
         };
     }).filter(isValidPartnerRow);
@@ -999,10 +1023,16 @@ export function mergeStatusOverridesIntoRows(rows: PerformanceRow[], map: Record
     return rows.map(row => {
         const id = row.estab_id || row.estabelecimento;
         if (id && map[id]) {
+            const campaign_statuses = {
+                ...(row.campaign_statuses ?? {}),
+                ...(map[id].promo ? { super_promos: map[id].promo as PerformanceRow['promo_status'] } : {}),
+                ...(map[id].cupom ? { cupons_destaque: map[id].cupom as PerformanceRow['cupom_status'] } : {}),
+            };
             return {
                 ...row,
-                promo_status: (map[id].promo as any) || row.promo_status,
-                cupom_status: (map[id].cupom as any) || row.cupom_status
+                promo_status: (map[id].promo as PerformanceRow['promo_status']) || row.promo_status,
+                cupom_status: (map[id].cupom as PerformanceRow['cupom_status']) || row.cupom_status,
+                campaign_statuses,
             };
         }
         return row;

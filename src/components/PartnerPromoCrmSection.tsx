@@ -17,11 +17,11 @@ import { formatBRL } from '../utils/crmData';
 
 type PromoSubTab = 'campanhas' | 'crm';
 
-const CRM_STATUS_OPTIONS: { value: PromoStatus; label: string; badge: string }[] = [
-    { value: 'aguardando', label: 'Não ofertado', badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    { value: 'ofertei', label: 'Aguardando retorno', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-    { value: 'negado', label: 'Negado', badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
-    { value: 'ativo', label: 'Promo ativa', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+const CRM_STATUS_OPTIONS: { value: PromoStatus; label: string; icon: string; badge: string; ring: string }[] = [
+    { value: 'aguardando', label: 'Não ofertado', icon: 'campaign', badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300', ring: 'ring-red-500/30' },
+    { value: 'ofertei', label: 'Aguardando retorno', icon: 'hourglass_top', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300', ring: 'ring-orange-500/30' },
+    { value: 'negado', label: 'Negado', icon: 'cancel', badge: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300', ring: 'ring-slate-400/30' },
+    { value: 'ativo', label: 'Promo ativa', icon: 'verified', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300', ring: 'ring-emerald-500/30' },
 ];
 
 interface PartnerPromoCrmSectionProps {
@@ -131,8 +131,8 @@ export default function PartnerPromoCrmSection({
                     <div className="flex items-center gap-3 mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
                         <span className="material-symbols-outlined text-violet-500 text-3xl">local_offer</span>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Promoções & Cupons</h2>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Gerenciamento de atrativos no cardápio para impulsionar conversão</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Campanhas Promocionais</h2>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">Ofertas da Casa, Super Promos e Cupons de destaque — conforme coluna CAMPANHA na planilha</p>
                         </div>
                     </div>
 
@@ -166,9 +166,14 @@ export default function PartnerPromoCrmSection({
                                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                                         {OFERTAS_DA_CASA_CAMPAIGN.description}
                                     </p>
-                                    {ofertasRecord?.source === 'auto' && (
-                                        <p className="text-[10px] text-slate-400 mt-1">Atualizado automaticamente</p>
-                                    )}
+                                        {ofertasRecord?.source === 'auto' && (
+                                            <p className="text-[10px] text-slate-400 mt-1">Atualizado automaticamente</p>
+                                        )}
+                                        {crmPartner && crmPartner.campaigns.ofertas_da_casa.itemCount > 0 && (
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                                {crmPartner.campaigns.ofertas_da_casa.itemCount} item(ns) na planilha (CAMPANHA: Ofertas da Casa)
+                                            </p>
+                                        )}
                                 </div>
                             </div>
                             <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
@@ -202,23 +207,25 @@ export default function PartnerPromoCrmSection({
                             </div>
                         </div>
 
-                        {/* Promoção especial */}
+                        {/* Super Promos */}
                         <CampaignCard
                             icon="percent"
-                            title="Promoção Ativa"
-                            description="Garante que o parceiro possua descontos diretos em produtos no cardápio."
-                            status={partner.promo_status}
+                            title="Super Promos"
+                            description="Campanha de descontos em itens selecionados do cardápio (col. CAMPANHA: Super Promos!)."
+                            status={crmPartner?.campaigns.super_promos.status ?? partner.promo_status}
+                            itemCount={crmPartner?.campaigns.super_promos.itemCount}
                             href={promoUrl}
                             localidadeId={localidadeId}
                             cityIdsLoading={cityIdsLoading}
                         />
 
-                        {/* Cupom */}
+                        {/* Cupons de destaque */}
                         <CampaignCard
                             icon="confirmation_number"
-                            title="Cupom Exclusivo"
-                            description="Cupons exclusivos para primeira compra ou retenção de clientes."
-                            status={partner.cupom_status}
+                            title="Cupons de destaque"
+                            description="Cupons promocionais de destaque para conversão e retenção."
+                            status={crmPartner?.campaigns.cupons_destaque.status ?? partner.cupom_status}
+                            itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
                             href={cupomUrl}
                             localidadeId={localidadeId}
                             cityIdsLoading={cityIdsLoading}
@@ -228,136 +235,194 @@ export default function PartnerPromoCrmSection({
             )}
 
             {subTab === 'crm' && (
-                <div className="bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-8 space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-700">
-                        <div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <span className="material-symbols-outlined text-violet-500">handshake</span>
-                                CRM — Prospecção de Promoções
-                            </h2>
-                            <p className="text-sm text-slate-500 mt-1">
-                                Funil de oferta para {partner.estabelecimento}
-                                {isTopCity ? ' · cidade prioritária (top 5 GMV)' : ''}
-                            </p>
+                <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                    {/* Header com faixa de destaque */}
+                    <div className="relative px-6 sm:px-8 pt-7 pb-6 bg-gradient-to-r from-violet-50 via-white to-white dark:from-violet-900/20 dark:via-slate-800/50 dark:to-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-start gap-4 min-w-0">
+                                <div className="size-12 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 shrink-0 shadow-sm">
+                                    <span className="material-symbols-outlined text-[26px]">handshake</span>
+                                </div>
+                                <div className="min-w-0">
+                                    <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
+                                        CRM — Prospecção de Promoções
+                                    </h2>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                        <span className="truncate">Funil de oferta para {partner.estabelecimento}</span>
+                                        {isTopCity && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-200 text-amber-900 dark:bg-amber-800/50 dark:text-amber-200">
+                                                <span className="material-symbols-outlined text-[12px]">star</span>
+                                                Top 5 GMV
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+                            {onNavigateToCrm && (
+                                <button
+                                    type="button"
+                                    onClick={onNavigateToCrm}
+                                    className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-violet-700 bg-white hover:bg-violet-50 border border-violet-200 shadow-sm transition-colors dark:bg-slate-800 dark:text-violet-300 dark:border-violet-800/50 dark:hover:bg-slate-700"
+                                >
+                                    Abrir CRM completo
+                                    <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                                </button>
+                            )}
                         </div>
-                        {onNavigateToCrm && (
-                            <button
-                                type="button"
-                                onClick={onNavigateToCrm}
-                                className="shrink-0 text-sm font-semibold text-primary hover:underline flex items-center gap-1"
-                            >
-                                Abrir CRM completo
-                                <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                            </button>
-                        )}
                     </div>
 
+                    <div className="p-6 sm:p-8 space-y-7">
                     {crmPartner ? (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Metric label={`GMV ${crmPartner.gmvMesLabel || 'mês'}`} value={crmPartner.indiceGmv != null ? formatBRL(crmPartner.indiceGmv) : '—'} />
-                            <Metric label="Promo INDICADOR" value={crmPartner.promoResumo || '—'} small />
-                            <Metric label="Cupom INDICADOR" value={crmPartner.cupomResumo || '—'} small />
-                            <Metric label="Itens PROMO-ESPECIAL" value={String(crmPartner.promoItensAtivos)} />
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                            <Metric icon="payments" accent="emerald" label={`GMV ${crmPartner.gmvMesLabel || 'mês'}`} value={crmPartner.indiceGmv != null ? formatBRL(crmPartner.indiceGmv) : '—'} />
+                            <Metric icon="home_work" accent="amber" label="Ofertas da Casa" value={crmPartner.campaigns.ofertas_da_casa.resumo} small />
+                            <Metric icon="percent" accent="violet" label="Super Promos" value={crmPartner.campaigns.super_promos.resumo} small />
+                            <Metric icon="confirmation_number" accent="indigo" label="Cupons de destaque" value={crmPartner.campaigns.cupons_destaque.resumo} small />
                         </div>
-                    ) : (
-                        <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-                            Dados do INDICADOR_FORMATADO ainda não carregados. Abra a aba CRM Promoções ou aguarde a sincronização.
-                        </p>
-                    )}
+                        ) : (
+                            <div className="flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3">
+                                <span className="material-symbols-outlined text-[20px] shrink-0">info</span>
+                                <span>Dados do INDICADOR_FORMATADO ainda não carregados. Abra a aba CRM Promoções ou aguarde a sincronização.</span>
+                            </div>
+                        )}
 
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Status prospecção (promo)</p>
-                            <div className="flex flex-wrap gap-2">
-                                {CRM_STATUS_OPTIONS.map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => handlePromoStatusChange(opt.value)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-opacity ${
-                                            crmPromoStatus === opt.value ? opt.badge : 'bg-slate-100 text-slate-500 opacity-60 hover:opacity-100'
-                                        }`}
+                        <div className="grid lg:grid-cols-2 gap-6">
+                            {/* Status prospecção como funil */}
+                            <div className="space-y-3">
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-violet-500">filter_alt</span>
+                                    Status prospecção (promo)
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {CRM_STATUS_OPTIONS.map(opt => {
+                                        const selected = crmPromoStatus === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => handlePromoStatusChange(opt.value)}
+                                                className={`flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
+                                                    selected
+                                                        ? `${opt.badge} border-transparent ring-2 ${opt.ring} shadow-sm`
+                                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 hover:border-slate-300 hover:text-slate-600 dark:hover:text-slate-300'
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[20px]">{opt.icon}</span>
+                                                <span className="text-[11px] font-bold leading-tight">{opt.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Ofertas da casa */}
+                            <div className="space-y-3">
+                                <p className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-amber-500">home_work</span>
+                                    Ofertas da casa
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <select
+                                        value={ofertasStatus}
+                                        onChange={e => setStatus(pid, e.target.value as OfertasDaCasaStatus, 'manual')}
+                                        className="flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-colors"
                                     >
-                                        {opt.label}
-                                    </button>
-                                ))}
+                                        {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                    <CmsManageLink
+                                        href={ofertasDaCasaUrl}
+                                        localidadeId={localidadeId}
+                                        cityIdsLoading={cityIdsLoading}
+                                        label="Abrir campanha no CMS"
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Ofertas da casa</p>
-                            <select
-                                value={ofertasStatus}
-                                onChange={e => setStatus(pid, e.target.value as OfertasDaCasaStatus, 'manual')}
-                                className="w-full h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3"
+                        {/* Linha do tempo de contato */}
+                        <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
+                                <span className="size-9 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 shrink-0">
+                                    <span className="material-symbols-outlined text-[18px]">history</span>
+                                </span>
+                                <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Último contato</p>
+                                    <p className="font-bold text-slate-800 dark:text-white">{formatDate(note?.lastContact)}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 p-4 rounded-xl bg-violet-50/60 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30">
+                                <span className="size-9 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-violet-600 dark:text-violet-300 shrink-0">
+                                    <span className="material-symbols-outlined text-[18px]">event_upcoming</span>
+                                </span>
+                                <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-violet-500">Próximo follow-up</p>
+                                    <p className="font-bold text-slate-800 dark:text-white">{formatDate(note?.nextFollowUp)}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Notas e agendamento */}
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 p-5 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                                    Notas da prospecção
+                                </label>
+                                <textarea
+                                    value={editNotes || note?.notes || ''}
+                                    onChange={e => setEditNotes(e.target.value)}
+                                    rows={3}
+                                    placeholder="Ex.: Ofereci campanha Ofertas da casa, aguardando retorno do gerente..."
+                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm resize-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-colors dark:text-white"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-amber-500">home_work</span>
+                                    Notas — Ofertas da casa
+                                </label>
+                                <textarea
+                                    value={ofertasNotes || ofertasRecord?.notes || ''}
+                                    onChange={e => setOfertasNotes(e.target.value)}
+                                    rows={2}
+                                    placeholder="Detalhes específicos da campanha Ofertas da casa..."
+                                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm resize-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-colors dark:text-white"
+                                />
+                            </div>
+                            <div className="space-y-2 sm:max-w-xs">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                                    Agendar próximo follow-up
+                                </label>
+                                <input
+                                    type="date"
+                                    value={editFollowUp || note?.nextFollowUp || ''}
+                                    onChange={e => setEditFollowUp(e.target.value)}
+                                    className="w-full h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-colors dark:text-white"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 pt-1 border-t border-slate-100 dark:border-slate-800/60 -mt-1">
+                            <button
+                                type="button"
+                                onClick={saveCrmNotes}
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-primary hover:bg-primary/90 rounded-xl shadow-sm transition-colors flex items-center gap-1.5 mt-5"
                             >
-                                {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                            <CmsManageLink
-                                href={ofertasDaCasaUrl}
-                                localidadeId={localidadeId}
-                                cityIdsLoading={cityIdsLoading}
-                                label="Abrir campanha no CMS"
-                                fullWidth
-                            />
+                                <span className="material-symbols-outlined text-[18px]">save</span>
+                                Salvar CRM
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => registerContact(pid)}
+                                className="px-5 py-2.5 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40 rounded-xl flex items-center gap-1.5 transition-colors mt-5"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">call</span>
+                                Registrar contato hoje
+                            </button>
                         </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-4 text-sm">
-                        <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                            <p className="text-xs text-slate-500">Último contato</p>
-                            <p className="font-semibold text-slate-800 dark:text-white">{formatDate(note?.lastContact)}</p>
-                        </div>
-                        <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50">
-                            <p className="text-xs text-slate-500">Próximo follow-up</p>
-                            <p className="font-semibold text-slate-800 dark:text-white">{formatDate(note?.nextFollowUp)}</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Notas da prospecção</label>
-                        <textarea
-                            value={editNotes || note?.notes || ''}
-                            onChange={e => setEditNotes(e.target.value)}
-                            rows={3}
-                            placeholder="Ex.: Ofereci campanha Ofertas da casa, aguardando retorno do gerente..."
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm resize-none"
-                        />
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Notas — Ofertas da casa</label>
-                        <textarea
-                            value={ofertasNotes || ofertasRecord?.notes || ''}
-                            onChange={e => setOfertasNotes(e.target.value)}
-                            rows={2}
-                            placeholder="Detalhes específicos da campanha Ofertas da casa..."
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm resize-none"
-                        />
-                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Próximo follow-up</label>
-                        <input
-                            type="date"
-                            value={editFollowUp || note?.nextFollowUp || ''}
-                            onChange={e => setEditFollowUp(e.target.value)}
-                            className="w-full h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm"
-                        />
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 pt-2">
-                        <button
-                            type="button"
-                            onClick={saveCrmNotes}
-                            className="px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary/90 rounded-lg"
-                        >
-                            Salvar CRM
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => registerContact(pid)}
-                            className="px-4 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 rounded-lg flex items-center gap-1"
-                        >
-                            <span className="material-symbols-outlined text-[18px]">call</span>
-                            Registrar contato hoje
-                        </button>
                     </div>
                 </div>
             )}
@@ -365,11 +430,35 @@ export default function PartnerPromoCrmSection({
     );
 }
 
-function Metric({ label, value, small }: { label: string; value: string; small?: boolean }) {
+function Metric({
+    label,
+    value,
+    small,
+    icon,
+    accent = 'slate',
+}: {
+    label: string;
+    value: string;
+    small?: boolean;
+    icon?: string;
+    accent?: 'violet' | 'emerald' | 'amber' | 'slate' | 'indigo';
+}) {
+    const accents: Record<string, string> = {
+        violet: 'text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30',
+        emerald: 'text-emerald-600 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30',
+        amber: 'text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30',
+        indigo: 'text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/30',
+        slate: 'text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800',
+    };
     return (
-        <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
-            <p className={`font-bold text-slate-900 dark:text-white mt-1 ${small ? 'text-xs font-mono' : 'text-lg'}`}>{value}</p>
+        <div className="relative p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all">
+            {icon && (
+                <span className={`absolute top-3 right-3 size-7 rounded-lg flex items-center justify-center ${accents[accent]}`}>
+                    <span className="material-symbols-outlined text-[16px]">{icon}</span>
+                </span>
+            )}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-8 leading-tight">{label}</p>
+            <p className={`font-bold text-slate-900 dark:text-white mt-2 ${small ? 'text-sm font-mono break-words' : 'text-2xl'}`}>{value}</p>
         </div>
     );
 }
@@ -419,6 +508,7 @@ function CampaignCard({
     title,
     description,
     status,
+    itemCount,
     href,
     localidadeId,
     cityIdsLoading,
@@ -427,6 +517,7 @@ function CampaignCard({
     title: string;
     description: string;
     status?: string;
+    itemCount?: number;
     href: string;
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
@@ -460,6 +551,9 @@ function CampaignCard({
                         )}
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{description}</p>
+                    {itemCount != null && itemCount > 0 && (
+                        <p className="text-[10px] text-slate-400 mt-1">{itemCount} item(ns) na planilha PROMO-ESPECIAL</p>
+                    )}
                 </div>
             </div>
             <CmsManageLink

@@ -57,7 +57,6 @@ export default function CrmTableView({
     isLoading,
     gmvHeader,
     topCities,
-    getPromoStatus,
     getNote,
     getOfertasStatus,
     setOfertasStatus,
@@ -98,9 +97,9 @@ export default function CrmTableView({
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gestor</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Status</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">GMV {gmvHeader}</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Promoção</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Cupom PARC.</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Ofertas da casa</th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Super Promos</th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Cupons de destaque</th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Ofertas da Casa</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Último contato</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Follow-up</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Notas</th>
@@ -112,7 +111,6 @@ export default function CrmTableView({
                                 const id = row.partnerId;
                                 const note = getNote(id);
                                 const hasNotes = Boolean(note?.notes?.trim());
-                                const promoStatus = getPromoStatus(row);
 
                                 return (
                                     <tr key={`${id}-${row.cidade}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
@@ -135,18 +133,21 @@ export default function CrmTableView({
                                         <td className="py-3 px-4 text-center text-sm font-semibold text-slate-700 dark:text-slate-300">{formatGmv(row)}</td>
                                         <td className="py-3 px-4">
                                             <div className="flex flex-col gap-1 min-w-[140px]">
-                                                <StatusDropdown partnerId={id} currentStatus={promoStatus} onStatusChange={onStatusChange} onPartnerStatusChange={onPartnerStatusChange} />
-                                                <span className="text-[10px] text-slate-500 font-mono">{row.promoResumo}</span>
+                                                <StatusDropdown partnerId={id} currentStatus={row.campaigns.super_promos.status} onStatusChange={onStatusChange} onPartnerStatusChange={onPartnerStatusChange} />
+                                                <span className="text-[10px] text-slate-500 font-mono">{row.campaigns.super_promos.resumo}</span>
+                                                {row.campaigns.super_promos.itemCount > 0 && (
+                                                    <span className="text-[9px] text-slate-400">{row.campaigns.super_promos.itemCount} item(ns)</span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="py-3 px-4">
-                                            <div className="flex flex-col items-center gap-1">
+                                            <div className="flex flex-col items-center gap-1 min-w-[120px]">
                                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                    row.hasCupomAtivo ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
+                                                    row.campaigns.cupons_destaque.hasActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                                                 }`}>
-                                                    {row.hasCupomAtivo ? 'Ativo' : 'Sem cupom'}
+                                                    {row.campaigns.cupons_destaque.status === 'ativo' ? 'Ativo' : row.campaigns.cupons_destaque.status}
                                                 </span>
-                                                <span className="text-[10px] text-slate-500 font-mono text-center">{row.cupomResumo}</span>
+                                                <span className="text-[10px] text-slate-500 font-mono text-center">{row.campaigns.cupons_destaque.resumo}</span>
                                             </div>
                                         </td>
                                         <td className="py-3 px-4">

@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { CampaignStatusOverrideField } from '../config/campaignTypes';
 
 export type PromoStatus = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
-
-export type StatusOverrideField = CampaignStatusOverrideField;
 
 export function useStatusOverride() {
     const [isUpdating, setIsUpdating] = useState(false);
 
-    const updateStatus = async (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => {
+    const updateStatus = async (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => {
         setIsUpdating(true);
         try {
             // Primeiro, tentamos fazer o upsert

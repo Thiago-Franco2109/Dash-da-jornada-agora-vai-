@@ -43,7 +43,7 @@ import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 import { buildNoCityIndexMap } from './config/managerMapping';
 import { CACHE_KEYS } from './utils/dataSync';
-import { useStatusOverride } from './hooks/useStatusOverride';
+import { useStatusOverride, type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
 import { useCarteiraData } from './hooks/useCarteiraData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
@@ -170,7 +170,7 @@ function App() {
   const { updateStatus } = useStatusOverride();
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
-  const handleStatusChange = async (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: any) => {
+  const handleStatusChange = async (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => {
     const isIndicadorView = !isCD && (currentView === 'churn' || currentView === 'todos_parceiros');
     const activeRows = currentView === 'cd_desempenho' || (currentView === 'churn' && isCD)
       ? desempenhoRawRows
@@ -179,8 +179,16 @@ function App() {
         : rawRows;
     const row = activeRows.find(r => (r.estab_id || r.estabelecimento) === partnerId);
     if (row) {
-        if (field === 'promo_status_override') row.promo_status = newStatus;
-        if (field === 'cupom_status_override') row.cupom_status = newStatus;
+        const statuses = { ...(row.campaign_statuses ?? {}) };
+        if (field === 'promo_status_override') {
+            row.promo_status = newStatus;
+            statuses.super_promos = newStatus;
+        }
+        if (field === 'cupom_status_override') {
+            row.cupom_status = newStatus;
+            statuses.cupons_destaque = newStatus;
+        }
+        row.campaign_statuses = statuses;
         setForceRender(prev => prev + 1);
     }
 

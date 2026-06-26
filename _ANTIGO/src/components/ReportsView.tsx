@@ -1,62 +1,57 @@
 
 import { useState, useMemo } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
-import { CAMPAIGN_TYPES, type CampaignTypeId } from '../config/campaignTypes';
 
 interface ReportsViewProps {
     data: EnrichedPerformanceRow[];
-    managerFilter?: string;
 }
 
-export default function ReportsView({ data, managerFilter = '' }: ReportsViewProps) {
+export default function ReportsView({ data }: ReportsViewProps) {
+    const [managerFilter, setManagerFilter] = useState('all');
     const [cityFilter, setCityFilter] = useState('all');
 
+    // Filtered data based on toolbar
     const filteredData = useMemo(() => {
         return data
-            .filter(row => !managerFilter || row.analista === managerFilter)
+            .filter(row => managerFilter === 'all' || row.analista === managerFilter)
             .filter(row => cityFilter === 'all' || row.cidade === cityFilter);
     }, [data, managerFilter, cityFilter]);
 
     // KPI Calculations
     const kpis = useMemo(() => {
-        const total = filteredData.length || 1;
-
+        const total = filteredData.length || 1; // avoid division by zero
+        
         const withOrders = filteredData.filter(row => row.total_pedidos > 0).length;
         const meetingGoal = filteredData.filter(row => row.total_pedidos >= row.dias_desde_lancamento && row.dias_desde_lancamento > 0).length;
-
-        const campaignStats = Object.fromEntries(
-            CAMPAIGN_TYPES.map(c => {
-                const withActive = filteredData.filter(row =>
-                    (row.campaign_statuses?.[c.id] ?? (c.id === 'super_promos' ? row.promo_status : c.id === 'cupons_destaque' ? row.cupom_status : undefined)) === 'ativo',
-                ).length;
-                return [c.id, {
-                    withActive,
-                    withoutActive: filteredData.length - withActive,
-                    percent: (withActive / total) * 100,
-                }];
-            }),
-        ) as Record<CampaignTypeId, { withActive: number; withoutActive: number; percent: number }>;
+        const withPromo = filteredData.filter(row => row.promo_status === 'ativo').length;
+        const withoutPromo = filteredData.filter(row => row.promo_status !== 'ativo').length;
+        const withCupom = filteredData.filter(row => row.cupom_status === 'ativo').length;
+        const withoutCupom = filteredData.filter(row => row.cupom_status !== 'ativo').length;
 
         return {
             total: filteredData.length,
             withOrders: { count: withOrders, percent: (withOrders / total) * 100 },
             meetingGoal: { count: meetingGoal, percent: (meetingGoal / total) * 100 },
-            campaigns: campaignStats,
+            withPromo: { count: withPromo, percent: (withPromo / total) * 100 },
+            withoutPromo: { count: withoutPromo, percent: (withoutPromo / total) * 100 },
+            withCupom: { count: withCupom, percent: (withCupom / total) * 100 },
+            withoutCupom: { count: withoutCupom, percent: (withoutCupom / total) * 100 },
         };
     }, [filteredData]);
 
-    const noCampaignLists = useMemo(() => {
-        const lists = {} as Record<CampaignTypeId, EnrichedPerformanceRow[]>;
-        for (const c of CAMPAIGN_TYPES) {
-            lists[c.id] = filteredData
-                .filter(row =>
-                    (row.campaign_statuses?.[c.id] ?? (c.id === 'super_promos' ? row.promo_status : c.id === 'cupons_destaque' ? row.cupom_status : 'aguardando')) !== 'ativo',
-                )
-                .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
-        }
-        return lists;
+    const noPromoList = useMemo(() => {
+        return filteredData
+            .filter(row => row.promo_status !== 'ativo')
+            .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
     }, [filteredData]);
 
+    const noCupomList = useMemo(() => {
+        return filteredData
+            .filter(row => row.cupom_status !== 'ativo')
+            .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
+    }, [filteredData]);
+
+    const uniqueManagers = Array.from(new Set(data.map(d => d.analista))).filter(Boolean).sort();
     const uniqueCities = Array.from(new Set(data.map(d => d.cidade))).filter(Boolean).sort();
 
     return (
@@ -81,11 +76,14 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                             <span className="material-symbols-outlined text-slate-400 text-sm">filter_list</span>
                         </div>
                         
-                        {managerFilter && (
-                            <span className="text-xs font-bold px-3 py-2 bg-primary/10 text-primary rounded-xl">
-                                {managerFilter}
-                            </span>
-                        )}
+                        <select 
+                            value={managerFilter}
+                            onChange={(e) => setManagerFilter(e.target.value)}
+                            className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-900 border-none rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer text-slate-700 dark:text-slate-200"
+                        >
+                            <option value="all">Todos os Gestores</option>
+                            {uniqueManagers.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
 
                         <select 
                             value={cityFilter}
@@ -96,9 +94,9 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                             {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
 
-                        {cityFilter !== 'all' && (
+                        { (managerFilter !== 'all' || cityFilter !== 'all') && (
                             <button 
-                                onClick={() => setCityFilter('all')}
+                                onClick={() => { setManagerFilter('all'); setCityFilter('all'); }}
                                 className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
                                 title="Limpar filtros"
                             >
@@ -109,7 +107,8 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                 </div>
 
                 {/* KPI GRID */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* KPI: Recebendo Pedidos */}
                     <KPICard 
                         title="Ativação de Pedidos"
                         value={`${kpis.withOrders.percent.toFixed(1)}%`}
@@ -118,6 +117,8 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                         color="emerald"
                         trend="Receberam pelo menos 1 pedido"
                     />
+
+                    {/* KPI: Meta Diária */}
                     <KPICard 
                         title="Meta de 1 Pedido/Dia"
                         value={`${kpis.meetingGoal.percent.toFixed(1)}%`}
@@ -126,43 +127,73 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                         color="blue"
                         trend="Desempenho ideal (>= 1 pedido/dia)"
                     />
-                    {CAMPAIGN_TYPES.map(c => (
-                        <KPICard
-                            key={c.id}
-                            title={c.label}
-                            value={`${kpis.campaigns[c.id].percent.toFixed(1)}%`}
-                            subtitle={`${kpis.campaigns[c.id].withActive} com campanha ativa`}
-                            icon={c.icon}
-                            color={c.id === 'ofertas_da_casa' ? 'amber' : c.id === 'super_promos' ? 'violet' : 'amber'}
-                            trend="Penetração na base filtrada"
-                        />
-                    ))}
+
+                    {/* KPI: Promoções Ativas */}
+                    <KPICard 
+                        title="Penetração de Promo"
+                        value={`${kpis.withPromo.percent.toFixed(1)}%`}
+                        subtitle={`${kpis.withPromo.count} com promoção ativa`}
+                        icon="percent"
+                        color="violet"
+                        trend="Estratégia de preço ativa"
+                    />
+
+                    {/* KPI: Cupons Ativos */}
+                    <KPICard 
+                        title="Uso de Cupons"
+                        value={`${kpis.withCupom.percent.toFixed(1)}%`}
+                        subtitle={`${kpis.withCupom.count} com cupom ativo`}
+                        icon="confirmation_number"
+                        color="amber"
+                        trend="Incentivo de primeira compra"
+                    />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                    {CAMPAIGN_TYPES.map(c => (
-                        <div key={c.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
-                            <div className="absolute -right-10 -top-10 size-40 bg-violet-500/5 rounded-full blur-3xl group-hover:bg-violet-500/10 transition-colors" />
-                            <div className="flex items-start justify-between mb-8">
-                                <div className="space-y-1">
-                                    <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Oportunidade — {c.shortLabel}</h3>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Parceiros sem {c.label.toLowerCase()} ativa.</p>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                    <span className="text-4xl font-black text-violet-500">{kpis.campaigns[c.id].withoutActive}</span>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pendente</span>
-                                </div>
+                {/* SECONDARY STATS (Inverted/Pendencies) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
+                        <div className="absolute -right-10 -top-10 size-40 bg-violet-500/5 rounded-full blur-3xl group-hover:bg-violet-500/10 transition-colors" />
+                        
+                        <div className="flex items-start justify-between mb-8">
+                            <div className="space-y-1">
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Oportunidade de Promoção</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Parceiros sem nenhuma promoção ativa configurada.</p>
                             </div>
-                            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {noCampaignLists[c.id].map(store => (
-                                    <StoreMiniCard key={`no-${c.id}-${store.estab_id || store.estabelecimento}`} store={store} campaignId={c.id} />
-                                ))}
-                                {noCampaignLists[c.id].length === 0 && (
-                                    <EmptyState message={`Todos os parceiros têm ${c.shortLabel.toLowerCase()} ativa!`} />
-                                )}
+                            <div className="flex flex-col items-end">
+                                <span className="text-4xl font-black text-violet-500">{kpis.withoutPromo.count}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pendente</span>
                             </div>
                         </div>
-                    ))}
+
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            {noPromoList.map(store => (
+                                <StoreMiniCard key={`no-promo-${store.estab_id || store.estabelecimento}`} store={store} type="promo" />
+                            ))}
+                            {noPromoList.length === 0 && <EmptyState message="Todos os parceiros têm promoções!" />}
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
+                        <div className="absolute -right-10 -top-10 size-40 bg-amber-500/5 rounded-full blur-3xl group-hover:bg-amber-500/10 transition-colors" />
+
+                        <div className="flex items-start justify-between mb-8">
+                            <div className="space-y-1">
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Oportunidade de Cupom</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Parceiros sem cupons ativos para atração de clientes.</p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-4xl font-black text-amber-500">{kpis.withoutCupom.count}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pendente</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                            {noCupomList.map(store => (
+                                <StoreMiniCard key={`no-cupom-${store.estab_id || store.estabelecimento}`} store={store} type="cupom" />
+                            ))}
+                            {noCupomList.length === 0 && <EmptyState message="Todos os parceiros têm cupons!" />}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -201,10 +232,7 @@ function KPICard({ title, value, subtitle, icon, color, trend }: { title: string
     );
 }
 
-function StoreMiniCard({ store, campaignId }: { store: EnrichedPerformanceRow; campaignId: CampaignTypeId }) {
-    const campaign = CAMPAIGN_TYPES.find(c => c.id === campaignId)!;
-    const status = store.campaign_statuses?.[campaignId]
-        ?? (campaignId === 'super_promos' ? store.promo_status : campaignId === 'cupons_destaque' ? store.cupom_status : 'aguardando');
+function StoreMiniCard({ store, type }: { store: EnrichedPerformanceRow; type: 'promo' | 'cupom' }) {
     return (
         <div className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all group/card">
             <div className="shrink-0 relative">
@@ -215,10 +243,10 @@ function StoreMiniCard({ store, campaignId }: { store: EnrichedPerformanceRow; c
                         <span className="material-symbols-outlined text-[20px]">store</span>
                     </div>
                 )}
-                <div className={`absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-slate-50 dark:border-slate-900 flex items-center justify-center ${
-                    campaignId === 'ofertas_da_casa' ? 'bg-amber-500' : campaignId === 'super_promos' ? 'bg-violet-500' : 'bg-indigo-500'
-                }`}>
-                    <span className="material-symbols-outlined text-[8px] text-white font-black">{campaign.icon}</span>
+                <div className={`absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-slate-50 dark:border-slate-900 flex items-center justify-center ${type === 'promo' ? 'bg-violet-500' : 'bg-amber-500'}`}>
+                    <span className="material-symbols-outlined text-[8px] text-white font-black">
+                        {type === 'promo' ? 'percent' : 'confirmation_number'}
+                    </span>
                 </div>
             </div>
             
@@ -236,7 +264,7 @@ function StoreMiniCard({ store, campaignId }: { store: EnrichedPerformanceRow; c
                     {store.dias_desde_lancamento}d
                 </span>
                 <span className="text-[9px] font-bold text-slate-400 mt-0.5 uppercase tracking-tighter">
-                    {status}
+                    {store[type === 'promo' ? 'promo_status' : 'cupom_status']}
                 </span>
             </div>
         </div>

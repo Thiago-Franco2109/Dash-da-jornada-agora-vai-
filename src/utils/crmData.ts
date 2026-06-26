@@ -2,6 +2,15 @@ import type { GatewaySheetTable } from '../types/gatewaySheet';
 import type { CrmPartner, CrmParseInfo } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import {
+    CAMPAIGN_TYPE_IDS,
+    CAMPAIGN_TYPES,
+    type CampaignSheetInfo,
+    type CampaignTypeId,
+    emptyCampaignSheetInfo,
+    resolveCampaignStatusFromSheet,
+    resolveCampaignTypeId,
+} from '../config/campaignTypes';
+import {
     cellText,
     cellByPosition,
     resolveSheetColumn,
@@ -36,12 +45,6 @@ const INDICADOR_NAMES = {
 export interface AprovAguarCounts {
     aprov: number;
     aguar: number;
-}
-
-interface PromoSheetInfo {
-    hasAprovadoAtivo: boolean;
-    hasAguardando: boolean;
-    itemCount: number;
 }
 
 interface CupomSheetInfo {
@@ -195,27 +198,47 @@ function sheetIdentityFromEstabId(row: Record<string, unknown>, orderedHeaders: 
     return { estabId, key: buildPartnerLookupKey(estabId) };
 }
 
-function buildPromoEspecialMap(table: GatewaySheetTable): Map<string, PromoSheetInfo> {
+function buildPromoEspecialCampaignMap(table: GatewaySheetTable): Map<string, Map<CampaignTypeId, CampaignSheetInfo>> {
     const ordered = orderedHeadersOf(table);
     const statusCol = resolveSheetColumn(ordered, ['STATUS']);
     const ativoCol = resolveSheetColumn(ordered, ['ATIVO']);
-    const map = new Map<string, PromoSheetInfo>();
+    const campanhaCol = resolveSheetColumn(ordered, ['CAMPANHA', 'Campanha']);
+    const map = new Map<string, Map<CampaignTypeId, CampaignSheetInfo>>();
 
     for (const row of table.rows) {
         const id = sheetIdentityFromEstabId(row, ordered);
         if (!id) continue;
 
-        const cur = map.get(id.key) ?? { hasAprovadoAtivo: false, hasAguardando: false, itemCount: 0 };
+        const campaignRaw = cellText(row, campanhaCol);
+        const campaignId = resolveCampaignTypeId(campaignRaw);
+        if (!campaignId) continue;
+
+        let partnerCampaigns = map.get(id.key);
+        if (!partnerCampaigns) {
+            partnerCampaigns = new Map();
+            map.set(id.key, partnerCampaigns);
+        }
+
+        const cur = partnerCampaigns.get(campaignId) ?? emptyCampaignSheetInfo();
         const status = cellText(row, statusCol).toLowerCase();
         const ativo = cellText(row, ativoCol).toLowerCase();
 
         cur.itemCount += 1;
         if (status.includes('aprov') && ativo.includes('ativ')) cur.hasAprovadoAtivo = true;
         if (status.includes('aguar')) cur.hasAguardando = true;
-        map.set(id.key, cur);
+        partnerCampaigns.set(campaignId, cur);
     }
 
     return map;
+}
+
+function cupomSheetToCampaignInfo(info: CupomSheetInfo | undefined): CampaignSheetInfo | undefined {
+    if (!info) return undefined;
+    return {
+        itemCount: info.cupomCount,
+        hasAprovadoAtivo: info.hasAtivo,
+        hasAguardando: false,
+    };
 }
 
 function buildCupomParceiroMap(table: GatewaySheetTable): Map<string, CupomSheetInfo> {
@@ -250,28 +273,63 @@ function buildCupomParceiroMap(table: GatewaySheetTable): Map<string, CupomSheet
     return map;
 }
 
-function resolvePromoStatus(
-    override: PromoStatus | undefined,
-    promoSheet: PromoSheetInfo | undefined,
-    indicador: AprovAguarCounts,
-): PromoStatus {
-    if (override) return override;
-    if (promoSheet?.hasAprovadoAtivo) return 'ativo';
-    if (indicador.aprov > 0) return 'ativo';
-    if (promoSheet?.hasAguardando || indicador.aguar > 0) return 'aguardando';
-    return 'aguardando';
+function mergeCampaignSheetInfo(
+    promoMap: Map<string, Map<CampaignTypeId, CampaignSheetInfo>>,
+    cupomMap: Map<string, CupomSheetInfo>,
+    lookupKey: string,
+    campaignId: CampaignTypeId,
+): CampaignSheetInfo | undefined {
+    const fromPromo = promoMap.get(lookupKey)?.get(campaignId);
+    if (campaignId === 'cupons_destaque') {
+        const fromCupom = cupomSheetToCampaignInfo(cupomMap.get(lookupKey));
+        if (fromPromo && fromCupom) {
+            return {
+                itemCount: fromPromo.itemCount + fromCupom.itemCount,
+                hasAprovadoAtivo: fromPromo.hasAprovadoAtivo || fromCupom.hasAprovadoAtivo,
+                hasAguardando: fromPromo.hasAguardando || fromCupom.hasAguardando,
+            };
+        }
+        return fromPromo ?? fromCupom;
+    }
+    return fromPromo;
 }
 
-function resolveCupomStatus(
-    override: PromoStatus | undefined,
-    cupomSheet: CupomSheetInfo | undefined,
-    indicador: AprovAguarCounts,
-): PromoStatus {
-    if (override) return override;
-    if (cupomSheet?.hasAtivo) return 'ativo';
-    if (indicador.aprov > 0) return 'ativo';
-    if (indicador.aguar > 0) return 'aguardando';
-    return 'aguardando';
+function buildPartnerCampaigns(
+    lookupKey: string,
+    promoCampaignMap: Map<string, Map<CampaignTypeId, CampaignSheetInfo>>,
+    cupomMap: Map<string, CupomSheetInfo>,
+    promoCounts: AprovAguarCounts,
+    cupomCounts: AprovAguarCounts,
+    overrides: { promo?: string; cupom?: string },
+): CrmPartner['campaigns'] {
+    const campaigns = {} as CrmPartner['campaigns'];
+
+    for (const campaign of CAMPAIGN_TYPES) {
+        const sheetInfo = mergeCampaignSheetInfo(promoCampaignMap, cupomMap, lookupKey, campaign.id);
+        const indicadorCounts =
+            campaign.id === 'super_promos' ? promoCounts
+            : campaign.id === 'cupons_destaque' ? cupomCounts
+            : undefined;
+
+        let override: PromoStatus | undefined;
+        if (campaign.id === 'super_promos' && overrides.promo) override = overrides.promo as PromoStatus;
+        if (campaign.id === 'cupons_destaque' && overrides.cupom) override = overrides.cupom as PromoStatus;
+
+        const status = resolveCampaignStatusFromSheet(override, sheetInfo, indicadorCounts);
+        const resumo = indicadorCounts ? formatAprovAguarSummary(indicadorCounts) : '—';
+
+        campaigns[campaign.id] = {
+            status,
+            resumo: campaign.id === 'ofertas_da_casa' && !indicadorCounts
+                ? (sheetInfo?.itemCount ? `${sheetInfo.itemCount} item(ns)` : '—')
+                : resumo,
+            itemCount: sheetInfo?.itemCount ?? 0,
+            hasActive: Boolean(sheetInfo?.hasAprovadoAtivo || (indicadorCounts?.aprov ?? 0) > 0),
+            sheetInfo,
+        };
+    }
+
+    return campaigns;
 }
 
 export function parseCrmPartners(
@@ -285,7 +343,7 @@ export function parseCrmPartners(
     },
 ): { partners: CrmPartner[]; parseInfo: CrmParseInfo } {
     const ordered = orderedHeadersOf(indicador);
-    const promoMap = buildPromoEspecialMap(promoEspecial);
+    const promoCampaignMap = buildPromoEspecialCampaignMap(promoEspecial);
     const cupomMap = buildCupomParceiroMap(cupomParceiro);
     const parceirosStatusMap = buildParceirosStatusMap(parceiros);
     const logoMap = options?.logoMap ?? {};
@@ -306,22 +364,21 @@ export function parseCrmPartners(
         const partnerId = parsed.estabId;
         const override = overrides[partnerId] ?? overrides[parsed.estabelecimento];
 
-        const promoSheet = promoMap.get(lookupKey);
-        const cupomSheet = cupomMap.get(lookupKey);
-
         const promoCounts = parseAprovAguarCell(parsed.promoRaw);
         const cupomCounts = parseAprovAguarCell(parsed.cupomRaw);
 
-        const promoStatus = resolvePromoStatus(
-            override?.promo as PromoStatus | undefined,
-            promoSheet,
+        const campaigns = buildPartnerCampaigns(
+            lookupKey,
+            promoCampaignMap,
+            cupomMap,
             promoCounts,
-        );
-        const cupomStatus = resolveCupomStatus(
-            override?.cupom as PromoStatus | undefined,
-            cupomSheet,
             cupomCounts,
+            { promo: override?.promo, cupom: override?.cupom },
         );
+
+        const campaignStatuses = Object.fromEntries(
+            CAMPAIGN_TYPE_IDS.map(id => [id, campaigns[id].status]),
+        ) as CrmPartner['campaignStatuses'];
 
         const gmvValue = parseBRL(parsed.gmvRaw);
         const analista = getManagerForPartner(parsed.cidade, 'Desconhecido', undefined, 'marketplace');
@@ -344,14 +401,16 @@ export function parseCrmPartners(
             indiceGmvRaw: parsed.gmvRaw || '—',
             gmvMesLabel: parsed.gmvCol ?? '',
             gmvMensal: parsed.gmvSeries,
-            promoResumo: formatAprovAguarSummary(promoCounts),
-            cupomResumo: formatAprovAguarSummary(cupomCounts),
-            promoItensAtivos: promoSheet?.itemCount ?? 0,
-            cupomCount: cupomSheet?.cupomCount ?? 0,
-            promoStatus,
-            cupomStatus,
-            hasPromoAtiva: Boolean(promoSheet?.hasAprovadoAtivo || promoCounts.aprov > 0),
-            hasCupomAtivo: Boolean(cupomSheet?.hasAtivo || cupomCounts.aprov > 0),
+            campaigns,
+            campaignStatuses,
+            promoResumo: campaigns.super_promos.resumo,
+            cupomResumo: campaigns.cupons_destaque.resumo,
+            promoItensAtivos: campaigns.super_promos.itemCount,
+            cupomCount: campaigns.cupons_destaque.itemCount,
+            promoStatus: campaigns.super_promos.status,
+            cupomStatus: campaigns.cupons_destaque.status,
+            hasPromoAtiva: campaigns.super_promos.hasActive,
+            hasCupomAtivo: campaigns.cupons_destaque.hasActive,
             analista: analista !== 'Desconhecido' ? analista : undefined,
             logoUrl,
         });

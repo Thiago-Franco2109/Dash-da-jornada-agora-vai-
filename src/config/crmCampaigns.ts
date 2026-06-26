@@ -1,15 +1,15 @@
 import type { CrmPartner } from '../types/crm';
 import type { OfertasDaCasaStatus } from '../types/crmCampaigns';
+import { getCampaignConfig } from './campaignTypes';
 import { normalizeCrmCity } from '../utils/crmData';
 import { isParceiroContratoAtivo } from '../utils/parceirosSheet';
 
 export const OFERTAS_DA_CASA_CAMPAIGN = {
-    id: 'ofertas_da_casa',
-    name: 'Ofertas da casa',
+    id: getCampaignConfig('ofertas_da_casa').id,
+    name: getCampaignConfig('ofertas_da_casa').label,
     description: 'Campanha promocional principal — prioridade nas 5 cidades de maior GMV.',
-    /** ID da campanha no CMS Bigou (cadastro/31) */
-    cmsCadastroId: 31,
-    cmsBaseUrl: 'https://admin.bigou.com.br/campanha/promocao/cadastro/31',
+    cmsCadastroId: getCampaignConfig('ofertas_da_casa').cmsCadastroId!,
+    cmsBaseUrl: getCampaignConfig('ofertas_da_casa').cmsBaseUrl!,
 } as const;
 
 export const OFERTAS_DA_CASA_STATUS_OPTIONS: {

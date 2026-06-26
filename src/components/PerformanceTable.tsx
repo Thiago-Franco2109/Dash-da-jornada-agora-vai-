@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatarMoedaBRL } from '../config/cdContracts';
 import { getStarColor, getTendenciaColor, getTendenciaLabel, type EnrichedPerformanceRow } from '../utils/calculations';
+import {
+    CAMPAIGN_TYPES,
+    type CampaignStatuses,
+    type CampaignTypeId,
+    getCampaignOverrideField,
+    getCampaignStatus,
+    withDefaultCampaignStatus,
+} from '../config/campaignTypes';
+import type { StatusOverrideField } from '../hooks/useStatusOverride';
+
+export type PromoStatusValue = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
 
 export type PerformanceRow = {
     cidade: string;
@@ -23,10 +34,12 @@ export type PerformanceRow = {
     week_12?: number;
     logo_url?: string;
     analista?: string;
-    /** Status da promoção */
-    promo_status?: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
-    /** Status do cupom */
-    cupom_status?: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
+    /** Status por tipo de campanha */
+    campaign_statuses?: CampaignStatuses;
+    /** @deprecated use campaign_statuses.super_promos */
+    promo_status?: PromoStatusValue;
+    /** @deprecated use campaign_statuses.cupons_destaque */
+    cupom_status?: PromoStatusValue;
     /** Total de avaliações */
     total_avaliacoes?: number;
     /** Relevância Comercial (1-5) vinda do Supabase */
@@ -39,6 +52,14 @@ export type PerformanceRow = {
     gmv_mensal?: { label: string; value: number }[];
 };
 
+function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
+    const fromMap = getCampaignStatus(row.campaign_statuses, campaignId);
+    if (fromMap) return fromMap;
+    if (campaignId === 'super_promos' && row.promo_status) return row.promo_status;
+    if (campaignId === 'cupons_destaque' && row.cupom_status) return row.cupom_status;
+    return withDefaultCampaignStatus(undefined);
+}
+
 export type SortConfig = {
     key: string;
     direction: 'asc' | 'desc';
@@ -49,14 +70,14 @@ interface PerformanceTableProps {
     sortConfig: SortConfig;
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
-    onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => void;
+    onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatusValue) => void;
     /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD; indicador = carteira INDICADOR_FORMATADO */
     variant?: 'journey' | 'desempenho' | 'indicador';
     /** Cabeçalho da coluna de pedidos mensais (ex. jun./26) */
     pedidosMesHeader?: string;
 }
 
-type ActiveDropdown = { rowIndex: number; field: 'promo' | 'cupom' } | null;
+type ActiveDropdown = { rowIndex: number; field: CampaignTypeId } | null;
 
 // ──────────────────────────────────────────────────────────────
 // StatusDropdown — componente isolado com click-outside e
@@ -75,9 +96,9 @@ function StatusDropdown({
 }: {
     rowIndex: number;
     totalRows: number;
-    field: 'promo' | 'cupom';
+    field: CampaignTypeId;
     partnerId: string;
-    currentStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado' | undefined;
+    currentStatus: PromoStatusValue | undefined;
     activeDropdown: ActiveDropdown;
     setActiveDropdown: (v: ActiveDropdown) => void;
     onStatusChange?: PerformanceTableProps['onStatusChange'];
@@ -85,6 +106,8 @@ function StatusDropdown({
 }) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const isOpen = activeDropdown?.rowIndex === rowIndex && activeDropdown?.field === field;
+    const overrideField = getCampaignOverrideField(field);
+    const canEdit = Boolean(overrideField && onStatusChange);
 
     // Fecha ao clicar fora
     useEffect(() => {
@@ -101,14 +124,15 @@ function StatusDropdown({
     // Abre para cima se estiver nas últimas 4 linhas
     const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
 
-    const overrideField = field === 'promo' ? 'promo_status_override' : 'cupom_status_override';
-
-    const handleSelect = (status: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => {
-        onStatusChange && onStatusChange(partnerId, overrideField, status);
+    const handleSelect = (status: PromoStatusValue) => {
+        if (overrideField) {
+            onStatusChange?.(partnerId, overrideField, status);
+        }
         setActiveDropdown(null);
     };
 
     const toggleOpen = (e: React.MouseEvent) => {
+        if (!canEdit) return;
         e.stopPropagation();
         setActiveDropdown(isOpen ? null : { rowIndex, field });
     };
@@ -118,8 +142,9 @@ function StatusDropdown({
             <button
                 type="button"
                 onClick={toggleOpen}
-                className="inline-flex justify-center w-full focus:outline-none hover:opacity-80 transition-opacity"
-                title="Clique para alterar status"
+                disabled={!canEdit}
+                className={`inline-flex justify-center w-full focus:outline-none transition-opacity ${canEdit ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
+                title={canEdit ? 'Clique para alterar status' : 'Status da planilha'}
             >
                 {children}
             </button>
@@ -389,12 +414,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                             Evolução
                                         </th>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            Promo
-                                        </th>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            Cupom
-                                        </th>
+                                        {CAMPAIGN_TYPES.map(campaign => (
+                                            <th
+                                                key={campaign.id}
+                                                scope="col"
+                                                className="px-2 py-3.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[88px]"
+                                                title={campaign.label}
+                                            >
+                                                {campaign.shortLabel}
+                                            </th>
+                                        ))}
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('risco_churn')}>
                                             Risco {renderSortIcon('risco_churn')}
                                         </th>
@@ -449,12 +478,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
                                             Prioridade {renderSortIcon('priority_stars')}
                                         </th>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            Promo
-                                        </th>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            Cupom
-                                        </th>
+                                        {CAMPAIGN_TYPES.map(campaign => (
+                                            <th
+                                                key={campaign.id}
+                                                scope="col"
+                                                className="px-2 py-3.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[88px]"
+                                                title={campaign.label}
+                                            >
+                                                {campaign.shortLabel}
+                                            </th>
+                                        ))}
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_avaliacoes')}>
                                             Avaliação {renderSortIcon('total_avaliacoes')}
                                         </th>
@@ -576,34 +609,25 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                     <Sparkline data={row.gmv_mensal} />
                                                 </td>
-                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
-                                                    <StatusDropdown
-                                                        rowIndex={index}
-                                                        totalRows={data.length}
-                                                        field="promo"
-                                                        partnerId={partnerId}
-                                                        currentStatus={row.promo_status}
-                                                        activeDropdown={activeDropdown}
-                                                        setActiveDropdown={setActiveDropdown}
-                                                        onStatusChange={onStatusChange}
-                                                    >
-                                                        {renderIndicadorBadge(row.promo_status)}
-                                                    </StatusDropdown>
-                                                </td>
-                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
-                                                    <StatusDropdown
-                                                        rowIndex={index}
-                                                        totalRows={data.length}
-                                                        field="cupom"
-                                                        partnerId={partnerId}
-                                                        currentStatus={row.cupom_status}
-                                                        activeDropdown={activeDropdown}
-                                                        setActiveDropdown={setActiveDropdown}
-                                                        onStatusChange={onStatusChange}
-                                                    >
-                                                        {renderIndicadorBadge(row.cupom_status)}
-                                                    </StatusDropdown>
-                                                </td>
+                                                {CAMPAIGN_TYPES.map(campaign => {
+                                                    const status = getRowCampaignStatus(row, campaign.id);
+                                                    return (
+                                                        <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                            <StatusDropdown
+                                                                rowIndex={index}
+                                                                totalRows={data.length}
+                                                                field={campaign.id}
+                                                                partnerId={partnerId}
+                                                                currentStatus={status}
+                                                                activeDropdown={activeDropdown}
+                                                                setActiveDropdown={setActiveDropdown}
+                                                                onStatusChange={onStatusChange}
+                                                            >
+                                                                {renderIndicadorBadge(status)}
+                                                            </StatusDropdown>
+                                                        </td>
+                                                    );
+                                                })}
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                     {renderStars(row.risco_churn ?? row.priority_stars)}
                                                 </td>
@@ -670,37 +694,25 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             {renderStars(row.priority_stars)}
                                         </td>
 
-                                        {/* ── Coluna Promo ── */}
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
-                                            <StatusDropdown
-                                                rowIndex={index}
-                                                totalRows={data.length}
-                                                field="promo"
-                                                partnerId={partnerId}
-                                                currentStatus={row.promo_status}
-                                                activeDropdown={activeDropdown}
-                                                setActiveDropdown={setActiveDropdown}
-                                                onStatusChange={onStatusChange}
-                                            >
-                                                {renderIndicadorBadge(row.promo_status)}
-                                            </StatusDropdown>
-                                        </td>
-
-                                        {/* ── Coluna Cupom ── */}
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
-                                            <StatusDropdown
-                                                rowIndex={index}
-                                                totalRows={data.length}
-                                                field="cupom"
-                                                partnerId={partnerId}
-                                                currentStatus={row.cupom_status}
-                                                activeDropdown={activeDropdown}
-                                                setActiveDropdown={setActiveDropdown}
-                                                onStatusChange={onStatusChange}
-                                            >
-                                                {renderIndicadorBadge(row.cupom_status)}
-                                            </StatusDropdown>
-                                        </td>
+                                        {CAMPAIGN_TYPES.map(campaign => {
+                                            const status = getRowCampaignStatus(row, campaign.id);
+                                            return (
+                                                <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                    <StatusDropdown
+                                                        rowIndex={index}
+                                                        totalRows={data.length}
+                                                        field={campaign.id}
+                                                        partnerId={partnerId}
+                                                        currentStatus={status}
+                                                        activeDropdown={activeDropdown}
+                                                        setActiveDropdown={setActiveDropdown}
+                                                        onStatusChange={onStatusChange}
+                                                    >
+                                                        {renderIndicadorBadge(status)}
+                                                    </StatusDropdown>
+                                                </td>
+                                            );
+                                        })}
 
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {renderAvaliacaoBadge(row.total_avaliacoes, row.dias_desde_lancamento)}

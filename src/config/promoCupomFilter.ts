@@ -1,17 +1,29 @@
 import type { PromoStatus } from '../hooks/useStatusOverride';
+import {
+    CAMPAIGN_TYPES,
+    type CampaignStatuses,
+    type CampaignTypeId,
+    getCampaignStatus,
+    withDefaultCampaignStatus,
+} from './campaignTypes';
 
-export type PromoCupomFieldFilter = 'any' | 'promo' | 'cupom';
+export type CampaignFieldFilter = 'any' | CampaignTypeId;
 
-/** Valor composto: "promo:ofertei", "cupom:ativo", "any:aguardando" ou "" */
-export type PromoCupomFilterValue = '' | `${PromoCupomFieldFilter}:${PromoStatus}`;
+/** Valor composto: "super_promos:ofertei", "any:aguardando" ou "" */
+export type CampaignFilterValue = '' | `${CampaignFieldFilter}:${PromoStatus}`;
 
-export const PROMO_CUPOM_FIELD_OPTIONS: { value: PromoCupomFieldFilter; label: string }[] = [
-    { value: 'any', label: 'Promo ou Cupom' },
-    { value: 'promo', label: 'Somente Promo' },
-    { value: 'cupom', label: 'Somente Cupom' },
+/** @deprecated use CampaignFilterValue */
+export type PromoCupomFilterValue = CampaignFilterValue;
+
+export const CAMPAIGN_FIELD_OPTIONS: { value: CampaignFieldFilter; label: string }[] = [
+    { value: 'any', label: 'Qualquer campanha' },
+    ...CAMPAIGN_TYPES.map(c => ({ value: c.id as CampaignFieldFilter, label: c.label })),
 ];
 
-export const PROMO_CUPOM_STATUS_OPTIONS: { value: PromoStatus; label: string; icon: string; color: string }[] = [
+/** @deprecated use CAMPAIGN_FIELD_OPTIONS */
+export const PROMO_CUPOM_FIELD_OPTIONS = CAMPAIGN_FIELD_OPTIONS;
+
+export const CAMPAIGN_STATUS_OPTIONS: { value: PromoStatus; label: string; icon: string; color: string }[] = [
     { value: 'ativo', label: 'Ativo', icon: 'check_circle', color: 'text-emerald-600' },
     { value: 'aguardando', label: 'Não ofertado', icon: 'priority_high', color: 'text-red-500' },
     { value: 'ofertei', label: 'Aguardando retorno', icon: 'hourglass_top', color: 'text-orange-500' },
@@ -19,24 +31,33 @@ export const PROMO_CUPOM_STATUS_OPTIONS: { value: PromoStatus; label: string; ic
     { value: 'inativo', label: 'Inativo ou sem status', icon: 'remove', color: 'text-slate-400' },
 ];
 
-export function buildPromoCupomFilterValue(
-    field: PromoCupomFieldFilter,
+/** @deprecated use CAMPAIGN_STATUS_OPTIONS */
+export const PROMO_CUPOM_STATUS_OPTIONS = CAMPAIGN_STATUS_OPTIONS;
+
+export function buildCampaignFilterValue(
+    field: CampaignFieldFilter,
     status: PromoStatus,
-): PromoCupomFilterValue {
+): CampaignFilterValue {
     return `${field}:${status}`;
 }
 
-export function parsePromoCupomFilterValue(value: string): {
-    field: PromoCupomFieldFilter;
+/** @deprecated use buildCampaignFilterValue */
+export const buildPromoCupomFilterValue = buildCampaignFilterValue;
+
+export function parseCampaignFilterValue(value: string): {
+    field: CampaignFieldFilter;
     status: PromoStatus;
 } | null {
     if (!value) return null;
-    const [field, status] = value.split(':') as [PromoCupomFieldFilter, PromoStatus];
-    const validFields: PromoCupomFieldFilter[] = ['any', 'promo', 'cupom'];
+    const [field, status] = value.split(':') as [CampaignFieldFilter, PromoStatus];
+    const validFields: CampaignFieldFilter[] = ['any', ...CAMPAIGN_TYPES.map(c => c.id)];
     const validStatuses: PromoStatus[] = ['ativo', 'aguardando', 'ofertei', 'negado', 'inativo'];
     if (!validFields.includes(field) || !validStatuses.includes(status)) return null;
     return { field, status };
 }
+
+/** @deprecated use parseCampaignFilterValue */
+export const parsePromoCupomFilterValue = parseCampaignFilterValue;
 
 function isInactive(status?: PromoStatus): boolean {
     return !status || status === 'inativo';
@@ -47,46 +68,60 @@ function fieldMatches(status: PromoStatus | undefined, target: PromoStatus): boo
     return status === target;
 }
 
-export function matchesPromoCupomFilter(
-    row: { promo_status?: PromoStatus; cupom_status?: PromoStatus },
-    filterValue: PromoCupomFilterValue | string,
+function rowCampaignStatuses(row: { campaign_statuses?: CampaignStatuses; promo_status?: PromoStatus; cupom_status?: PromoStatus }): CampaignStatuses {
+    if (row.campaign_statuses) return row.campaign_statuses;
+    const statuses: CampaignStatuses = {};
+    if (row.promo_status) statuses.super_promos = row.promo_status;
+    if (row.cupom_status) statuses.cupons_destaque = row.cupom_status;
+    return statuses;
+}
+
+export function matchesCampaignFilter(
+    row: { campaign_statuses?: CampaignStatuses; promo_status?: PromoStatus; cupom_status?: PromoStatus },
+    filterValue: CampaignFilterValue | string,
 ): boolean {
-    const parsed = parsePromoCupomFilterValue(filterValue);
+    const parsed = parseCampaignFilterValue(filterValue);
     if (!parsed) return true;
 
     const { field, status } = parsed;
-    const promo = row.promo_status;
-    const cupom = row.cupom_status;
+    const statuses = rowCampaignStatuses(row);
 
-    if (field === 'promo') return fieldMatches(promo, status);
-    if (field === 'cupom') return fieldMatches(cupom, status);
-
-    // any
-    if (status === 'inativo') {
-        return isInactive(promo) && isInactive(cupom);
+    if (field !== 'any') {
+        return fieldMatches(withDefaultCampaignStatus(getCampaignStatus(statuses, field)), status);
     }
-    return fieldMatches(promo, status) || fieldMatches(cupom, status);
+
+    if (status === 'inativo') {
+        return CAMPAIGN_TYPES.every(c => isInactive(getCampaignStatus(statuses, c.id)));
+    }
+
+    return CAMPAIGN_TYPES.some(c => fieldMatches(getCampaignStatus(statuses, c.id), status));
 }
 
-export function countPromoCupomFilter(
-    rows: { promo_status?: PromoStatus; cupom_status?: PromoStatus }[],
-    filterValue: PromoCupomFilterValue,
+/** @deprecated use matchesCampaignFilter */
+export const matchesPromoCupomFilter = matchesCampaignFilter;
+
+export function countCampaignFilter(
+    rows: { campaign_statuses?: CampaignStatuses; promo_status?: PromoStatus; cupom_status?: PromoStatus }[],
+    filterValue: CampaignFilterValue,
 ): number {
-    return rows.filter(row => matchesPromoCupomFilter(row, filterValue)).length;
+    return rows.filter(row => matchesCampaignFilter(row, filterValue)).length;
 }
 
-export function buildAllPromoCupomFilterOptions(): {
-    value: PromoCupomFilterValue;
+/** @deprecated use countCampaignFilter */
+export const countPromoCupomFilter = countCampaignFilter;
+
+export function buildAllCampaignFilterOptions(): {
+    value: CampaignFilterValue;
     label: string;
     group: string;
     icon: string;
     color: string;
 }[] {
-    const options: { value: PromoCupomFilterValue; label: string; group: string; icon: string; color: string }[] = [];
-    for (const field of PROMO_CUPOM_FIELD_OPTIONS) {
-        for (const status of PROMO_CUPOM_STATUS_OPTIONS) {
+    const options: { value: CampaignFilterValue; label: string; group: string; icon: string; color: string }[] = [];
+    for (const field of CAMPAIGN_FIELD_OPTIONS) {
+        for (const status of CAMPAIGN_STATUS_OPTIONS) {
             options.push({
-                value: buildPromoCupomFilterValue(field.value, status.value),
+                value: buildCampaignFilterValue(field.value, status.value),
                 label: status.label,
                 group: field.label,
                 icon: status.icon,
@@ -97,8 +132,14 @@ export function buildAllPromoCupomFilterOptions(): {
     return options;
 }
 
-export function getPromoCupomFilterLabel(value: PromoCupomFilterValue | ''): string {
-    if (!value) return 'Promo/Cupom: Todos';
-    const opt = buildAllPromoCupomFilterOptions().find(o => o.value === value);
-    return opt ? `${opt.group} — ${opt.label}` : 'Promo/Cupom';
+/** @deprecated use buildAllCampaignFilterOptions */
+export const buildAllPromoCupomFilterOptions = buildAllCampaignFilterOptions;
+
+export function getCampaignFilterLabel(value: CampaignFilterValue | ''): string {
+    if (!value) return 'Campanhas: Todas';
+    const opt = buildAllCampaignFilterOptions().find(o => o.value === value);
+    return opt ? `${opt.group} — ${opt.label}` : 'Campanhas';
 }
+
+/** @deprecated use getCampaignFilterLabel */
+export const getPromoCupomFilterLabel = getCampaignFilterLabel;

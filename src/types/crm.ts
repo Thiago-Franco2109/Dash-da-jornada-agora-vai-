@@ -1,4 +1,5 @@
 import type { PromoStatus } from '../hooks/useStatusOverride';
+import type { CampaignSheetInfo, CampaignStatuses, CampaignTypeId } from '../config/campaignTypes';
 
 export interface CrmPartnerNote {
     partnerId: string;
@@ -22,18 +23,31 @@ export interface CrmPartner {
     gmvMesLabel: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
     gmvMensal?: { label: string; value: number }[];
-    /** Resumo INDICADOR col. PROMOÇÃO — ex. "APROV: 1 · AGUAR: 1" */
+    /** Status e métricas por tipo de campanha */
+    campaigns: Record<CampaignTypeId, {
+        status: PromoStatus;
+        resumo: string;
+        itemCount: number;
+        hasActive: boolean;
+        sheetInfo?: CampaignSheetInfo;
+    }>;
+    /** @deprecated use campaigns.super_promos */
     promoResumo: string;
-    /** Resumo INDICADOR col. CUPOM PARC. */
+    /** @deprecated use campaigns.cupons_destaque */
     cupomResumo: string;
-    /** Linhas na aba PROMO-ESPECIAL */
+    /** @deprecated use campaigns.super_promos.itemCount */
     promoItensAtivos: number;
-    /** Linhas na aba CUPOM-PARCEIRO */
+    /** @deprecated use campaigns.cupons_destaque.itemCount */
     cupomCount: number;
+    /** @deprecated use campaigns.super_promos.status */
     promoStatus: PromoStatus;
+    /** @deprecated use campaigns.cupons_destaque.status */
     cupomStatus: PromoStatus;
+    /** @deprecated use campaigns.super_promos.hasActive */
     hasPromoAtiva: boolean;
+    /** @deprecated use campaigns.cupons_destaque.hasActive */
     hasCupomAtivo: boolean;
+    campaignStatuses: CampaignStatuses;
     analista?: string;
     logoUrl?: string;
 }

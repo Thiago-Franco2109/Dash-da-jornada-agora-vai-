@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import FilterToolbar from './FilterToolbar';
 import PerformanceTable, { type SortConfig } from './PerformanceTable';
+import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 
 interface AllPartnersViewProps {
@@ -22,7 +23,7 @@ interface AllPartnersViewProps {
     sortConfig: SortConfig;
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
-    onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado') => void;
+    onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => void;
     /** journey = colunas da jornada; desempenho = semanas estendidas; indicador = INDICADOR_FORMATADO */
     tableVariant?: 'journey' | 'desempenho' | 'indicador';
     dataSourceLabel?: string;
