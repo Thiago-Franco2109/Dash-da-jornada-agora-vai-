@@ -10,6 +10,7 @@ import {
     PEDIDO_MENSAL_DATA_SOURCE,
     PARCEIRO_MENSAL_DATA_SOURCE,
     PARCEIROS_DATA_SOURCE,
+    LOJAS_DELIVERY_DATA_SOURCE,
     CITY_IDS_DATA_SOURCE,
 } from '../config/dataSource';
 
@@ -58,10 +59,11 @@ function buildDataBases(): DataBaseLink[] {
         },
         {
             id: 'logos',
-            name: 'Logos dos parceiros',
-            description: 'Avatar na lista e cabeçalho da loja (parceiro_nome, logo_url)',
+            name: 'Logos dos parceiros (LOJAS_DELIVERY)',
+            description: 'Avatar na lista — colunas loja_id, nome_loja e logotipo (planilha mestre)',
             tab: LOGO_SHEET_SOURCE.range,
-            href: googleSheetUrl(LOGO_SHEET_SOURCE.sheetId),
+            href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
+            apiPath: gatewaySheetPath(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range),
             kind: 'sheet',
         },
         {
@@ -122,6 +124,15 @@ function buildDataBases(): DataBaseLink[] {
             tab: PARCEIROS_DATA_SOURCE.range,
             href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
             apiPath: gatewaySheetPath(PARCEIROS_DATA_SOURCE.sheetId, PARCEIROS_DATA_SOURCE.range),
+            kind: 'sheet',
+        },
+        {
+            id: 'lojas-delivery',
+            name: 'Lojas delivery (planilha mestre)',
+            description: 'Cadastro de lojas — logos (logotipo), segmentos e pedidos dos últimos 28 dias',
+            tab: LOJAS_DELIVERY_DATA_SOURCE.range,
+            href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
+            apiPath: gatewaySheetPath(LOJAS_DELIVERY_DATA_SOURCE.sheetId, LOJAS_DELIVERY_DATA_SOURCE.range),
             kind: 'sheet',
         },
         {

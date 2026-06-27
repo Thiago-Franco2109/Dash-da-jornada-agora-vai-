@@ -3,7 +3,7 @@ import type { OfertasDaCasaRecord, OfertasDaCasaSource, OfertasDaCasaStatus } fr
 
 const STORAGE_KEY = 'crm_ofertas_da_casa_v1';
 
-function loadRecords(): Record<string, OfertasDaCasaRecord> {
+export function loadOfertasDaCasaRecords(): Record<string, OfertasDaCasaRecord> {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         return raw ? JSON.parse(raw) : {};
@@ -17,11 +17,11 @@ function saveRecords(map: Record<string, OfertasDaCasaRecord>) {
 }
 
 export function useOfertasDaCasa() {
-    const [records, setRecords] = useState<Record<string, OfertasDaCasaRecord>>(loadRecords);
+    const [records, setRecords] = useState<Record<string, OfertasDaCasaRecord>>(loadOfertasDaCasaRecords);
 
     useEffect(() => {
         const handler = (e: StorageEvent) => {
-            if (e.key === STORAGE_KEY) setRecords(loadRecords());
+            if (e.key === STORAGE_KEY) setRecords(loadOfertasDaCasaRecords());
         };
         window.addEventListener('storage', handler);
         return () => window.removeEventListener('storage', handler);
@@ -93,5 +93,5 @@ export function useOfertasDaCasa() {
         [],
     );
 
-    return { getRecord, getStatus, setStatus, setNotes, importAutoStatus };
+    return { getRecord, getStatus, setStatus, setNotes, importAutoStatus, records };
 }

@@ -11,6 +11,12 @@ import {
 } from '../config/campaignTypes';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 
+export type CampaignStatusChangeHandler = (
+    partnerId: string,
+    campaignId: CampaignTypeId,
+    newStatus: PromoStatusValue,
+) => void;
+
 export type PromoStatusValue = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
 
 export type PerformanceRow = {
@@ -70,6 +76,8 @@ interface PerformanceTableProps {
     sortConfig: SortConfig;
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
+    onCampaignStatusChange?: CampaignStatusChangeHandler;
+    /** @deprecated use onCampaignStatusChange */
     onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatusValue) => void;
     /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD; indicador = carteira INDICADOR_FORMATADO */
     variant?: 'journey' | 'desempenho' | 'indicador';
@@ -91,6 +99,7 @@ function StatusDropdown({
     currentStatus,
     activeDropdown,
     setActiveDropdown,
+    onCampaignStatusChange,
     onStatusChange,
     children,
 }: {
@@ -101,13 +110,13 @@ function StatusDropdown({
     currentStatus: PromoStatusValue | undefined;
     activeDropdown: ActiveDropdown;
     setActiveDropdown: (v: ActiveDropdown) => void;
+    onCampaignStatusChange?: CampaignStatusChangeHandler;
     onStatusChange?: PerformanceTableProps['onStatusChange'];
     children: React.ReactNode;
 }) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const isOpen = activeDropdown?.rowIndex === rowIndex && activeDropdown?.field === field;
-    const overrideField = getCampaignOverrideField(field);
-    const canEdit = Boolean(overrideField && onStatusChange);
+    const canEdit = Boolean(onCampaignStatusChange || onStatusChange);
 
     // Fecha ao clicar fora
     useEffect(() => {
@@ -125,8 +134,13 @@ function StatusDropdown({
     const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
 
     const handleSelect = (status: PromoStatusValue) => {
-        if (overrideField) {
-            onStatusChange?.(partnerId, overrideField, status);
+        if (onCampaignStatusChange) {
+            onCampaignStatusChange(partnerId, field, status);
+        } else {
+            const overrideField = getCampaignOverrideField(field);
+            if (overrideField && onStatusChange) {
+                onStatusChange(partnerId, overrideField, status);
+            }
         }
         setActiveDropdown(null);
     };
@@ -270,7 +284,7 @@ function Sparkline({
 // ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onStatusChange, variant = 'journey', pedidosMesHeader }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, variant = 'journey', pedidosMesHeader }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
     const isIndicador = variant === 'indicador';
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
@@ -621,6 +635,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                 currentStatus={status}
                                                                 activeDropdown={activeDropdown}
                                                                 setActiveDropdown={setActiveDropdown}
+                                                                onCampaignStatusChange={onCampaignStatusChange}
                                                                 onStatusChange={onStatusChange}
                                                             >
                                                                 {renderIndicadorBadge(status)}
@@ -706,6 +721,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                         currentStatus={status}
                                                         activeDropdown={activeDropdown}
                                                         setActiveDropdown={setActiveDropdown}
+                                                        onCampaignStatusChange={onCampaignStatusChange}
                                                         onStatusChange={onStatusChange}
                                                     >
                                                         {renderIndicadorBadge(status)}

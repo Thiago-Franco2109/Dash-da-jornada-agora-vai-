@@ -7,7 +7,8 @@ import {
     parseCarteiraFromGatewayTable,
 } from './cidadesSheet';
 import { mergeIndicadorHeaderAndData, normalizeIndicadorGatewayPayload } from './indicadorSheet';
-import { CARTEIRA_DATA_SOURCE, INDICADOR_DATA_SOURCE } from '../config/dataSource';
+import { CARTEIRA_DATA_SOURCE, INDICADOR_DATA_SOURCE, LOJAS_DELIVERY_DATA_SOURCE, LOGO_SHEET_SOURCE } from '../config/dataSource';
+import { normalizeEstabId } from './indicadorSheet';
 import { supabase } from '../lib/supabase';
 
 export interface SyncResult {
@@ -28,6 +29,7 @@ export const CACHE_KEYS = {
     crm_promo: 'partner_journey_data_cache_v26_crm_promo',
     crm_cupom: 'partner_journey_data_cache_v26_crm_cupom',
     crm_parceiros: 'partner_journey_data_cache_v26_crm_parceiros',
+    lojas_delivery: 'partner_journey_data_cache_v27_lojas_delivery',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;
@@ -765,6 +767,9 @@ export function normalizePartnerLookupKey(name: string): string {
 function extractLogoSheetStoreName(row: Record<string, any>): string {
     const v = findValue(
         row,
+        'nome_loja',
+        'Nome_Loja',
+        'NOME_LOJA',
         'parceiro_nome',
         'Parceiro_Nome',
         'estabelecimento',
@@ -782,6 +787,11 @@ function extractLogoSheetStoreName(row: Record<string, any>): string {
     return v != null ? String(v).trim() : '';
 }
 
+function extractLogoSheetStoreId(row: Record<string, any>): string {
+    const raw = findValue(row, 'loja_id', 'LOJA_ID', 'Loja_ID', 'estab_id', 'ESTAB_ID', 'ID', 'id');
+    return raw != null ? normalizeEstabId(String(raw)) : '';
+}
+
 function normalizeLogoUrlCandidate(raw: unknown): string {
     if (raw == null) return '';
     const s = String(raw).trim();
@@ -792,6 +802,9 @@ function normalizeLogoUrlCandidate(raw: unknown): string {
 }
 
 function extractLogoSheetUrl(row: Record<string, any>): string {
+    const fromLogotipo = normalizeLogoUrlCandidate(findValue(row, 'logotipo', 'Logotipo', 'LOGOTIPO'));
+    if (fromLogotipo) return fromLogotipo;
+
     const fromLogo = normalizeLogoUrlCandidate(findValue(row, 'logo_url', 'Logo_URL', 'Logo', 'logo'));
     if (fromLogo) return fromLogo;
 
@@ -813,19 +826,27 @@ function extractLogoSheetRows(json: any): Record<string, any>[] {
     const header = (values[0] as any[]).map((h) => String(h ?? '').trim());
     const lower = header.map((h) => h.toLowerCase());
 
+    const idxLojaId = lower.indexOf('loja_id') >= 0 ? lower.indexOf('loja_id') : lower.indexOf('estab_id');
     const idxNome =
-        lower.indexOf('parceiro_nome') >= 0
-            ? lower.indexOf('parceiro_nome')
-            : lower.indexOf('estabelecimento') >= 0
-              ? lower.indexOf('estabelecimento')
-              : lower.indexOf('loja') >= 0
-                ? lower.indexOf('loja')
-                : lower.indexOf('nome') >= 0
-                  ? lower.indexOf('nome')
-                  : -1;
+        lower.indexOf('nome_loja') >= 0
+            ? lower.indexOf('nome_loja')
+            : lower.indexOf('parceiro_nome') >= 0
+              ? lower.indexOf('parceiro_nome')
+              : lower.indexOf('estabelecimento') >= 0
+                ? lower.indexOf('estabelecimento')
+                : lower.indexOf('loja') >= 0
+                  ? lower.indexOf('loja')
+                  : lower.indexOf('nome') >= 0
+                    ? lower.indexOf('nome')
+                    : -1;
     if (idxNome < 0) return [];
 
-    const idxLogoUrl = lower.indexOf('logo_url') >= 0 ? lower.indexOf('logo_url') : lower.indexOf('logo');
+    const idxLogoUrl =
+        lower.indexOf('logotipo') >= 0
+            ? lower.indexOf('logotipo')
+            : lower.indexOf('logo_url') >= 0
+              ? lower.indexOf('logo_url')
+              : lower.indexOf('logo');
     const idxCms = lower.indexOf('cms_arte_url');
     const idxArq = lower.indexOf('logo_arquivo');
 
@@ -834,9 +855,10 @@ function extractLogoSheetRows(json: any): Record<string, any>[] {
         const line = values[r] as any[];
         if (!line?.length) continue;
         const o: Record<string, any> = {
-            parceiro_nome: line[idxNome],
+            nome_loja: line[idxNome],
         };
-        if (idxLogoUrl >= 0) o.logo_url = line[idxLogoUrl];
+        if (idxLojaId >= 0) o.loja_id = line[idxLojaId];
+        if (idxLogoUrl >= 0) o.logotipo = line[idxLogoUrl];
         if (idxCms >= 0) o.cms_arte_url = line[idxCms];
         if (idxArq >= 0) o.logo_arquivo = line[idxArq];
         objects.push(o);
@@ -844,9 +866,49 @@ function extractLogoSheetRows(json: any): Record<string, any>[] {
     return objects;
 }
 
-export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Promise<Record<string, string>> {
+/** Monta mapa loja_id / nome → URL do logotipo a partir das linhas da aba LOJAS_DELIVERY. */
+export function buildPartnerLogoMapFromRows(rows: Record<string, unknown>[]): Record<string, string> {
     const out: Record<string, string> = {};
-    if (!sheetId?.trim() || !tabName?.trim()) return out;
+
+    for (const row of rows) {
+        const r = row as Record<string, any>;
+        const lojaId = extractLogoSheetStoreId(r);
+        const storeName = extractLogoSheetStoreName(r);
+        const logoUrl = extractLogoSheetUrl(r);
+        if (!logoUrl) continue;
+
+        if (lojaId) out[lojaId] = logoUrl;
+
+        if (storeName) {
+            out[storeName] = logoUrl;
+            const key = normalizePartnerLookupKey(storeName);
+            if (key) out[key] = logoUrl;
+            const crmKey = storeName
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim();
+            if (crmKey) out[crmKey] = logoUrl;
+        }
+    }
+
+    return out;
+}
+
+export async function fetchPartnerLogoMap(
+    sheetId: string = LOGO_SHEET_SOURCE.sheetId,
+    tabName: string = LOGO_SHEET_SOURCE.range,
+): Promise<Record<string, string>> {
+    if (!sheetId?.trim() || !tabName?.trim()) return {};
+
+    try {
+        const table = await fetchGatewaySheetTable(sheetId, tabName, { allowEmpty: true });
+        if (table.rows.length > 0) {
+            return buildPartnerLogoMapFromRows(table.rows);
+        }
+    } catch (err) {
+        console.warn('[fetchPartnerLogoMap] Gateway/fallback falhou; tentando fetch direto.', err);
+    }
 
     const fetchOptions = getFetchOptions();
     const url = apiUrl(`/api/sheets/${sheetId}/${encodeSheetTabForGateway(tabName)}`);
@@ -869,16 +931,7 @@ export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Pro
         console.warn('[fetchPartnerLogoMap] Nenhuma linha parseada. Chaves do JSON:', json && typeof json === 'object' ? Object.keys(json) : typeof json);
     }
 
-    for (const row of rows) {
-        const storeName = extractLogoSheetStoreName(row);
-        const logoUrl = extractLogoSheetUrl(row);
-        if (!storeName || !logoUrl) continue;
-        const key = normalizePartnerLookupKey(storeName);
-        if (!key) continue;
-        out[key] = logoUrl;
-    }
-
-    return out;
+    return buildPartnerLogoMapFromRows(rows);
 }
 
 /**
@@ -887,8 +940,13 @@ export async function fetchPartnerLogoMap(sheetId: string, tabName: string): Pro
  */
 export function mergeLogoMapIntoRows(rows: PerformanceRow[], logoMap: Record<string, string>): PerformanceRow[] {
     return rows.map((row) => {
-        const key = normalizePartnerLookupKey(row.estabelecimento);
-        const fromRepo = key && logoMap[key] ? logoMap[key].trim() : '';
+        const keyByName = normalizePartnerLookupKey(row.estabelecimento);
+        const estabId = normalizeEstabId(String(row.estab_id ?? ''));
+        const fromRepo =
+            (estabId && logoMap[estabId]) ||
+            (keyByName && logoMap[keyByName]) ||
+            (row.estabelecimento && logoMap[row.estabelecimento.trim()]) ||
+            '';
         const fromMain = row.logo_url?.trim() || '';
         const merged = fromRepo || fromMain;
         if (merged) return { ...row, logo_url: merged };
@@ -1272,6 +1330,16 @@ function parseCarteiraGatewayJson(json: Record<string, unknown>): CarteiraRow[] 
  * GET /api/sheets/{sheetId}/{aba} — Bigou Gateway (credentials: include)
  * O Gateway usa a linha 1 como cabeçalho; o parser tolera título nas linhas 1–2.
  */
+/**
+ * GET /api/sheets/{sheetId}/LOJAS_DELIVERY — Bigou Gateway (credentials: include)
+ */
+export async function fetchLojasDeliverySheet(): Promise<GatewaySheetTable> {
+    return fetchGatewaySheetTable(
+        LOJAS_DELIVERY_DATA_SOURCE.sheetId,
+        LOJAS_DELIVERY_DATA_SOURCE.range,
+    );
+}
+
 export async function fetchCarteiraSheetData(sheetId: string, tabName: string): Promise<CarteiraRow[]> {
     const table = await fetchGatewaySheetTable(sheetId, tabName, {
         tabVariants: [

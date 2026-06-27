@@ -60,12 +60,6 @@ export const ACCESS_DATA_SOURCE = {
     range: 'novo relatório final',
 };
 
-/** Planilha de logos dos parceiros (atualizada diariamente) */
-export const LOGO_SHEET_SOURCE = {
-    sheetId: '1Y5_TXSIi2RFyd_uUMXcWLQTQ52Oy8kCwYZrnlj6a5Xk',
-    range: 'dados',
-} as const;
-
 /**
  * Aba INDICADOR_FORMATADO – valores estáticos, 1 linha = 1 parceiro.
  * Gateway: GET /api/sheets/{sheetId}/INDICADOR_FORMATADO
@@ -108,9 +102,6 @@ export const CARTEIRA_DATA_SOURCE = {
     firstDataRow: 2,
 } as const;
 
-/** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
-export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.sheetId;
-
 // ── Planilha mestre (ligação com banco) ───────────────────────
 
 /** Planilha central — espelho / export do banco de dados */
@@ -138,3 +129,19 @@ export const PARCEIROS_DATA_SOURCE = {
     sheetId: MASTER_DATA_SOURCE.sheetId,
     range: 'PARCEIROS',
 } as const;
+
+/**
+ * Lojas com delivery ativo — espelho do banco na planilha mestre.
+ * Colunas: loja_id, nome_loja, cidade, cidade_id, logotipo, segmentos, pedidos_ultimos_28_dias, em_destaque
+ * Gateway: GET /api/sheets/{sheetId}/LOJAS_DELIVERY
+ */
+export const LOJAS_DELIVERY_DATA_SOURCE = {
+    sheetId: MASTER_DATA_SOURCE.sheetId,
+    range: 'LOJAS_DELIVERY',
+} as const;
+
+/** Logos dos parceiros — mesma aba LOJAS_DELIVERY (coluna logotipo) */
+export const LOGO_SHEET_SOURCE = LOJAS_DELIVERY_DATA_SOURCE;
+
+/** @deprecated alias: use LOGO_SHEET_SOURCE.sheetId */
+export const LOGO_REFERENCE_SHEET_ID = LOGO_SHEET_SOURCE.sheetId;

@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { calcularMRRMetrics, formatarMoedaBRL } from '../config/cdContracts';
 import FilterToolbar from './FilterToolbar';
-import PerformanceTable, { type SortConfig } from './PerformanceTable';
+import PerformanceTable, { type CampaignStatusChangeHandler, type SortConfig } from './PerformanceTable';
 import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { isIndicadorChurnAtRisk } from '../utils/indicadorPerformance';
@@ -26,6 +26,8 @@ interface CDDesempenhoViewProps {
     sortConfig: SortConfig;
     requestSort: (key: string) => void;
     onRowClick: (row: EnrichedPerformanceRow) => void;
+    onCampaignStatusChange?: CampaignStatusChangeHandler;
+    /** @deprecated use onCampaignStatusChange */
     onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => void;
     preset?: 'all' | 'churn';
     /** cd_desempenho | marketplace (jornada) | indicador (INDICADOR_FORMATADO) */
@@ -67,6 +69,7 @@ export default function CDDesempenhoView({
     sortConfig,
     requestSort,
     onRowClick,
+    onCampaignStatusChange,
     onStatusChange,
     preset = 'all',
     dataSource = 'cd_desempenho',
@@ -403,6 +406,7 @@ export default function CDDesempenhoView({
                         sortConfig={sortConfig}
                         requestSort={requestSort}
                         onRowClick={onRowClick}
+                        onCampaignStatusChange={onCampaignStatusChange}
                         onStatusChange={onStatusChange}
                         variant={isIndicador ? 'indicador' : isMarketplace ? 'journey' : 'desempenho'}
                         pedidosMesHeader={pedidosMesHeader}

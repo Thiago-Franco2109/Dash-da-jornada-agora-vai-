@@ -35,6 +35,9 @@ import {
     type PromoCupomFilterValue,
 } from './config/promoCupomFilter';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
+import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/ofertasStatusMap';
+import { getCampaignOverrideField, type CampaignTypeId } from './config/campaignTypes';
+import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
 import { useDataSync } from './hooks/useDataSync';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
@@ -168,9 +171,10 @@ function App() {
   }, [selectedRow, crmPartners, isCD]);
 
   const { updateStatus } = useStatusOverride();
+  const { setStatus: setOfertasStatus, records: ofertasRecords } = useOfertasDaCasa();
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
-  const handleStatusChange = async (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => {
+  const handleCampaignStatusChange = async (partnerId: string, campaignId: CampaignTypeId, newStatus: PromoStatus) => {
     const isIndicadorView = !isCD && (currentView === 'churn' || currentView === 'todos_parceiros');
     const activeRows = currentView === 'cd_desempenho' || (currentView === 'churn' && isCD)
       ? desempenhoRawRows
@@ -180,24 +184,35 @@ function App() {
     const row = activeRows.find(r => (r.estab_id || r.estabelecimento) === partnerId);
     if (row) {
         const statuses = { ...(row.campaign_statuses ?? {}) };
-        if (field === 'promo_status_override') {
-            row.promo_status = newStatus;
-            statuses.super_promos = newStatus;
-        }
-        if (field === 'cupom_status_override') {
-            row.cupom_status = newStatus;
-            statuses.cupons_destaque = newStatus;
-        }
+        statuses[campaignId] = newStatus;
+        if (campaignId === 'super_promos') row.promo_status = newStatus;
+        if (campaignId === 'cupons_destaque') row.cupom_status = newStatus;
         row.campaign_statuses = statuses;
         setForceRender(prev => prev + 1);
     }
 
+    if (campaignId === 'ofertas_da_casa') {
+        setOfertasStatus(partnerId, promoStatusToOfertasStatus(newStatus), 'manual');
+        setForceRender(prev => prev + 1);
+        return;
+    }
+
+    const field = getCampaignOverrideField(campaignId);
+    if (!field) return;
+
     const success = await updateStatus(partnerId, field, newStatus);
     if (!success) {
-        console.error("Falha ao salvar o novo status no Supabase");
+        console.error('Falha ao salvar o novo status no Supabase');
     } else if (isIndicadorView) {
         refreshCrmData();
     }
+  };
+
+  /** @deprecated use handleCampaignStatusChange */
+  const handleStatusChange = async (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => {
+    const campaignId: CampaignTypeId =
+        field === 'promo_status_override' ? 'super_promos' : 'cupons_destaque';
+    await handleCampaignStatusChange(partnerId, campaignId, newStatus);
   };
 
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
@@ -251,7 +266,7 @@ function App() {
   // 2. Enrichment & Permanent Filters
   const enrichedData = useMemo(() => {
     const noCityIndexMap = buildNoCityIndexMap(rawRows);
-    return rawRows.map(row => {
+    const rows = rawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
       return enrichPartnerData(row, undefined, noCityIndex, mode);
@@ -262,11 +277,15 @@ function App() {
         if (!showFinished && row.isFinished) return false;
         return true;
       });
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode]);
+    return mergeOfertasManualStatus(rows, ofertasRecords);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords]);
 
   const indicadorEnrichedData = useMemo(
-    () => crmPartnersToEnrichedRows(crmPartners, crmRelevanceMap),
-    [crmPartners, crmRelevanceMap, forceRender],
+    () => mergeOfertasManualStatus(
+      crmPartnersToEnrichedRows(crmPartners, crmRelevanceMap),
+      ofertasRecords,
+    ),
+    [crmPartners, crmRelevanceMap, forceRender, ofertasRecords],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
@@ -516,6 +535,7 @@ function App() {
               sortConfig={sortConfig}
               requestSort={requestSort}
               onRowClick={handleRowClick}
+              onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
               dataSourceLabel="INDICADOR_FORMATADO"
               pedidosMesHeader={indicadorPedidosMesHeader}
@@ -559,6 +579,7 @@ function App() {
               sortConfig={sortConfig}
               requestSort={requestSort}
               onRowClick={handleRowClick}
+              onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
               preset="churn"
               dataSource={isCD ? 'cd_desempenho' : 'indicador'}
@@ -595,6 +616,7 @@ function App() {
               sortConfig={sortConfig}
               requestSort={requestSort}
               onRowClick={handleRowClick}
+              onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
               preset="all"
               dataSource="cd_desempenho"
@@ -741,6 +763,7 @@ function App() {
                       sortConfig={sortConfig}
                       requestSort={requestSort}
                       onRowClick={handleRowClick}
+                      onCampaignStatusChange={handleCampaignStatusChange}
                       onStatusChange={handleStatusChange}
                     />
                   </div>
