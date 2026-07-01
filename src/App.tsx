@@ -51,6 +51,7 @@ import { useCityIds } from './hooks/useCityIds';
 import { useCarteiraData } from './hooks/useCarteiraData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
 import { useCrmData } from './hooks/useCrmData';
+import PartnerSearchPalette from './components/PartnerSearchPalette';
 
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
@@ -69,6 +70,7 @@ function App() {
   const [promoCupomFilter, setPromoCupomFilter] = useState<PromoCupomFilterValue | ''>('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
+  const [partnerSearchOpen, setPartnerSearchOpen] = useState(false);
 
   const activeSources = isCD ? CD_DATA_SOURCES : PARTNER_DATA_SOURCES;
   const activeCacheKey = isCD ? CACHE_KEYS.cd_novos : CACHE_KEYS.marketplace;
@@ -81,14 +83,14 @@ function App() {
   });
 
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"
-  const desempenhoTabActive = isAuthenticated && isCD && (currentView === 'cd_desempenho' || currentView === 'churn');
+  const desempenhoTabActive = isAuthenticated && isCD && (currentView === 'cd_desempenho' || currentView === 'churn' || partnerSearchOpen);
   const carteiraTabActive = isAuthenticated && !isCD && (
     currentView === 'carteira' || currentView === 'pedido_mensal'
   );
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const crmDataEnabled = isAuthenticated && !isCD && (
-    crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null
+    crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null || partnerSearchOpen
   );
   const {
     data: desempenhoRawRows,
@@ -406,6 +408,62 @@ function App() {
     }
   };
 
+  const searchablePartners = useMemo(() => {
+    const map = new Map<string, EnrichedPerformanceRow>();
+    const add = (rows: EnrichedPerformanceRow[]) => {
+      for (const row of rows) {
+        const key = (row.estab_id || row.estabelecimento || '').trim().toLowerCase();
+        if (!key) continue;
+        if (!map.has(key)) map.set(key, row);
+      }
+    };
+    if (isCD) {
+      add(enrichedDesempenhoData);
+      add(enrichedData);
+    } else {
+      add(indicadorEnrichedData);
+      add(enrichedData);
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.estabelecimento.localeCompare(b.estabelecimento, 'pt-BR'),
+    );
+  }, [isCD, enrichedData, indicadorEnrichedData, enrichedDesempenhoData]);
+
+  const navigateToPartner = (row: EnrichedPerformanceRow) => {
+    const matchKey = (r: EnrichedPerformanceRow) =>
+      r.estabelecimento === row.estabelecimento ||
+      (!!row.estab_id && r.estab_id === row.estab_id);
+
+    if (isCD) {
+      const inDesempenho = enrichedDesempenhoData.find(matchKey);
+      setSelectedRow(inDesempenho ?? row);
+      setCurrentView('cd_desempenho');
+    } else {
+      const inIndicador = indicadorEnrichedData.find(matchKey);
+      if (inIndicador) {
+        setSelectedRow(inIndicador);
+        setCurrentView('todos_parceiros');
+      } else {
+        const inDashboard = enrichedData.find(matchKey);
+        setSelectedRow(inDashboard ?? row);
+        setCurrentView('dashboard');
+      }
+    }
+    setSearchQuery('');
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPartnerSearchOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated]);
+
   if (loadingAuth || (loadingSync && rawRows.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
@@ -424,7 +482,8 @@ function App() {
         currentView={currentView} 
         onNavigate={setCurrentView} 
         searchQuery={searchQuery} 
-        setSearchQuery={setSearchQuery} 
+        setSearchQuery={setSearchQuery}
+        onOpenPartnerSearch={() => setPartnerSearchOpen(true)}
       />
       <div className="flex flex-1 min-h-0 relative">
         <NavigationSidebar 
@@ -775,6 +834,13 @@ function App() {
         </main>
       </div>
 
+      <PartnerSearchPalette
+        isOpen={partnerSearchOpen}
+        onClose={() => setPartnerSearchOpen(false)}
+        partners={searchablePartners}
+        onSelect={navigateToPartner}
+        isLoading={partnerSearchOpen && (isCD ? loadingDesempenho : loadingCrm) && searchablePartners.length === 0}
+      />
     </div>
   );
 }

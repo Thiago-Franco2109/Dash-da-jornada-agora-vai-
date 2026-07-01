@@ -7,6 +7,7 @@ interface HeaderProps {
     onNavigate: (view: AppView) => void;
     searchQuery: string;
     setSearchQuery: (query: string) => void;
+    onOpenPartnerSearch?: () => void;
 }
 
 export default function Header(props: HeaderProps) {
@@ -60,6 +61,18 @@ export default function Header(props: HeaderProps) {
                         />
                     </div>
                 </label>
+
+                {props.onOpenPartnerSearch && (
+                    <button
+                        type="button"
+                        onClick={props.onOpenPartnerSearch}
+                        className="hidden md:flex items-center gap-2 h-10 px-3 rounded-lg bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 hover:text-white transition-all text-xs font-semibold"
+                        title="Pesquisar parceiro (command+k)"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">travel_explore</span>
+                        <kbd className="px-2 py-0.5 rounded bg-black/20 text-[10px] font-bold border border-white/10 lowercase tracking-wide">command+k</kbd>
+                    </button>
+                )}
             </div>
 
             <div className="flex flex-1 justify-end gap-6 overflow-x-auto scrollbar-hide">
