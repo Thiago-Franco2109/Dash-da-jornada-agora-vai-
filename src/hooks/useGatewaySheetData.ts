@@ -6,6 +6,8 @@ import {
     loadGatewaySheetCache,
 } from '../utils/dataSync';
 
+const EMPTY_TAB_VARIANTS: string[] = [];
+
 interface UseGatewaySheetDataOptions {
     sheetId: string;
     tab: string;
@@ -21,8 +23,10 @@ export function useGatewaySheetData({
     cacheKey,
     enabled = true,
     allowEmpty = false,
-    tabVariants = [],
+    tabVariants,
 }: UseGatewaySheetDataOptions) {
+    const variants = tabVariants ?? EMPTY_TAB_VARIANTS;
+    const variantsKey = variants.join('|');
     const [table, setTable] = useState<GatewaySheetTable>({ headers: [], rows: [] });
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -50,7 +54,7 @@ export function useGatewaySheetData({
             setError(null);
             const data = await fetchGatewaySheetTable(sheetId, tab, {
                 allowEmpty,
-                tabVariants,
+                tabVariants: variants,
             });
             const syncTime = new Date();
             setTable(data);
@@ -69,7 +73,7 @@ export function useGatewaySheetData({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [enabled, sheetId, tab, cacheKey, allowEmpty, tabVariants]);
+    }, [enabled, sheetId, tab, cacheKey, allowEmpty, variantsKey]);
 
     useEffect(() => {
         if (!enabled) {

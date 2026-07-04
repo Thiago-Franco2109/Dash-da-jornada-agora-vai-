@@ -1,21 +1,28 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     HORARIOS_FUNCIONAMENTO_DATA_SOURCE,
     RECESSOS_ESTABELECIMENTO_DATA_SOURCE,
 } from '../config/dataSource';
-import { CACHE_KEYS } from '../utils/dataSync';
+import type { GatewaySheetTable } from '../types/gatewaySheet';
+import {
+    fetchGatewaySheetTable,
+    saveGatewaySheetCache,
+    loadGatewaySheetCache,
+    CACHE_KEYS,
+} from '../utils/dataSync';
 import {
     formatTurno,
     parseHorariosForEstab,
     parseRecessosForEstab,
 } from '../utils/partnerFuncionamento';
-import { useGatewaySheetData } from './useGatewaySheetData';
 
 interface UsePartnerFuncionamentoDataOptions {
     estabId: string;
     estabelecimento?: string;
     enabled?: boolean;
 }
+
+const EMPTY_TABLE: GatewaySheetTable = { headers: [], rows: [] };
 
 function partnerHasHorarios(
     horarios: ReturnType<typeof parseHorariosForEstab>,
@@ -26,69 +33,148 @@ function partnerHasHorarios(
     );
 }
 
+interface SheetFetchResult {
+    table: GatewaySheetTable;
+    error: string | null;
+    fromCache: boolean;
+}
+
+async function fetchSheet(
+    sheetId: string,
+    tab: string,
+    cacheKey: string,
+): Promise<SheetFetchResult> {
+    const cached = loadGatewaySheetCache(cacheKey);
+    try {
+        const table = await fetchGatewaySheetTable(sheetId, tab, { skipQueue: true });
+        saveGatewaySheetCache(cacheKey, { data: table, lastSyncTime: new Date() });
+        return { table, error: null, fromCache: false };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : `Falha ao carregar aba ${tab}`;
+        console.warn(`[usePartnerFuncionamentoData] Falha ao carregar "${tab}":`, message);
+        if (cached?.data?.rows?.length) {
+            return { table: cached.data, error: null, fromCache: true };
+        }
+        return { table: EMPTY_TABLE, error: `${tab}: ${message}`, fromCache: false };
+    }
+}
+
 /** Horários semanais e recessos do parceiro — abas da planilha mestre (BIGOU). */
 export function usePartnerFuncionamentoData({
     estabId,
     estabelecimento = '',
     enabled = true,
 }: UsePartnerFuncionamentoDataOptions) {
-    const horarios = useGatewaySheetData({
-        sheetId: HORARIOS_FUNCIONAMENTO_DATA_SOURCE.sheetId,
-        tab: HORARIOS_FUNCIONAMENTO_DATA_SOURCE.range,
-        cacheKey: CACHE_KEYS.horarios_funcionamento,
-        enabled,
-        allowEmpty: true,
-    });
+    const [horariosTable, setHorariosTable] = useState<GatewaySheetTable>(EMPTY_TABLE);
+    const [recessosTable, setRecessosTable] = useState<GatewaySheetTable>(EMPTY_TABLE);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+    const [isUsingCache, setIsUsingCache] = useState(false);
+    const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
-    const recessos = useGatewaySheetData({
-        sheetId: RECESSOS_ESTABELECIMENTO_DATA_SOURCE.sheetId,
-        tab: RECESSOS_ESTABELECIMENTO_DATA_SOURCE.range,
-        cacheKey: CACHE_KEYS.recessos_estabelecimento,
-        enabled,
-        allowEmpty: true,
-    });
+    const performSync = useCallback(async () => {
+        if (!enabled) return;
+
+        const cachedH = loadGatewaySheetCache(CACHE_KEYS.horarios_funcionamento);
+        const cachedR = loadGatewaySheetCache(CACHE_KEYS.recessos_estabelecimento);
+        const hasCache = !!(cachedH?.data?.rows?.length || cachedR?.data?.rows?.length);
+
+        if (hasCache) {
+            if (cachedH?.data) setHorariosTable(cachedH.data);
+            if (cachedR?.data) setRecessosTable(cachedR.data);
+            const cacheTime = cachedH?.lastSyncTime ?? cachedR?.lastSyncTime ?? null;
+            setLastSyncTime(cacheTime);
+            setIsUsingCache(true);
+            setIsLoading(false);
+            setHasFetchedOnce(true);
+            setIsRefreshing(true);
+        } else {
+            setIsLoading(true);
+        }
+
+        try {
+            setError(null);
+            const syncTime = new Date();
+
+            const horarios = await fetchSheet(
+                HORARIOS_FUNCIONAMENTO_DATA_SOURCE.sheetId,
+                HORARIOS_FUNCIONAMENTO_DATA_SOURCE.range,
+                CACHE_KEYS.horarios_funcionamento,
+            );
+            const recessos = await fetchSheet(
+                RECESSOS_ESTABELECIMENTO_DATA_SOURCE.sheetId,
+                RECESSOS_ESTABELECIMENTO_DATA_SOURCE.range,
+                CACHE_KEYS.recessos_estabelecimento,
+            );
+
+            setHorariosTable(horarios.table);
+            setRecessosTable(recessos.table);
+            setLastSyncTime(syncTime);
+            setIsUsingCache(horarios.fromCache || recessos.fromCache);
+            setHasFetchedOnce(true);
+
+            const errors = [horarios.error, recessos.error].filter(Boolean);
+            setError(errors.length ? errors.join(' · ') : null);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Falha ao carregar horários e recessos';
+            setError(message);
+            if (hasCache) {
+                if (cachedH?.data) setHorariosTable(cachedH.data);
+                if (cachedR?.data) setRecessosTable(cachedR.data);
+                setLastSyncTime(cachedH?.lastSyncTime ?? cachedR?.lastSyncTime ?? null);
+                setIsUsingCache(true);
+                setHasFetchedOnce(true);
+            }
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
+    }, [enabled]);
+
+    useEffect(() => {
+        if (!enabled) {
+            setIsLoading(false);
+            return;
+        }
+
+        const cachedH = loadGatewaySheetCache(CACHE_KEYS.horarios_funcionamento);
+        const cachedR = loadGatewaySheetCache(CACHE_KEYS.recessos_estabelecimento);
+        if (cachedH?.data?.rows?.length) setHorariosTable(cachedH.data);
+        if (cachedR?.data?.rows?.length) setRecessosTable(cachedR.data);
+        if (cachedH?.data?.rows?.length || cachedR?.data?.rows?.length) {
+            setLastSyncTime(cachedH?.lastSyncTime ?? cachedR?.lastSyncTime ?? null);
+            setIsUsingCache(true);
+            setIsLoading(false);
+            setHasFetchedOnce(true);
+        }
+
+        performSync();
+    }, [enabled, performSync]);
 
     const horariosDoParceiro = useMemo(
-        () => parseHorariosForEstab(horarios.table, estabId, estabelecimento),
-        [horarios.table, estabId, estabelecimento],
+        () => parseHorariosForEstab(horariosTable, estabId, estabelecimento),
+        [horariosTable, estabId, estabelecimento],
     );
 
     const recessosDoParceiro = useMemo(
-        () => parseRecessosForEstab(recessos.table, estabId, estabelecimento),
-        [recessos.table, estabId, estabelecimento],
+        () => parseRecessosForEstab(recessosTable, estabId, estabelecimento),
+        [recessosTable, estabId, estabelecimento],
     );
-
-    const sheetHorariosCount = horarios.table.rows.length;
-    const sheetRecessosCount = recessos.table.rows.length;
-    const hasPartnerHorarios = partnerHasHorarios(horariosDoParceiro);
-
-    const isLoading = horarios.isLoading || recessos.isLoading;
-    const isRefreshing = horarios.isRefreshing || recessos.isRefreshing;
-    const error = [horarios.error, recessos.error].filter(Boolean).join(' · ') || null;
-    const isUsingCache = horarios.isUsingCache || recessos.isUsingCache;
-
-    const lastSyncTime = useMemo(() => {
-        const times = [horarios.lastSyncTime, recessos.lastSyncTime].filter(Boolean) as Date[];
-        if (times.length === 0) return null;
-        return times.reduce((latest, t) => (t > latest ? t : latest));
-    }, [horarios.lastSyncTime, recessos.lastSyncTime]);
-
-    const refreshData = () => {
-        horarios.refreshData();
-        recessos.refreshData();
-    };
 
     return {
         horarios: horariosDoParceiro,
         recessos: recessosDoParceiro,
-        sheetHorariosCount,
-        sheetRecessosCount,
-        hasPartnerHorarios,
+        sheetHorariosCount: horariosTable.rows.length,
+        sheetRecessosCount: recessosTable.rows.length,
+        hasPartnerHorarios: partnerHasHorarios(horariosDoParceiro),
         isLoading,
         isRefreshing,
         error,
         isUsingCache,
         lastSyncTime,
-        refreshData,
+        hasFetchedOnce,
+        refreshData: performSync,
     };
 }

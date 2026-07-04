@@ -106,10 +106,22 @@ function formatSheetFetchError(status: number, errorJson: Record<string, unknown
     }
 }
 
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2, timeoutMs = 60_000): Promise<Response> {
     let lastResponse: Response | null = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const response = await fetch(url, options);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        let response: Response;
+        try {
+            response = await fetch(url, { ...options, signal: controller.signal });
+        } catch (err) {
+            clearTimeout(timer);
+            if (err instanceof Error && err.name === 'AbortError') {
+                throw new Error(`Tempo esgotado ao buscar planilha (${Math.round(timeoutMs / 1000)}s). Tente Atualizar.`);
+            }
+            throw err;
+        }
+        clearTimeout(timer);
         lastResponse = response;
         const shouldRetry = response.status === 429 || response.status === 503 || response.status === 504;
         if (!shouldRetry || attempt === maxRetries) return response;
@@ -1635,6 +1647,8 @@ export interface FetchGatewaySheetTableOptions {
     allowEmpty?: boolean;
     /** Layout fixo: indicador (parceiros) ou cidades (carteira) */
     layout?: SheetTableLayout;
+    /** Se true, ignora a fila global (leitura rápida, sob demanda) */
+    skipQueue?: boolean;
 }
 
 /**
@@ -1645,7 +1659,7 @@ export async function fetchGatewaySheetTable(
     tabName: string,
     options?: FetchGatewaySheetTableOptions,
 ): Promise<GatewaySheetTable> {
-    return enqueueSheetFetch(async () => {
+    const run = async () => {
         const trimmedTab = tabName.trim();
         const allTabNames = [...new Set([trimmedTab, ...(options?.tabVariants ?? [])])];
 
@@ -1684,7 +1698,9 @@ export async function fetchGatewaySheetTable(
 
         if (options?.allowEmpty) return EMPTY_GATEWAY_TABLE;
         throw lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
-    });
+    };
+
+    return options?.skipQueue ? run() : enqueueSheetFetch(run);
 }
 
 export function saveGatewaySheetCache(cacheKey: string, result: GatewaySheetCacheResult): void {

@@ -111,6 +111,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
         error,
         isUsingCache,
         lastSyncTime,
+        hasFetchedOnce,
         refreshData,
     } = usePartnerFuncionamentoData({
         estabId,
@@ -207,7 +208,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                     <h4 className="font-semibold text-slate-900 dark:text-white">Grade semanal</h4>
                 </div>
 
-                {isLoading && horarios.every(h => !h.turno1Inicio && !h.turno2Inicio) ? (
+                {isLoading && !hasFetchedOnce ? (
                     <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">
                         Carregando horários…
                     </div>
@@ -261,7 +262,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                     </h4>
                 </div>
 
-                {isLoading && recessos.length === 0 ? (
+                {isLoading && !hasFetchedOnce ? (
                     <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                         Carregando recessos…
                     </div>
