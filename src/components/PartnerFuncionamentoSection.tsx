@@ -4,11 +4,13 @@ import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { usePartnerFuncionamentoData } from '../hooks/usePartnerFuncionamentoData';
 import {
     buildResumoFuncionamento,
+    descreverDia,
     formatTurno,
     hasActiveRecesso,
     type DiaResumo,
     type RecessoRecord,
     type RecessoStatus,
+    type ResumoFuncionamento,
 } from '../utils/partnerFuncionamento';
 
 const RESUMO_DIAS = 14;
@@ -19,56 +21,101 @@ const DIA_STATUS_META: Record<DiaResumo['status'], { label: string; dot: string;
         dot: 'bg-emerald-500',
         cell: 'bg-emerald-500/90 text-white',
     },
+    fechou_cedo: {
+        label: 'Fechou cedo',
+        dot: 'bg-lime-500',
+        cell: 'bg-lime-500/90 text-white',
+    },
+    parcial: {
+        label: 'Parcial',
+        dot: 'bg-orange-500',
+        cell: 'bg-orange-500/90 text-white',
+    },
+    nao_operou: {
+        label: 'Não operou',
+        dot: 'bg-red-500',
+        cell: 'bg-red-500 text-white',
+    },
     recesso: {
         label: 'Recesso',
         dot: 'bg-amber-500',
         cell: 'bg-amber-500/90 text-white',
     },
     fechado: {
-        label: 'Fechado',
+        label: 'Fechado (grade)',
         dot: 'bg-slate-300 dark:bg-slate-600',
         cell: 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
     },
 };
 
-function ResumoUltimosDias({
-    dias,
-    diasOperou,
-    diasRecesso,
-    temHorario,
-}: {
-    dias: DiaResumo[];
-    diasOperou: number;
-    diasRecesso: number;
-    temHorario: boolean;
-}) {
+function ResumoUltimosDias({ resumo }: { resumo: ResumoFuncionamento }) {
+    const {
+        dias,
+        diasOperou,
+        diasFechouCedo,
+        diasParcial,
+        diasNaoOperou,
+        diasRecesso,
+        maiorSequenciaCritica,
+        temHorario,
+        totalDias,
+    } = resumo;
+
     let headline: { icon: string; title: string; sub: string; wrap: string; iconClass: string };
 
     if (!temHorario) {
         headline = {
             icon: 'help',
             title: 'Sem horário cadastrado',
-            sub: 'Não há grade de funcionamento para avaliar os últimos 14 dias.',
+            sub: `Não há grade de funcionamento para avaliar os últimos ${totalDias} dias.`,
             wrap: 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50',
             iconClass: 'text-slate-400',
         };
-    } else if (diasRecesso === 0) {
+    } else if (maiorSequenciaCritica >= 2) {
+        headline = {
+            icon: 'error',
+            title: `Atenção: fechou logo após abrir / não operou em ${maiorSequenciaCritica} dias seguidos`,
+            sub: `${diasNaoOperou} ${diasNaoOperou === 1 ? 'dia crítico' : 'dias críticos'} nos últimos ${totalDias} dias. Vale investigar.`,
+            wrap: 'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20',
+            iconClass: 'text-red-600 dark:text-red-400',
+        };
+    } else if (diasNaoOperou > 0) {
+        headline = {
+            icon: 'warning',
+            title: `Não operou em ${diasNaoOperou} ${diasNaoOperou === 1 ? 'dia' : 'dias'} dos últimos ${totalDias}`,
+            sub: 'Loja fechou logo após abrir ou não abriu em dia(s) previsto(s).',
+            wrap: 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20',
+            iconClass: 'text-red-600 dark:text-red-400',
+        };
+    } else if (diasParcial > 0) {
+        headline = {
+            icon: 'schedule',
+            title: `Fechou parte do horário em ${diasParcial} ${diasParcial === 1 ? 'dia' : 'dias'}`,
+            sub: `${diasOperou} ${diasOperou === 1 ? 'dia' : 'dias'} normais no período.`,
+            wrap: 'border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20',
+            iconClass: 'text-orange-600 dark:text-orange-400',
+        };
+    } else {
+        const extra = diasFechouCedo > 0
+            ? ` (${diasFechouCedo} com fechamento um pouco antes — normal)`
+            : '';
+        const recessoTxt = diasRecesso > 0 ? ` · ${diasRecesso} em recesso planejado` : '';
         headline = {
             icon: 'check_circle',
-            title: 'Funcionou normalmente nos últimos 14 dias',
-            sub: `${diasOperou} ${diasOperou === 1 ? 'dia de funcionamento' : 'dias de funcionamento'}, sem recesso no período.`,
+            title: `Funcionou normalmente nos últimos ${totalDias} dias`,
+            sub: `${diasOperou} ${diasOperou === 1 ? 'dia de funcionamento' : 'dias de funcionamento'}${extra}${recessoTxt}.`,
             wrap: 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20',
             iconClass: 'text-emerald-600 dark:text-emerald-400',
         };
-    } else {
-        headline = {
-            icon: 'pause_circle',
-            title: `Teve ${diasRecesso} ${diasRecesso === 1 ? 'dia' : 'dias'} de recesso nos últimos 14 dias`,
-            sub: `${diasOperou} ${diasOperou === 1 ? 'dia' : 'dias'} de funcionamento no período.`,
-            wrap: 'border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20',
-            iconClass: 'text-amber-600 dark:text-amber-400',
-        };
     }
+
+    const legenda: { status: DiaResumo['status']; count: number }[] = [
+        { status: 'operou', count: diasOperou },
+        { status: 'fechou_cedo', count: diasFechouCedo },
+        { status: 'parcial', count: diasParcial },
+        { status: 'nao_operou', count: diasNaoOperou },
+        { status: 'recesso', count: diasRecesso },
+    ];
 
     return (
         <div className={`p-4 rounded-xl border ${headline.wrap}`}>
@@ -83,7 +130,7 @@ function ResumoUltimosDias({
                             const meta = DIA_STATUS_META[dia.status];
                             const dd = format(dia.date, 'dd/MM', { locale: ptBR });
                             const diaSemana = format(dia.date, 'EEEEEE', { locale: ptBR });
-                            const title = `${dd} (${diaSemana}) — ${meta.label}${dia.recesso?.descricao ? `: ${dia.recesso.descricao}` : ''}`;
+                            const title = `${dd} (${diaSemana}) — ${descreverDia(dia)}`;
                             return (
                                 <div
                                     key={dia.date.toISOString()}
@@ -98,15 +145,12 @@ function ResumoUltimosDias({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-slate-500 dark:text-slate-400">
-                        <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2.5 rounded-full bg-emerald-500" /> Funcionou
-                        </span>
-                        <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2.5 rounded-full bg-amber-500" /> Recesso
-                        </span>
-                        <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2.5 rounded-full bg-slate-300 dark:bg-slate-600" /> Fechado (grade)
-                        </span>
+                        {legenda.filter(l => l.count > 0).map(l => (
+                            <span key={l.status} className="inline-flex items-center gap-1.5">
+                                <span className={`size-2.5 rounded-full ${DIA_STATUS_META[l.status].dot}`} />
+                                {DIA_STATUS_META[l.status].label} ({l.count})
+                            </span>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -296,14 +340,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                 </div>
             )}
 
-            {mostrarResumo && (
-                <ResumoUltimosDias
-                    dias={resumo.dias}
-                    diasOperou={resumo.diasOperou}
-                    diasRecesso={resumo.diasRecesso}
-                    temHorario={resumo.temHorario}
-                />
-            )}
+            {mostrarResumo && <ResumoUltimosDias resumo={resumo} />}
 
             {recessoAtivo && (
                 <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 flex items-start gap-3">

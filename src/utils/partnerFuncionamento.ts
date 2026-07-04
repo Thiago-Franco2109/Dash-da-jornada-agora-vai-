@@ -248,23 +248,46 @@ export function hasActiveRecesso(recessos: RecessoRecord[]): RecessoRecord | nul
     return recessos.find(r => r.emRecessoAgora || r.statusRecesso === 'em_recesso') ?? null;
 }
 
-export type DiaStatus = 'operou' | 'recesso' | 'fechado';
+export type DiaStatus =
+    | 'operou'       // operou o horário programado normalmente
+    | 'fechou_cedo'  // fechou um pouco antes (normal — pouco movimento)
+    | 'parcial'      // fechou uma parte significativa do horário
+    | 'nao_operou'   // não abriu ou fechou logo após abrir (crítico)
+    | 'recesso'      // pausa planejada (recesso de vários dias)
+    | 'fechado';     // dia sem horário na grade
+
+/** Minutos que consideramos "fechar um pouco antes" como comportamento normal */
+const LIMIAR_FECHOU_CEDO_MIN = 30;
+/** Abaixo disto de operação efetiva no dia = praticamente não operou (crítico) */
+const LIMIAR_NAO_OPEROU_MIN = 20;
+/** % mínima do horário programado para não ser considerado crítico */
+const LIMIAR_NAO_OPEROU_PCT = 0.15;
 
 export interface DiaResumo {
     date: Date;
     diaSemana: number;
     status: DiaStatus;
-    /** Recesso que cobre este dia, se houver */
+    /** Minutos programados na grade para o dia */
+    programadoMin: number;
+    /** Minutos efetivamente aberto (programado - fechado por recesso) */
+    operouMin: number;
+    /** Minutos fechados dentro do horário programado por recesso do mesmo dia */
+    fechadoMin: number;
+    /** Recesso relevante (planejado que cobre o dia, ou operacional do dia) */
     recesso: RecessoRecord | null;
 }
 
 export interface ResumoFuncionamento {
     dias: DiaResumo[];
     diasOperou: number;
+    diasFechouCedo: number;
+    diasParcial: number;
+    diasNaoOperou: number;
     diasRecesso: number;
     diasFechado: number;
+    /** Maior sequência de dias críticos consecutivos (não operou) */
+    maiorSequenciaCritica: number;
     temHorario: boolean;
-    /** Nº total de dias analisados */
     totalDias: number;
 }
 
@@ -282,29 +305,75 @@ function ymdFromRaw(raw: string): string {
     return match ? match[1] : '';
 }
 
-function horarioAbreNoDia(horarios: HorarioDia[], diaSemana: number): boolean {
-    const h = horarios.find(x => x.diaSemana === diaSemana);
-    if (!h) return false;
-    return formatTurno(h.turno1Inicio, h.turno1Fim) !== 'Fechado'
-        || formatTurno(h.turno2Inicio, h.turno2Fim) !== 'Fechado';
+function parseDateTime(raw: string): Date | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const iso = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function recessoCobreDia(recessos: RecessoRecord[], dayYmd: string): RecessoRecord | null {
-    for (const r of recessos) {
-        const start = ymdFromRaw(r.dataInicio);
-        const end = ymdFromRaw(r.dataFim);
-        if (!start && !end) continue;
-        const lo = start || end;
-        const hi = end || start;
-        if (dayYmd >= lo && dayYmd <= hi) return r;
+/** "13:00" → 780 minutos. Retorna null se inválido. */
+function horaParaMin(raw: string): number | null {
+    const h = formatHorario(raw);
+    const match = h.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const min = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+    return Number.isNaN(min) ? null : min;
+}
+
+type Intervalo = { inicio: number; fim: number };
+
+/** Intervalos programados (em minutos a partir da meia-noite) de um dia; fim pode passar de 1440 (vira madrugada). */
+function intervalosProgramados(h: HorarioDia | undefined): Intervalo[] {
+    if (!h) return [];
+    const intervalos: Intervalo[] = [];
+    const turnos: [string, string][] = [
+        [h.turno1Inicio, h.turno1Fim],
+        [h.turno2Inicio, h.turno2Fim],
+    ];
+    for (const [ini, fim] of turnos) {
+        const i = horaParaMin(ini);
+        let f = horaParaMin(fim);
+        if (i == null || f == null) continue;
+        if (f <= i) f += 1440; // fecha depois da meia-noite
+        if (f > i) intervalos.push({ inicio: i, fim: f });
     }
-    return null;
+    return intervalos;
+}
+
+function duracao(intervalos: Intervalo[]): number {
+    return intervalos.reduce((sum, iv) => sum + (iv.fim - iv.inicio), 0);
+}
+
+function overlap(a: Intervalo, b: Intervalo): number {
+    return Math.max(0, Math.min(a.fim, b.fim) - Math.max(a.inicio, b.inicio));
+}
+
+function recessoIntervaloNoDia(r: RecessoRecord, diaMeiaNoite: Date): Intervalo | null {
+    const start = parseDateTime(r.dataInicio);
+    const end = parseDateTime(r.dataFim);
+    if (!start || !end) return null;
+    const base = diaMeiaNoite.getTime();
+    const inicioMin = (start.getTime() - base) / 60000;
+    const fimMin = (end.getTime() - base) / 60000;
+    if (fimMin <= inicioMin) return null;
+    return { inicio: inicioMin, fim: fimMin };
+}
+
+/** Recesso "planejado" = cobre mais de um dia de calendário (férias/pausa). */
+function isRecessoPlanejado(r: RecessoRecord): boolean {
+    const ini = ymdFromRaw(r.dataInicio);
+    const fim = ymdFromRaw(r.dataFim);
+    if (ini && fim) return ini !== fim;
+    return r.diasDuracao >= 2;
 }
 
 /**
- * Resumo dos últimos N dias: cruza a grade semanal com os recessos.
- * Regra: em recesso → não operou; senão com horário no dia da semana → operou;
- * senão (dia fechado na grade) → fechado.
+ * Resumo dos últimos N dias cruzando a grade semanal com os recessos (com horas exatas).
+ * - Recesso de vários dias → pausa planejada (não é crítico).
+ * - Recesso no mesmo dia → fechamento operacional: compara com o horário programado
+ *   para saber se fechou cedo (normal), parcial, ou praticamente não operou (crítico).
  */
 export function buildResumoFuncionamento(
     horarios: HorarioDia[],
@@ -317,10 +386,18 @@ export function buildResumoFuncionamento(
         || formatTurno(h.turno2Inicio, h.turno2Fim) !== 'Fechado',
     );
 
+    const planejados = recessos.filter(isRecessoPlanejado);
+    const operacionais = recessos.filter(r => !isRecessoPlanejado(r));
+
     const dias: DiaResumo[] = [];
     let diasOperou = 0;
+    let diasFechouCedo = 0;
+    let diasParcial = 0;
+    let diasNaoOperou = 0;
     let diasRecesso = 0;
     let diasFechado = 0;
+    let maiorSequenciaCritica = 0;
+    let sequenciaAtual = 0;
 
     for (let i = days - 1; i >= 0; i--) {
         const date = new Date(now);
@@ -329,21 +406,114 @@ export function buildResumoFuncionamento(
         const diaSemana = date.getDay();
         const dayYmd = ymd(date);
 
-        const recesso = recessoCobreDia(recessos, dayYmd);
+        const grade = horarios.find(h => h.diaSemana === diaSemana);
+        const programados = intervalosProgramados(grade);
+        const programadoMin = duracao(programados);
+
+        // Recesso planejado (férias) cobrindo o dia?
+        const planejadoCobre = planejados.find(r => {
+            const ini = ymdFromRaw(r.dataInicio) || ymdFromRaw(r.dataFim);
+            const fim = ymdFromRaw(r.dataFim) || ymdFromRaw(r.dataInicio);
+            return dayYmd >= ini && dayYmd <= fim;
+        }) ?? null;
+
         let status: DiaStatus;
-        if (recesso) {
+        let operouMin = programadoMin;
+        let fechadoMin = 0;
+        let recesso: RecessoRecord | null = planejadoCobre;
+
+        if (planejadoCobre) {
             status = 'recesso';
+            operouMin = 0;
+            fechadoMin = programadoMin;
             diasRecesso++;
-        } else if (horarioAbreNoDia(horarios, diaSemana)) {
-            status = 'operou';
-            diasOperou++;
-        } else {
+        } else if (programadoMin === 0) {
             status = 'fechado';
+            operouMin = 0;
             diasFechado++;
+        } else {
+            // Recessos operacionais (mesmo dia) que caem neste dia
+            const doDia = operacionais.filter(r => ymdFromRaw(r.dataInicio) === dayYmd || ymdFromRaw(r.dataFim) === dayYmd);
+            const recessoIntervalos = doDia
+                .map(r => recessoIntervaloNoDia(r, date))
+                .filter((iv): iv is Intervalo => iv != null);
+
+            for (const prog of programados) {
+                for (const rec of recessoIntervalos) {
+                    fechadoMin += overlap(prog, rec);
+                }
+            }
+            fechadoMin = Math.min(fechadoMin, programadoMin);
+            operouMin = Math.max(0, programadoMin - fechadoMin);
+            if (doDia.length) recesso = doDia[0];
+
+            const pctOperou = programadoMin > 0 ? operouMin / programadoMin : 1;
+
+            if (fechadoMin <= 0) {
+                status = 'operou';
+                diasOperou++;
+            } else if (operouMin <= LIMIAR_NAO_OPEROU_MIN || pctOperou <= LIMIAR_NAO_OPEROU_PCT) {
+                status = 'nao_operou';
+                diasNaoOperou++;
+            } else if (fechadoMin <= LIMIAR_FECHOU_CEDO_MIN) {
+                status = 'fechou_cedo';
+                diasFechouCedo++;
+            } else {
+                status = 'parcial';
+                diasParcial++;
+            }
         }
 
-        dias.push({ date, diaSemana, status, recesso });
+        if (status === 'nao_operou') {
+            sequenciaAtual++;
+            maiorSequenciaCritica = Math.max(maiorSequenciaCritica, sequenciaAtual);
+        } else {
+            sequenciaAtual = 0;
+        }
+
+        dias.push({ date, diaSemana, status, programadoMin, operouMin, fechadoMin, recesso });
     }
 
-    return { dias, diasOperou, diasRecesso, diasFechado, temHorario, totalDias: days };
+    return {
+        dias,
+        diasOperou,
+        diasFechouCedo,
+        diasParcial,
+        diasNaoOperou,
+        diasRecesso,
+        diasFechado,
+        maiorSequenciaCritica,
+        temHorario,
+        totalDias: days,
+    };
+}
+
+/** "Fechou 45 min antes", "Operou 20 min de 8h", etc. */
+export function descreverDia(dia: DiaResumo): string {
+    switch (dia.status) {
+        case 'operou':
+            return 'Operou o horário normalmente';
+        case 'fechou_cedo':
+            return `Fechou ${Math.round(dia.fechadoMin)} min antes do previsto`;
+        case 'parcial':
+            return `Ficou fechado ${formatDuracaoMin(dia.fechadoMin)} do horário previsto`;
+        case 'nao_operou':
+            return dia.operouMin <= 1
+                ? 'Não operou no horário previsto'
+                : `Abriu e fechou logo (só ${Math.round(dia.operouMin)} min de ${formatDuracaoMin(dia.programadoMin)})`;
+        case 'recesso':
+            return dia.recesso?.descricao ? `Recesso: ${dia.recesso.descricao}` : 'Recesso planejado';
+        case 'fechado':
+            return 'Sem horário na grade';
+        default:
+            return '';
+    }
+}
+
+function formatDuracaoMin(min: number): string {
+    const m = Math.round(min);
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    return rest ? `${h}h${String(rest).padStart(2, '0')}` : `${h}h`;
 }
