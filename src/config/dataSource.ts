@@ -141,20 +141,23 @@ export const LOJAS_DELIVERY_DATA_SOURCE = {
 } as const;
 
 /**
- * Grade semanal de horários por estabelecimento (sync BIGOU → planilha mestre).
+ * Grade semanal de horários por estabelecimento (sync BIGOU).
+ * As abas foram criadas na planilha PRINCIPAL (mesma do INDICADOR/CARTEIRA),
+ * não na planilha mestre. Por isso o sheetId aponta para THIAGO_DATA_SOURCE.
  * Colunas: ESTAB_ID, ESTABELECIMENTO, CIDADE, CIDADE_ID, DIA_SEMANA, DIA, TURNO_1_*, TURNO_2_*, TURNOS_RESUMO
  */
 export const HORARIOS_FUNCIONAMENTO_DATA_SOURCE = {
-    sheetId: MASTER_DATA_SOURCE.sheetId,
+    sheetId: THIAGO_DATA_SOURCE.sheetId,
     range: 'HORARIOS_FUNCIONAMENTO',
 } as const;
 
 /**
- * Recessos programados — últimos 3 meses + futuros (sync BIGOU → planilha mestre).
+ * Recessos programados — últimos 3 meses + futuros (sync BIGOU).
+ * Mesma planilha principal das abas HORARIOS_FUNCIONAMENTO / INDICADOR.
  * Colunas: RECESSO_ID, ESTAB_ID, DATA_INICIO, DATA_FIM, DESCRICAO, EM_RECESSO_AGORA, STATUS_RECESSO…
  */
 export const RECESSOS_ESTABELECIMENTO_DATA_SOURCE = {
-    sheetId: MASTER_DATA_SOURCE.sheetId,
+    sheetId: THIAGO_DATA_SOURCE.sheetId,
     range: 'RECESSOS_ESTABELECIMENTO',
 } as const;
 
