@@ -11,6 +11,7 @@ import { useCityIds } from '../hooks/useCityIds';
 import type { CrmPartner } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import PartnerPromoCrmSection from './PartnerPromoCrmSection';
+import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
 
 interface PartnerDetailsViewProps {
@@ -26,7 +27,7 @@ interface PartnerDetailsViewProps {
     onNavigateToCrm?: () => void;
 }
 
-type TabKey = 'geral' | 'contatos' | 'promocoes' | 'historico';
+type TabKey = 'geral' | 'contatos' | 'promocoes' | 'funcionamento' | 'historico';
 
 const CHECKLIST_TEMPLATES = {
     w1: [
@@ -476,6 +477,13 @@ export default function PartnerDetailsView({
                     >
                         <span className="material-symbols-outlined text-[18px]">local_offer</span>
                         Promoções
+                    </button>
+                    <button 
+                        className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'funcionamento' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                        onClick={() => setActiveTab('funcionamento')}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">schedule</span>
+                        Funcionamento
                     </button>
                     <button 
                         className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'historico' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
@@ -1003,6 +1011,10 @@ export default function PartnerDetailsView({
                         onStatusChange={onStatusChange}
                         onNavigateToCrm={onNavigateToCrm}
                     />
+                )}
+
+                {activeTab === 'funcionamento' && (
+                    <PartnerFuncionamentoSection partner={partner} />
                 )}
 
                 {activeTab === 'historico' && (

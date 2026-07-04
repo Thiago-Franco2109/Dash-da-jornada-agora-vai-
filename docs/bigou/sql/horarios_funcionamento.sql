@@ -1,0 +1,13 @@
+-- =============================================================================
+-- ÍNDICE DAS QUERIES — Horários e Funcionamento
+-- Use os arquivos numerados na ordem abaixo.
+-- =============================================================================
+--
+-- 00_explorar_dados.sql              → Validar banco antes de exportar
+-- 01_export_HORARIOS_FUNCIONAMENTO.sql → Aba HORARIOS_FUNCIONAMENTO
+-- 02_export_STATUS_FUNCIONAMENTO.sql   → Aba STATUS_FUNCIONAMENTO
+-- 03_export_HISTORICO_FUNCIONAMENTO.sql → Aba HISTORICO_FUNCIONAMENTO
+-- 04_export_RECESSOS.sql               → Aba RECESSOS_ESTABELECIMENTO
+--
+-- Guia completo: ../montar-planilha.md
+-- =============================================================================

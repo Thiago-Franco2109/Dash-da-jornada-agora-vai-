@@ -1,0 +1,1281 @@
+ 
+Tabela  Acesso  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     estabelecimento_id   Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)    
+total  Total  de  acessos  realizados  no  estabelecimento  
+  int(11)   1   
+evento   não  usado    int(11)   1   data   não  usado    datetime    status   não  usado    tinyint(11)    usuario_id   Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘usuario’   
+foreign-key   int(11)    
+ 
+Tabela  Aditivo  Fatura  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     fatura_id   Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘fatura’  
+foreign-key  int(11)    
+valor  Valor  correspondente    decimal(10,2)    descricao   Descrição  opcional  da  fatura    text    taxa_admin  0:  Não  cobrado  1:  Mensalidade  cobrada  
+  int(11)   0   
+data_referencia  Data  a  que  a  fatura  se  refere    date   null    
+Tabela  Admin  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador  primary-key  int(11)    nome   Nome  de  usuário  do  administrador   varchar(100)   email  Email  do  administrador    varchar(100)   permissao   Array  com  as  permissões  do  usuário  no  sistema  
+  varchar(250)  1  
+senha  Senha  criptografada    char(128)   contra_senha  Contra  senha  criptografada    char(128)   localidades  Array  de  localidade_id's  que  limita  o  acesso  dentro  do  painel  admin  e  a  cadastro  de  outras  cidades  
+ text  null  
+ativo  0:  Inativo  1:  Ativo  
+ int(11)   1  
+vendedor_id  Registro  de  vendedor   int(11)   null  token_trello  Token  do  usuário  do  trello  para  integração   varchar(100)  null   
+Tabela  Admin  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador  primary-key   int(11)     
+  
+ 
+nome   Nome  de  usuário  do  administrador   varchar(255)    email  Email  do  administrador    varchar(255)    senha  Senha  criptografada    text   contra_senha  Contra  senha  criptografada    text   permissao  0:  coluna  não  usada  1:   2:   3:   
+ int(11)   3  
+permissao_cardapio  0:  coluna  não  usada  1:   2:   3:   
+ int(11)   1  
+permissao_taxa_entrega  
+0:  coluna  não  usada  1:   
+ int(11)   1  
+termo_adesao  -1:  coluna  não  usada   0:  
+ int(11)   0  
+data_termo_adesao  Data  em  que  aceitou  os  termos  de  adesão   datetime  null  localidades  Array  de  cidades  com  permissões   text  null  data  Data  do  registro   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)   1  
+ 
+Tabela  Avaliação  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘usuario’  
+foreign-key  int(11)    
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)    
+pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘pedido’  
+foreign-key  int(11)   null  
+titulo  Título  da  avaliação.  Campo  não  utilizado.   text  null  mensagem  Mensagem  da  avaliação   text  null  resposta  Resposta  do  estabelecimento  à  avaliação   text  null  estrelas  Média  das  colunas  `nota1`,  `nota2`  e  `nota3`   decimal(8,7)  null  nota1  Nota  do  primeiro  critério  na  avaliação   int(11)   null  nota2  Nota  do  segundo  critério  na  avaliação   int(11)   null  nota3  Nota  do  terceiro  critério  na  avaliação   int(11)   null  data  Data  da  avaliação   datetime   data_resposta  Data  da  resposta  do  estabelecimento   datetime  null  origem  Tipo  de  dispositivo  utilizado  para  realizar  a  avaliação  
+ varchar(200)  null  
+oculta  Hoje  todos  os  comentários  são  ocultos  Sistema  não  considera  este  campo  mais  0:  Visível  para  usuários  1:  Oculta.  Continua  pesando  na  média  
+ int(11)   0  
+ativo  0:  Inativa  1:  Ativa  
+ int(11)   1  
+ 
+Tabela  Bairro  
+  
+ 
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘localidade’  
+foreign-key  int(11)    
+nome  Nome  do  bairro   varchar(200)   versao  Coluna  não  usada    int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Bairro  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)    
+bairro_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘bairro’  
+foreign-key  int(11)    
+valor  Valor  da  taxa  de  entrega  que  o  estabelecimento  cobra  referente  ao  bairro  
+ decimal(10,2)  0  
+ 
+Tabela  Banner  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     imagem  Imagem  do  banner   text  null  titulo  Título  do  banner   varchar(255)  null  subtitulo  Subtítulo  do  banner   varchar(255)  null  data  Data  criação   datetime   tipo  1:  Promoções  2:  Sorteio  3:  Url  4:  Cupom  5:  Indique  6:  Texto  7:  Imagem  8:  Categorias  9:  Estabelecimento  
+ int(11)  null  
+texto  Banner  em  formato  de  elemento  html  para  ser  renderizado  no  app  
+ text  null  
+localidades  Array  de  cidades  que  será  exibido   varchar(255)  null  categorias  Categoria  que  o  anúncio  está  relacionado   varchar(100)  null  estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)  null  
+url  Link  que  o  banner  irá  redirecionar  ao  clicar   varchar(255)  null  data_inicio  Data  de  início  da  exibição  do  banner   datetime  null  data_fim  Data  final  da  exibição  do  banner   datetime  null  data_sorteio  Data  do  sorteio  caso  haja   datetime  null  indice  Posição  caso  haja  mais  de  1  banner   int(11)  0  dias_semana  Dias  da  semana  que  será  exibido   varchar(255)  0,1,2,3,4,5  horários  Horário  que  será  exibido  (início-final)   varchar(255)  00:00-23:5
+  
+ 
+9  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Campanha  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    localidades  Array  de  cidades  que  a  campanha  pertence   varchar(255)   data_inicio  Data  de  início  da  campanha   datetime  null  data_fim  Data  final  da  campanha   datetime  null  dias_semana  Dias  da  semana  que  a  campanha  acontecerá   varchar(255)   horarios  Array  de  horários   varchar(255)   pedido  Segmentação  da  notificação  -1:  Todos   0:  Nunca  pediram   1:  Já  pediram   2:  Já  pediram  com  pagamento  online   3:  Nunca  pediram  com  pagamento  online   4:  Já  pediram  na  lojinha   5:  Nunca  pediram  na  lojinha  
+ int(11)   
+template  Template  usado  para  gerar  as  notificações   int(11)  0  titulo  Título  da  campanha   varchar(255)  null  mensagem  Mensagem  da  campanha   varchar(255)  null  url  Url  caso  haja   varchar(255)  null  identificador  Armazena  o  id  do  estabelecimento  ou  da  categoria,  de  acordo  com  onde  a  notificação  será  direcionada.  
+ int(11)  null  
+item_catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘item_catalogo’  
+foreign-key  int(11)  null  
+tipo_notificacao_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘tipo_notificacao’  
+foreign-key  int(11)   
+tipo_template_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘tipo_template’  
+foreign-key  int(11)  null  
+ 
+Tabela  Campanha  Cupom  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador  primary-key   int(11)   descricao  Descrição  do  que  se  trata  o  cupom  (datas,  número  de  usuários  e  condição)  
+ text   
+data  Data  de  início  do  cupom   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Catálogo  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    
+  
+ 
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)   
+catalogo_modelo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘catalogo_modelo’  
+foreign-key  int(11)  null  
+tipo_estoque  Define  como  será  tratado  a  atualização  de  disponibilidade  de  itens  para  catálogo  oriundos  de  upload  de  planilhas.  1:  Estoque  é  definido  manualmente  2:  Estoque  automático  de  acordo  com  o  valor  da  planilha  e  então  atualizado  o  campo  de  ‘ativo’  do  item  com  base  nesse  valor.  3:  Estoque  por  lista:  o  sistema  ativa  os  itens  que  estão  presentes  na  planilha  e  desativa  os  que  não  estão.  4:  Estoque  por  lista  incremental:  o  sistema  ativa  os  itens  que  estão  presentes  na  planilha  e  mantém  os  que  não  estão  presentes  ativados  também.  
+ int(11)  1  
+nome  Nome  do  catálogo   varchar(100)   tipo  Define  a  forma  que  o  catálogo  será  preenchido  no  CMS  0:  Manual:  usado  na  maioria  dos  catálogos  1:  Upload:  usado  em  mercados  e  farmácias,  onde  é  feito  upload  de  uma  planilha  2:  URL:  busca  informações  do  catálogo  por  meio  da  url  dele  para  poder  preencher  automaticamente  no  CMS.  A  princípio  para  mercados  e  farmácias.   
+ int(11)  0  
+arquivo  Arquivo  csv  do  catálogo   varchar(250)  null  data  Data  de  criação   datetime  null  data_atualizacao  Data  da  última  atualização   datetime  null  modelo  0:  Define  catálogo  como  normal  1:  Define  como  um  catálogo  de  modelo,  para  obter  informações  padronizadas  de  itens  de  supermercado  e  farmácias.  
+ int(11)  0  
+versao  Coluna  não  usada   int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+ 
+Tabela  Categoria  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    nome  Nome  da  categoria   varchar(100)   keywords  Palavras  chaves  para  pesquisa  da  categoria   longtext  null  icone  Imagem  da  categoria   varchar(100)  null  acessada  Coluna  não  usada   int(11)  0  listada  0:  Não  aparece  na  lista  de  categorias  1:  Aparece  na  lista  de  categorias  
+ int(11)  1  
+versao  Coluna  não  usada   int(11)   ativo  0:  Inativa  1:  Ativa  
+ int(11)  1  
+  
+ 
+admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘admin’  
+foreign-key  int(11)  null  
+ 
+Tabela  Categoria  Catálogo  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘catalogo’  
+foreign-key  int(11)  null  
+variacao  0:  Não  representa  a  variação  de  um  item  1:  Representa  a  variação  de  um  item  
+ int(11)  0  
+nome  Nome  da  categoria   varchar(100)   descricao  Descrição  da  categoria   text  null  min  Escolha  mínima   int(11)  null  max  Escolha  máxima   int(11)  null  mod_preco  1:  Adiciona  no  valor  do  item  2:  Substitui  pelo  valor  do  item  3:  Substitui  pela  média  dos  valores  4:  Substitui  pelo  maior  valor  5:  Substitui  pelo  menor  valor  6:  Substitui  pelo  percentual  do  valor  
+ int(11)  null  
+turno1  0:  Não  disponível  no  turno  1  1:  Disponível  no  turno  1  
+ int(11)  1  
+turno2  0:  Não  disponível  no  turno  2  1:  Disponível  no  turno  2  
+ int(11)  1  
+indice  Ordem  da  categoria  na  lista  de  categorias   int(11)  0  versao  Coluna  não  usada   int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+arquivado  0:  Não  arquivado  1:  Arquivado  
+ int(11)  0  
+desconto_item  0:  Não  está  em  desconto  1:  Está  em  desconto  
+ int(11)  0  
+percentual_desconto  Percentual  do  desconto  (de  0  a  1)   double  0  data_inicio_desconto  Início  do  desconto   datetime  null  data_fim_desconto  Final  do  desconto   datetime  null  repetir_itens  0:  Não  pode  escolher  um  item  repetido  1:  Pode  repetir  os  itens  
+ int(11)  1  
+modelo_id  Usado  para  vincular  essa  categoria  com  a  categoria  do  catalogo  modelo  
+ int(11)  null  
+ 
+Tabela  Categoria  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘categoria’  
+foreign-key  int(11)    
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estabelecimento’  
+foreign-key  int(11)    
+principal  0:  Categoria  secundária  do  estabelecimento  1:  Categoria  principal  do  estabelecimento  
+ int(11)   0  
+  
+ 
+versao  Coluna  não  usada   int(11)    ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Categoria  Localidade  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘categoria’  
+foreign-key  int(11)    
+localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘localidade’  
+foreign-key  int(11)    
+versao  Coluna  não  usada   int(11)    ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Cidade  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    nome  Nome   varchar(200)   estado_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘estado’  
+foreign-key  int(11)   
+codigo_ibge  Código  IBGE  referente  a  cidade   int(11)  0   
+Tabela  Client  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    nome  Nome  do  client   varchar(200)   chave  Chave  utilizada  para  gerar  e  decriptar  tokens  de  acesso  
+ text   
+chave_privada  Chave  privada   text    
+Tabela  Código  SMS  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    codigo_sms  Código  SMS  gerado   varchar(255)   ddd  DDD  do  telefone   varchar(255)   telefone  Número  do  telefone   varchar(255)   data  Data  da  geração  do  código   datetime   telefone_validado  0:  Não  validado  1:  Validado  
+ int(11)  0  
+versao  Coluna  não  usada   varchar(255)  null  origem  Origem  na  qual  o  código  foi  enviado   varchar(255)  sms   
+  
+ 
+Tabela  Coleta  (Não  Usada)   Tabela  Comentário  Venda  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    arquivado  0:  Não  arquivado  1:  Arquivado  
+ int(11)  0  
+parcela_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘parcela’  
+foreign-key  int(11)  null  
+venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘venda’  
+foreign-key  int(11)   
+comentario  Comentário  da  venda   longtext   data  Data  do  comentário   datetime   data_atualizacao  Data  da  atualização  do  comentário   datetime   admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘admin’  
+foreign-key  int(11)   
+ 
+Tabela  Configuração  Suporte  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    tipo  1:  WhatsApp  2:  Ligação  3:  SMS  4:  E-mail  
+ int(11)   
+minuto  Tempo  restante  para  o  pedido  expirar  na  qual  o  parceiro  será  notificado  
+ int(11)   
+horarios  Faixa  de  horário  na  qual  o  alerta  pode  ser  disparado  
+ varchar(255)   
+dias_semana  Dias  na  qual  o  alerta  pode  ser  disparado   varchar(255)   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Contato  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)    estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)  null  
+nome  Nome  do  contato   varchar(100)  null  valor  Forma  de  contato  (telefone,  email,  link  do  youtube)  
+ varchar(200)  null  
+tipo  1:  Telefone  2:  Link  3:  E-mail  
+ int(11)  null  
+versao  Coluna  não  usada   int(11)  null  ativo  0:  Inativo   int(11)  1  
+  
+ 
+1:  Ativo   
+Tabela  Contato  Suporte  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+nome  Nome  do  contato   varchar(255)  null  telefone  Número  de  telefone  com  DDD   varchar(255)   tipo  0:  Telefone  1:  WhatsApp  2:  Fixo  3:  Contato  Financeiro  (Dentro  do  contrato)  
+ int(11)  0  
+ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Conta  Faturamento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)    nome  Nome  da  conta   varchar(255)   client_id  Id  do  client   varchar(255)  null  client_secret  Secret  do  client   varchar(255)        null  seller_id  Id  do  seller   varchar(255)  null  principal  0:  secundário  1:  principal  
+ int(11)  0  
+tipo  0:  coluna  não  usada  1:  2:  3:  
+ int(11)  0  
+nota_fiscal  0:  não  possui  nota  fiscal  1:  possui  nota  fiscal  
+ int(11)  0  
+cnpj  CNPJ   varchar(255)  null  inscricao_municipal  Inscrição  municipal   varchar(255)  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Cupom  Desconto  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)    
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)    
+pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pedido'  
+foreign-key  int(11)    
+campanha_cupom_i Chave  estrangeira  que  referencia  o  foreign-key  int(11)    
+  
+ 
+d  identificador  da  tabela  'campanha_cupom'  categorias  Categoria  na  qual  o  cupom  se  aplica   varchar(255)   estabelecimentos  Estabelecimento  na  qual  o  cupom  se  aplica   varchar(255)   regra_cupom  0:  Cupom  normal  1:  Cupom  de  indicação  2:  Cupom  de  recompensa  
+ int(11)    
+codigo  Código  do  cupom   varchar(255)   quantidade  Quantidade  de  cupons   int(11)    quantidade_usuario  Quantidade  por  usuário   int(11)    data_inicio  Data  de  início  da  validação  do  cupom   datetime   data_fim  Data  de  fim  do  cupom   datetime   tipo_desconto  1:  Desconto  fixo  2:  Desconto  percentual  
+ int(11)    
+valor_desconto  Valor  de  desconto  do  cupom,  de  acordo  com  o  tipo  de  desconto  
+ decimal(10,2)   
+valor_minimo  Valor  mínimo  do  pedido  para  uso  do  cupom   decimal(10,2)   valor_maximo  Não  usada   decimal(10,2)   valor_desconto_maximo  
+Valor  de  desconto  máximo  do  cupom   decimal(10,2)   
+tipo_desconto_maximo  
+0:  coluna  não  usada  1:  2:  
+ int(11)   
+primeiro_pedido  0:  Elegível  para  quaisquer  outros  pedidos  1:  Elegível  apenas  para  o  primeiro  pedido  do  usuário  
+ int(11)   
+primeiro_pedido_estabelecimento  
+0:  Elegível  para  quaisquer  outros  pedidos  1:  Elegível  apenas  para  o  primeiro  pedido  do  usuário  no  estabelecimento  na  qual  o  cupom  pertence  
+ int(11)   
+taxa_entrega  0:  Desconto  sob  o  valor  do  pedido  sem  considerar  a  taxa  de  entrega  1:  Desconto  sob  a  taxa  de  entrega  
+ int(11)   
+pagamento_online  0:  Elegível  para  quaisquer  tipos  de  pagamento  1:  Elegível  apenas  para  pedidos  com  pagamento  online  
+ int(11)   
+localidades  Localidade  na  qual  o  cupom  se  aplica   varchar(255)   listado  0:  Não  é  listado  na  lista  de  cupons  1:  É  listado  na  lista  de  cupons  do  aplicativo  
+ int(11)   
+destaque  0:  Não  está  em  destaque  na  página  principal  1:  Está  em  destaque  na  página  principal  
+ int(11)   
+dias_semana  Array  de  dias  da  semana  na  qual  o  cupom  de  aplica  
+ varchar(255)   
+horarios  Horário  na  qual  o  cupom  se  aplica   varchar(255)   tipo_quantidade_total  
+Período  em  que  o  cupom  é  renovado  0:  Geral  1:  Diária  2:  Mensal  
+   
+tipo_quantidade_usuario  
+Período  em  que  o  cupom  é  renovado  pro  usuário  0:  Geral  1:  Diária  2:  Mensal  
+   
+  
+ 
+ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+data  Data  de  criação  do  cupom   datetime    
+Tabela  Dados  Faturamento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    buyer_id  Id  gerado  para  vincular  o  parceiro  ao  sistema  que  gera  boletos  
+ varchar(255)  null  
+cidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cidade'  
+foreign-key  int(11)    
+estado_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estado'  
+foreign-key  int(11)    
+tipo  0:  pessoa  física  1:  pessoa  Jurídica  
+ int(11)   0  
+cliente  Nome  do  cliente   varchar(200)   cpf_cnpj  CPF  ou  CNPJ  do  cliente   varchar(200)   ddd  DDD  do  telefone  do  cliente   varchar(3)   telefone  Número  de  telefone  do  cliente   varchar(255)   email  Email  do  cliente   varchar(200)   cep  CEP  do  cliente   varchar(200)   rua  Logradouro  do  cliente   varchar(200)   número  Número  da  casa  do  cliente   int(11)   bairro  Bairro  do  cliente   varchar(200)   complemento  Complemento  do  endereço  do  cliente   text  null  tipo_dado_bancario  0:  Conta  Bancária  1:  PIX  
+ int(11)  null  
+banco  Código  do  banco   varchar(30)  null  agencia  Número  da  agência  bancária  do  cliente   varchar(30)  null  conta  Número  da  conta  bancária  do  cliente   varchar(30)  null  tipo_conta  0:  poupança  1:  corrente  2:  pagamento  
+ int(11)  null  
+chave_pix  Chave  PIX  do  cliente   varchar(200)  null  tipo_chave  1:  telefone  2:  cpf  3:  cnpj  4:  e-mail  5:  aleatória  
+ int(11)  null  
+validacao_id  Coluna  não  usada   text  null  validacao_status  0:  pendente  1:  válido  2:  inválido  
+ int(11)  0  
+validacao_erros  Erros  referentes  a  tentativa  de  validação   text  null   
+Tabela  Dados  Validação  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    
+  
+ 
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+status  1:  coluna  não  usada  2:  3:  4:  5:  
+ int(11)  null  
+observacao  Observação  da  validação   text  null  avaliacao  não  usado   text  null   
+Tabela  Delivery  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+nome  Nome  do  delivery   text   minimo_pedidos  Valor  mínimo  para  os  pedidos   double   taxa_entrega  Valor  da  taxa  de  entrega   double   entrega_gratis  Valor  para  entrega  grátis  (0  desabilita)   double  0  gratis_turno1  0:  A  entrega  é  cobrada  neste  turno  1:  A  entrega  é  grátis  no  turno  1  
+ int(11)  0  
+gratis_turno2  0:  A  entrega  é  cobrada  neste  turno  1:  A  entrega  é  grátis  no  turno  2  
+ int(11)  0  
+tempo_entrega  Tempo  estimado  para  entrega  dos  pedidos   int(11)   tempo_retirada  Tempo  estimado  para  retirada  dos  pedidos   int(11)  0  dias_entrega  Dias  na  qual  aceitam  pedidos  para  entrega   varchar(200)  0,1,2,3,4,5,6  dias_retirada  Dias  na  qual  aceitam  pedidos  para  retirada   varchar(200)  null  comissao  Valor  da  comissão  sob  os  pedidos   double  0  aberto  0:  O  delivery  está  fechado  1:  O  delivery  está  aberto  
+ int(11)  0  
+fechado_manual  Data  em  que  o  estabelecimento  foi  fechado  de  forma  manual  no  painel  do  parceiro  pela  última  vez  
+ datetime  null  
+aberto_manual  Data  em  que  o  estabelecimento  foi  aberto  de  forma  manual  no  painel  do  parceiro  pela  última  vez  
+ datetime  null  
+ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Desconto  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)   
+percentual  Valor  percentual  do  desconto   int(11)   data_inicio  Data  de  início  da  validade  do  desconto   datetime  null  data_fim  Data  de  fim  da  validade  do  desconto   datetime  null  
+  
+ 
+ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Device  Token  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)  null  
+localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)   
+estabelecimento  0:  token  de  usuário  1:  token  de  parceiro  ou  estabelecimento  
+ int(11)  0  
+tipo  Tipo  do  dispositivo   varchar(60)   token  Token  do  dispositivo   varchar(500)   public_key  Chave  pública  do  dispositivo   text  null  auth  Coluna  não  utilizada  (não  há  registros)   text  null  data  Data  de  criação  do  token   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+versao  Versão  do  S.O.  do  dispositivo   varchar(255)  null   
+Tabela  Documento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    tipo  1:  termo  de  uso  e  política  de  privacidade  2:  termo  de  adesão  
+ int(11)   1  
+versao  Coluna  não  usada   int(11)   1  titulo  Título  do  documento   varchar(200)   texto  HTML  do  documento   text   status  0:  rascunho  /  documento  editável  1:  documento  expirado  2:  documento  vigente  
+ int(11)   0  
+obrigatorio  0:  Não  obrigatório  1:  Obrigatório  
+ int(11)   0  
+data  Data  de  criação  do  documento   datetime    
+Tabela  Endereço  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)    
+localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)    
+bairro_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'bairro'  
+foreign-key  int(11)   null  
+logradouro  Logradouro   text   
+  
+ 
+numero  Número  da  casa   varchar(20)   complemento  Complemento  do  endereço   text  null  bairro  Bairro  do  endereço   text  null  referencia  Pontos  de  referência  do  endereço   text  null  ddd  DDD  do  telefone  do  endereço   varchar(30)  null  telefone  Número  de  telefone  do  endereço   varchar(60)  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)   1  
+ 
+Tabela  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id   Identificador   primary-key   int(11)     nome   Nome  do  estabelecimento     varchar(100)     descricao   Descrição  do  estabelecimento     longtext   null   keywords   Palavras  chaves  para  pesquisa  do  estabelecimento  
+  longtext   null   
+horário   coluna  não  utilizada    varchar(200)   null   plano  1   coluna  não  utilizada    varchar(100)   null   plano  2   coluna  não  utilizada    varchar(100)   null   plano  3   contém  a  logo  do  estabelecimento    varchar(100)   null   plano  4   coluna  não  utilizada    varchar(100)   null   versao   Coluna  não  usada     int(11)   null   ativo   0:  arquivado  1:  listado  
+  int(11)   1   
+localidade_id   Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘localidade’   
+foreign-key   int(11)   null   
+destaque   0:  Não  está  em  destaque  1:  Está  em  destaque  
+  int(11)   0   
+delivery   -1:  sem  contrato   0:  pendente   1:  ativo   2:  cancelado   3:  não  renovado   4:  suspenso   5:  desistência  
+  int(11)   -1   
+pagamento_online   0:  não  aceita  pagamento  online   1:  aceita  pagamento  online   
+  int(11)   0   
+oferta   coluna  não  utilizada    int(11)   0   cupom_desconto   0:  não  aceita  cupom  de  desconto   1:  aceita  cupom  de  desconto   
+  int(11)   1   
+comissao_entrega   0:  não  é  cobrado  comissão  sobre  a  taxa  de  entrega   1:  é  cobrado  comissão  sobre  a  taxa  de  entrega   
+  int(11)   1   
+catalogo_especial   Indica  que  possui  o  cardápio  exibido  de  forma  diferente  
+  int(11)   0   
+indice_destaque   Posição  na  lista  de  estabelecimentos  em  destaque  
+  int(11)   null   
+indice_delivery   Posição  na  lista  de  estabelecimentos  na  aba  delivery  
+  int(11)   null   
+ 
+  
+ 
+ 
+Tabela  Estado  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    nome  Nome  do  estado   varchar(100)   sigla  Sigla  do  estado   varchar(10)    
+Tabela  Fatura  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)    venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'venda'  
+foreign-key  int(11)   null  
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   null  
+franquia_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'franquia'  
+foreign-key  int(11)   null  
+data_referencia  Data  de  referência  da  fatura   date   data_inicio  Data  de  início  da  fatura   date  null  data_fim  Data  de  vencimento  da  fatura   date  null  indice  Posição  da  fatura  na  lista  de  faturas   int(11)  1  antecipada  0:  fatura  não  antecipada  1:  fatura  antecipada  
+ int(11)  0  
+antecipada_estabelecimento  
+0:  fatura  não  antecipada  pelo  estabelecimento  1:  fatura  antecipada  pelo  estabelecimento  
+ int(11)  0  
+comissao_subsidio  0:  não  subsidiada  1:  subsidiada  
+ int(11)  0  
+valor  Valor  da  fatura   decimal(10,2)   detalhes  Detalhes  da  fatura   longtext  null  tipo  1:  royalty  2:  delivery  
+ int(11)  1  
+data  Data  de  referência  da  fatura   datetime   observacao  Observação  sobre  a  fatura   text  null  data_exclusao  Data  de  exclusão  da  fatura   datetime  null  ativo  0:  inativo  1:  ativo  
+ int(11)  1  
+ 
+Tabela  Forma  Pagamento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   integração_saipos  Tipo  da  forma  de  pagamento  integrada   varchar(50)  null  integração_saipos_completo  
+Nome  completo  da  forma  de  pagamento  integrada  
+ varchar(50)  null  
+nome  Nome  da  forma  de  pagamento   text  null  icone  Nome  da  imagem  PNG   text  null  ativo  0:  Inativo   int(11)  1  
+  
+ 
+1:  Ativo   
+Tabela  Forma  Pagamento  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_jd  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+forma_pagamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pagamento'  
+foreign-key  int(11)   
+ 
+Tabela  Foto  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)   
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+arquivo  Nome  da  imagem  PNG   text   legenda  Campo  não  usado.  Legenda  da  imagem.   text  null  plataforma  Plataforma  /  S.O.   varchar(100)  null  data  Data  de  upload  da  foto   datetime    
+Tabela  Franquia  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)   
+valor_adesao  Valor  cobrado  da  adesão   double   valor_royalty  Valor  do  royalty   double   comissao_delivery  Valor  da  comissão  no  delivery   double   dia_vencimento  Dia  do  mês  de  vencimento  da  fatura   int(11)   data_adesao  Data  de  adesão  da  franquia   date   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+dados_faturamento_id  
+Chave  estrangeira  que  referencia  o  identificador  da  tabela  'dados_faturamento'  
+ int(11)  null  
+seller_id  Id  do  vendedor   varchar(255)  null   
+Tabela  Historico  Suporte  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pedido'  
+foreign-key  int(11)   
+contato_id  Chave  estrangeira  que  referencia  o  foreign-key  int(11)  null  
+  
+ 
+identificador  da  tabela  'contato'  tipo_configuracao  1:  what’s  app  2:  ligação  3:  SMS  4:  e-mail  
+ int(11)  null  
+minuto  Minuto  do  pedido  que  teve  a  intervenção  do  suporte  
+ int(11)  0  
+observacao  Canal  na  qual  foi  disparado  o  alerta  de  pedidos  (como  consta  em  tipo_configuracao)  
+ varchar(255)  null  
+tipo  0:  intervenção  manual  1:  intervenção  automática  
+ int(11)  0  
+call_id  Id  da  conversa   varchar(200)  null  status  0:  pendente  1:  completo  2:  cancelado  3:  erro  
+ int(11)  1  
+data  Data  do  registro  em  questão   datetime    
+Tabela  Horário  (não  usada)   Tabela  Horário  Funcionamento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+dia_semana  Número  correspondente  ao  dia  da  semana   int(11)   horario_inicio_1  Horário  de  início  do  primeiro  turno   varchar(20)  null  horario_fim_1  Horário  de  fim  do  primeiro  turno   varchar(20)  null  horario_inicio_2  Horário  de  início  do  segundo  turno   varchar(20)  null  horario_fim_2  Horário  de  fim  do  segundo  turno   varchar(20)  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Indice  Imagem  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   destaque  coluna  não  utilizada   int(11)  0  rodape  coluna  não  utilizada   int(11)  0  logomarca  coluna  não  utilizada   int(11)  0  localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)  null  
+categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+tipo  1:  coluna  não  utilizada  2:  3:  
+ int(11)  null  
+ 
+  
+ 
+Tabela  Integração  PDV  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+tipo  Tipo  da  integração   varchar(20)   token  Token  da  integração   text   chave  Chave  da  integração   text   data  Data  que  a  integração  foi  realizada   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Item  Catálogo  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'catalogo'  
+foreign-key  int(11)   
+categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria_catalogo'  
+foreign-key  int(11)   
+nome  Nome  do  item   varchar(100)   descricao  Descrição  do  item   text  null  preco  Preço  do  item   decimal(10,2)  0.00  indice  Posição  do  item  na  lista  de  itens  do  catálogo   int(11)  0  versao  Coluna  não  usada   int(11)  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+disponibilidade_diaria  
+Array  de  dias  da  semana  em  que  o  item  está  disponível  
+ varchar(250)  0,1,2,3,4,5,6  disponivel  0:  Indisponível  1:  Disponível  
+ int(1)  1  
+data_disponivel  Coluna  não  usada   datetime  null  preco_variavel  0:  Preço  fixo  1:  Preço  variável  
+ int(1)  0  
+preco_promocional  Preço  da  promoção   double(10,2)  null  promocional  0:  Não  promocional  1:  Promocional  
+ int(11)  0  
+imagem  Coluna  não  usada   varchar(200)  null  data_inicio  Início  da  disponibilidade  do  item   datetime  null  data_fim  Fim  da  disponibilidade  do  item   datetime  null  arquivado  0:  Ativo  1:  Arquivado  
+ int(11)  0  
+fixo  0:  Variável  1:  Fixo  
+ int(11)  1  
+quantidade_usuario  Quantidade  do  item  que  o  usuário  pode  comprar  
+ int(11)  null  
+quantidade_total  Quantidade  total  do  item  no  estoque   int(11)  null  reembolso  Percentual  de  subsídio  que  é  dado  quando  for  uma  promoção  especial  
+ int(11)  0  
+  
+ 
+especial  0:  Normal  1:  Especial  
+ int(11)  0  
+pedido_minimo  0:  Não  modifica  o  pedido  mínimo  1:  Modifica  o  pedido  mínimo  
+ int(11)  0  
+cod_bar  Código  de  barra  do  item   varchar(100)  null  status  Geralmente  utilizado  nos  catálogos  do  Bigou  Shop  1:  aguardando  aprovação  2:  aprovado  3:  erro  
+ int(11)  2  
+data_atualizacao  Data  da  última  modificação   datetime  null  modelo_id  Usado  para  vincular  essa  categoria  com  a  categoria  do  catalogo  modelo  
+ int(11)  null  
+pdv  Código  da  integração  do  item  com  a  saipos   varchar(60)  null   
+Tabela  Item  Pedido  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pedido'  
+foreign-key  int(11)   
+item_catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'item_catalogo'  
+foreign-key  int(11)   
+preco_base  Preço  do  item   decimal(10,2)   preco_adicional  Preço  advindo  de  acréscimos   decimal(10,2)   total  Total  do  item   double   quantidade  Quantidade  do  item   int(11)  1  promocao_especial  0:  Item  fora  de  promoção  1:  Item  em  promoção  especial  
+ int(11)  0  
+observacao  Observação  do  item   text  null   
+Tabela  Item  Variação  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   item_pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'item_pedido'  
+foreign-key  int(11)   
+item_catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'item_catalogo'  
+foreign-key  int(11)   
+item_variacao_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria_catalogo'  
+foreign-key  int(11)   
+preco  Preço  da  variação   decimal(10,2)   mod_preco  1:  Adiciona  no  valor  do  item  2:  Substitui  pelo  valor  do  item  3:  Substitui  pela  média  dos  valores  4:  Substitui  pelo  maior  valor  5:  Substitui  pelo  menor  valor  6:  Substitui  pelo  percentual  do  valor  
+ int(11)   
+ 
+Tabela  Linha  (não  usada)  
+  
+ 
+ Tabela  Links  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   arquivado  0:  Aberto  1:  Arquivado  
+ int(11)  0  
+admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)  null  
+admin  Nome  do  admin   varchar(100)  null  contrato_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'contrato'  
+foreign-key  int(11)  null  
+tipo  0:  clicksign  1:  pipedrive  2:  zendesk  3:  trello  4:  clicksign  
+ int(11)   
+descricao  Descrição  do  link   varchar(255)  null  url  Link  da  plataforma  especificada  na  coluna  tipo   varchar(300)  null  data  Data  do  registro   datetime  null   
+Tabela  Localidade  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   nome  Nome  da  cidade   varchar(100)   cidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cidade'  
+foreign-key  int(11)   
+franquia_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'franquia'  
+foreign-key  int(11)  null  
+data_abertura  Data  de  abertura  da  cidade   date  null  onibus  Coluna  não  usada   int(11)   plantao  Coluna  não  usada   int(11)   tab  Coluna  não  usada  Indica  qual  será  a  tab  do  aplicativo  a  ser  aberta.  1:  delivery  2:  ofertas  3:  guia  4:  mais  
+ int(11)  1  
+versao  Coluna  não  usada   int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+ 
+Tabela  Localização  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  foreign-key  int(11)   
+  
+ 
+identificador  da  tabela  'estabelecimento'  nome  Logradouro  completo  do  estabelecimento   text  null  latitude  Latitude  do  estabelecimento   double(12,10)  null  longitude  Longitude  do  estabelecimento   double(12,10)  null  versao  Coluna  não  usada   int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+ 
+Tabela  Log  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)  null  
+admin_estabelecimento_id  
+Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin_estabelecimento'  
+foreign-key  int(11)  null  
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)  null  
+registro  Tipo  da  operação  realizada   varchar(200)   alteracao  Descrição  da  operação  realizada   text   observacao  Observação  a  respeito  da  operação   text  null  data  Data  e  hora  da  operação   datetime    
+Tabela  Notificação  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   campanha_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'campanha'  
+foreign-key  int(11)  null  
+campanha_cupom_id  
+Chave  estrangeira  que  referencia  o  identificador  da  tabela  'campanha_cupom'  
+foreign-key  int(11)  null  
+tipo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  ‘tipo_notificacao’  
+foreign-key  int(11)  null  
+localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)  null  
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)  null  
+item_catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'item_catalogo'  
+foreign-key  int(11)  null  
+titulo  Título  da  notificação   text   mensagem  Mensagem  da  notificação   text   url  Url  da  notificação   text  null  identificador  Armazena  o  id  do  estabelecimento  ou  da  categoria,  de  acordo  com  onde  a  notificação  será  direcionada.  
+ int(11)  null  
+data  Data  do  registro   datetime   status  0:  enviada  imediatamente  1:  agendada  2:  enviada  depois  de  ter  sido  agendada  3:  agendamento  cancelado  
+ int(11)  0  
+  
+ 
+motivo_cancelamento  
+Descrição  do  motivo  do  cancelamento   varchar(255)  null  
+data_envio  Data  de  envio  da  notificação   datetime  null  app  Indica  qual  app  irá  receber  a  notificação  1:  bigou  delivery  2:  bigou  pedidos  
+ int(11)  1  
+pedido   (não  utilizado  mais)  
+Segmentação  da  notificação  -1:  Todos  0:  Nunca  pediram   1:  Já  pediram   2:  Já  pediram  com  pagamento  online   3:  Nunca  pediram  com  pagamento  online   4:  Já  pediram  na  lojinha   5:  Nunca  pediram  na  lojinha  
+ int(11)  -1  
+ 
+Tabela  Oferta  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+valor_original  Valor  original   double  null  valor_desconto  Valor  de  desconto  da  oferta   double  null  percentual_desconto  Percentual  de  desconto   double  null  titulo  Título  da  oferta   text   descricao  Descrição  da  oferta   text   regulamento  Regulamento  da  oferta   text   imagem  Imagem  PNG  referente  à  oferta   text  null  tipo  Tipo  de  desconto  1:  valor  fixo  2:  percentual  
+ int(11)  1  
+quantidade  Quantidade  de  itens  ofertados   int(11)   data_inicio  Data  de  início  da  oferta   datetime   data_fim  Data  de  fim  da  oferta   datetime   limite_resgate  Limite  de  resgate  que  uma  oferta  poderia  ter   int(11)  1  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Origem  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   nome  Nome  da  origem   varchar(200)  null   
+Tabela  Parcela  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'venda'  
+foreign-key  int(11)   
+  
+ 
+valor  Valor  da  parcela   decimal(10,2)  0.00  valor_comissao  Valor  da  comissão   double  null  data_venc  Data  de  vencimento  da  parcela   date  null  paga  0:  Parcela  não  paga  1:  Parcela  paga  
+ int(11)  0  
+comissao_paga  0:  Comissão  não  paga  1:  Comissão  paga  
+ int(11)  0  
+indice  Posição  da  parcela  na  lista  de  parcelas   int(11)  null  data_pag  Data  de  pagamento  da  parcela   date  null  data_pag_comissao  Data  de  pagamento  da  comissão   date  null  data_prox_cobranca  Data  da  próxima  cobrança   date  null  boleto_id  Id  do  boleta  da  parcela   text  null  boleto_status  1:  pago  2:  expirado  
+ int(11)  null  
+conta_faturamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'conta_faturamento'  
+foreign-key  int(11)  null  
+numero_rps  Número  do  rps  que  contém  a  parcela   int(11)  null   
+Tabela  Parcela  Fatura  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   fatura_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'fatura'  
+foreign-key  int(11)   
+valor  Valor  da  parcela   decimal(10,2)  0.00  data_vencimento  Data  de  vencimento  da  parcela   date   data_pagamento  Data  em  que  a  parcela  foi  paga   datetime  null  paga  0:  Parcela  não  paga  1:  Parcela  paga  
+ int(11)  0  
+indice  Posição  da  parcela  da  fatura  na  lista  de  parcelas  de  faturas  
+ varchar(30)  null  
+boleto_id  Id  do  boleto  da  parcela   text  null  boleto_status  1:  pago  2:  expirado  
+ int(11)  null  
+boleto_origem  0:  gerado  pelo  Bigou  1:  gerado  pelo  parceiro  
+ int(11)  0  
+conta_faturamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'conta_faturamento'  
+foreign-key  int(11)  null  
+numero_rps  Número  do  rps  que  contém  a  parcela   int(11)  null  repasse  0:  parcela  normal  1:  parcela  vinculado  a  um  repasse  
+ int(11)  0  
+ 
+Tabela  Pedido  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)   
+  
+ 
+endereco_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'endereco'  
+foreign-key  int(11)   
+forma_pagamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'forma_pagamento'  
+foreign-key  int(11)   
+cupom_desconto_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cupom_desconto_id'  
+foreign-key  int(11)  null  
+taxa_servico_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'taxa_servico_id'  
+foreign-key  int(11)  null  
+estabelecimento_cupom  
+0:  Não  utilizou  cupom  do  estabelecimento  1:  Utilizou  cupom  do  estabelecimento  
+ int(11)  0  
+taxa_entrega_cupom  0:  Cupom  não  é  aplicado  sob  a  taxa  de  entrega  1:Cupom  aplicado  sob  a  taxa  de  entrega  
+ int(11)  0  
+total  Valor  total  do  pedido   decimal(10,2)   subtotal  Valor  do  pedido  sem  considerar  o  cupom  de  desconto  
+ decimal(10,2)   
+desconto  Valor  de  desconto   decimal(10,2)   comissao  Valor  percentual  da  comissão   decimal(10,2)   taxa_entrega  Valor  da  taxa  de  entrega   decimal(10,2)   taxa_servico  Valor  da  taxa  de  serviço   decimal(10,2)  0.00  tempo_entrega  Tempo  de  entrega  em  minutos   int(11)  null  troco  Valor  para  troco   decimal(10,2)  null  data  Data  que  o  pedido  foi  realizado   datetime   data_atualizacao  Data  da  última  atualização  do  pedido   datetime   data_criacao  Data  da  criação  do  pedido   datetime  null  status  -1:  Cancelado  pelo  próprio  usuário  (pagamento  expirado  ou  com  erro)   0:  Aguardando  confirmação   1:  Pedido  aceito   2:  Saiu  para  entrega   3:  Cancelado  
+ int(11)   
+motivo  Descrição  do  motivo  do  cancelamento  do  pedido  por  parte  do  estabelecimento  
+ text  null  
+observacao  Observação  do  pedido   text  null  origem  Dispositivo  utilizado  para  realizar  o  pedido   varchar(30)   primeiro  0:  Não  é  o  primeiro  pedido  do  usuário  1:  Primeiro  pedido  do  usuário  
+ int(11)  0  
+primeiro_estabelecimento  
+0:  Não  é  o  primeiro  pedido  do  usuário  no  estabelecimento  1:  Primeiro  pedido  do  usuário  no  estabelecimento  
+ int(11)  0  
+comissao_entrega  0:  Comissão  não  é  cobrada  sob  a  taxa  de  entrega  1:  Comissão  é  cobrada  sob  a  taxa  de  entrega  
+ int(11)  1  
+token  Token  único  gerado  pelo  app  ou  site  quando  um  pedido  é  gerado  
+ text  null  
+device  Dispositivo  que  está  realizando  o  pedido   varchar(100)  null  versao  Coluna  não  usada   varchar(20)  null  tipo_cancelamento  Define  qual  das  opções  de  cancelamento  padrões  o  estabelecimento  escolheu,  sendo:  0:  motivo  personalizado  pelo  parceiro  
+ int(11)  null  
+  
+ 
+1:  pedido  cancelado  por  tempo  de  expiração  (sem  intervenção  do  parceiro)  4:  Pedido  não  entregue.  3:  Pedido  de  teste.  5:  Desculpe,  não  estamos  funcionando  hoje.  6:  Infelizmente  estamos  sem  entregador.  8:  Cliente  recusou  o  pedido.  0:  Mensagem  personalizada.  concluido  0:  Pedido  não  concluído  1:  Pedido  concluído  
+ int(11)  0  
+promocional  0:  Não  promocional  1:  Promocional  
+ int(11)  0  
+reembolso_promocao  Valor  de  reembolso  de  promoção   decimal(10,2)  0.00  transacao_id  Id  da  transação  do  pagamento   varchar(255)  null  estorno_id  Id  do  estorno  caso  haja   varchar(255)  null  taxa_pgt_online  Taxa  do  pagamento  online   decimal(10,2)  null  data_estorno  Data  em  que  o  estorno  foi  realizado   date  null  status_pagamento  -1:  offline   0:  aguardando  pagamento   1:  pagamento  aprovado   2:  cancelamento   3:  cancelado   4:  liquidado   5:  estornando   6:  estornado   500:  pagamento  com  erro  
+ int(11)  -1  
+tipo_pgt_online  Tipo  de  pagamento  online:   offline  picpay  nupay  pix-sicoob  pix-pagbank  pix  (pix  da  nupay  -  descontinuado)  
+ varchar(20)  null  
+taxa_base  Taxa  sob  o  pagamento  online   decimal(10,2)  0.00  data_pagamento  Data  em  que  o  pagamento  foi  realizado   datetime  null  data_limite_pagamento  
+Data  em  que  o  pagamento  expira   datetime  null  
+integracao_id  Id  da  integração   varchar(100)  null  status_integracao  0:  não  possui  integração  1:  válido  2:  inválido  
+ int(11)  0  
+ 
+Tabela  Pedido  Origem  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pedido'  
+foreign-key  int(11)   
+cupom_desconto_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cupom_desconto'  
+foreign-key  int(11)   
+data  Data  do  registro   datetime   
+  
+ 
+ 
+Tabela  Plantão  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)   
+data1  Início  do  plantão   date   data2  Final  do  plantão   date   versao  Coluna  não  usada   int(11)   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Recesso  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)   
+data_inicio  Data  de  início  do  recesso   datetime   data_fim  Data  final  do  recesso   datetime   descricao  Descrição  do  recesso   varchar(255)  null  data  Data  que  o  recesso  foi  cadastrado   datetime  null  url  Url  do  card  do  trello   varchar(300)  null   
+Tabela  Recurso  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)   
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)  null  
+linha_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'linha'  
+foreign-key  int(11)  null  
+titulo  Título  da  mensagem   text  null  recurso  Mensagem   text  null  resposta  Resposta  da  mensagem   text  null  resolvido  0:  Não  resolvido  1:  Resolvido  
+ int(11)  0  
+data  Data  do  registro   datetime    
+Tabela  Repasse  
+  
+ 
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   fatura_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'fatura'  
+foreign-key  int(11)   
+indice  Posição  do  repasse  na  lista  de  repasses   int(11)   data_repasse  Data  em  que  o  repasse  foi  realizado   date   data_base_repasse  Data  do  repasse   date   data_pagamento  Data  em  que  o  pagamento  foi  realizado   datetime  null  data_inicio  Data  de  início  do  repasse   date   data_fim  Data  final  do  repasse   date   total_descontos_pagamento_online  
+Valor  de  desconto  correspondente  a  pagamento  online  
+ decimal(10,2)   
+total_pagamento_online  
+Valor  total  correspondente  a  pagamento  online  
+ decimal(10,2)   
+total_taxa_pgt_online  Valor  total  de  taxa  sob  o  pagamento  online   decimal(10,2)   total_taxa_base  Valor  total  de  taxa  base   decimal(10,2)   total_taxa_antecipacoa  
+Valor  total  de  taxa  de  antecipação   decimal(10,2)  0.00  
+saldo_remanescente  Valor  de  saldo  remanescente   decimal(10,2)   comissao_remanescente  
+Valor  de  comissão  sobre  o  saldo  remanescente  
+ decimal(10,2)   
+comissao_paga  Valor  da  comissão  paga   decimal(10,2)   ted  Valor  do  repasse  a  ser  feito  via  ted   decimal(10,2)  0.00  valor  Valor  do  repasse   decimal(10,2)   comprovante  Link  do  comprovante  do  repasse   text  null  origem  1:  manualmente  2:  transfeera  
+ int(11)  1  
+status  0:  aguardando  repasse  1:  repasse  realizado  2:  saldo  retido  3:  erro  no  repasse  
+ int(11)   
+descricao_status  Descrição  do  status  do  repasse   text  null  numero_rps  Número  do  lote  rps  que  o  repasse  se  encontra  
+ int(11)  null  
+lote_transfeera  Número  do  lote  da  transfeera   varchar(20)  null  transferencia_id  Id  da  transferência   int(11)  null   
+Tabela  Resgate  Oferta  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   oferta_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'oferta'  
+foreign-key  int(11)   
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)   
+valor  Valor  do  resgate   double   status  1:  oferta  salva  2:  oferta  resgatada  
+ int(11)  1  
+data  Data  do  registro   datetime    
+  
+ 
+Tabela  Rps  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   lote  Número  do  lote  rps   int(11)   quantidade  Quantidade  de  registros  no  lote   int(11)   conta_faturamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'conta_faturamento_id'  
+foreign-key  int(11)   
+arquivo  Arquivo  xml  do  lote  rps   text   data  Data  em  que  o  lote  foi  gerado   datetime    
+Tabela  Saldo  Remanescente  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   fatura_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'fatura'  
+foreign-key  int(11)  null  
+repasse_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'repasse'  
+foreign-key  int(11)  null  
+parcela_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'parcela'  
+foreign-key  int(11)  null  
+data  Data  do  registro   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Sessão  Faturamento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   nome  Nome  da  sessão   varchar(255)   conta_faturamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'conta_faturamento_id'  
+foreign-key  int(11)  null  
+ 
+Tabela  Session  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   client_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'client'  
+foreign-key  int(11)   
+admin_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)  null  
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)  null  
+device_token_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'device_token'  
+foreign-key  int(11)  null  
+token  Token  da  sessão   varchar(10000)   ip  Endereço  ip  do  dispositivo  que  iniciou  a  sessão  
+ varchar(120)  null  
+  
+ 
+dispositivo  Dispositivo  que  iniciou  a  sessão   varchar(120)  null  localizacao  Localidade  do  dispositivo  que  iniciou  a  sessão  
+ varchar(120)  null  
+data  Data  de  abertura  da  sessão   datetime   data_atualizacao  Data  da  última  atualização   datetime  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Solicitação  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)  null  
+categoria_id_1  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_2  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_3  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_4  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_5  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_6  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_7  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_8  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_9  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+categoria_id_10  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+nome  Nome  do  solicitante   varchar(100)  null  email  Email  do  solicitante   varchar(100)  null  site1  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site2  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site3  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site4  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site5  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site6  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site7  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site8  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site9  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  site10  Site  onde  o  solicitante  pode  ser  encontrado   varchar(100)  null  endereco1  Endereço  do  solicitante   text  null  endereco2  Endereço  do  solicitante   text  null  endereco3  Endereço  do  solicitante   text  null  endereco4  Endereço  do  solicitante   text  null  endereco5  Endereço  do  solicitante   text  null  
+  
+ 
+endereco6  Endereço  do  solicitante   text  null  endereco7  Endereço  do  solicitante   text  null  endereco8  Endereço  do  solicitante   text  null  endereco9  Endereço  do  solicitante   text  null  endereco10  Endereço  do  solicitante   text  null  contato1  Contato  do  solicitante   varchar(100)  null  contato2  Contato  do  solicitante   varchar(100)  null  contato3  Contato  do  solicitante   varchar(100)  null  contato4  Contato  do  solicitante   varchar(100)  null  contato5  Contato  do  solicitante   varchar(100)  null  contato6  Contato  do  solicitante   varchar(100)  null  contato7  Contato  do  solicitante   varchar(100)  null  contato8  Contato  do  solicitante   varchar(100)  null  contato9  Contato  do  solicitante   varchar(100)  null  contato10  Contato  do  solicitante   varchar(100)  null  etiqueta1  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta2  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta3  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta4  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta5  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta6  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta7  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta8  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta9  Etiqueta  do  contato  do  solicitante   varchar(100)  null  etiqueta10  Etiqueta  do  contato  do  solicitante   varchar(100)  null  horario  Horário  para  contato  com  o  solicitante   varchar(200)  null  cadastrada  -1:  Excluída   0:  Pendente   1:  Cadastrada   2:  Arquivada  
+ int(11)  0  
+data  Data  da  solicitação   datetime   origem_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'origem'  
+foreign-key  int(11)  null  
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)  null  
+validacao  Coluna  não  usada   int(10)  0  token  Coluna  não  usada   varchar(40)  null  lead  Coluna  não  usada   int(11)  3  delivery  0:  Solicitação  não  é  de  delivery  1:  Solicitação  de  delivery  
+ int(11)  0  
+oferta  0:  Não  possui  oferta  1:  Possui  oferta  
+ int(11)  0  
+proprietario  0:  Solicitante  não  é  o  proprietário  1:  Solicitante  é  o  proprietário  
+ int(11)  0  
+ 
+Tabela  Solicitação  Delivery  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   estado_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estado'  
+foreign-key  int(11)  null  
+  
+ 
+cidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cidade'  
+foreign-key  int(11)  null  
+responsavel  Responsável  pelo  estabelecimento   varchar(250)  null  estabelecimento  Nome  do  estabelecimento   varchar(250)  null  telefone  Telefone  do  responsável  ou  estabelecimento   varchar(250)  null  celular  Número  de  celular  do  responsável   varchar(250)  null  data  Data  da  solicitação   datetime  null  documento  0:  CNPJ  1:  CPF  
+ int(11)  0  
+delivery  Solicitação  de  delivery   int(11)  1  email  Email  do  responsável   varchar(255)  null  cnpj  CNPJ  do  responsável   varchar(255)  null  cpf  CPF  do  responsável   varchar(255)  null  razao_social  Razão  social  da  empresa   varchar(255)  null  endereco  Endereço  do  delivery   varchar(255)  null  numero  Número  do  logradouro  do  delivery   int(11)  null  bairro  Bairro  do  delivery   varchar(255)  null  cep  CEP  do  delivery   varchar(255)  null  complemento  Complemento  do  logradouro  do  delivery   varchar(255)  null  aprovada  -1:  Arquivada   0:  Pendente   1:  Aprovada  
+ int(11)  0  
+step  1:  Primeira  parte  do  cadastro  do  formulário  concluída  2:  Segunda  parte  do  cadastro  do  formulário  concluída  3:  Terceira  parte  do  cadastro  do  formulário  concluída  
+ int(11)  1  
+vendedor_id  Registro  de  vendedor   int(11)  null  estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)  null  
+pos_venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pos_venda_id'  
+foreign-key  int(11)  null  
+comissao  Valor  percentual  da  comissão  do  delivery   double  10   
+Tabela  Solicitar  Cidade  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador   primary-key   int(11)   nome  Nome  do  solicitante   varchar(200)  null  email  email  do  solicitante   varchar(200)  null  cidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'cidade'  
+foreign-key  int(11)  null  
+data  Data  da  solicitação   datetime  null   
+Tabela  Sorteio  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   titulo  Título  do  sorteio   varchar(255)   
+  
+ 
+texto  Conteúdo  HTML  com  a  mensagem  do  sorteio  
+ text   
+imagem  Imagem  do  sorteio   text   data_inicio  Data  de  início  para  participação  no  sorteio   datetime   data_fim  Data  final  para  participação  no  sorteio   datetime   data_sorteio  Data  do  sorteio   datetime   localidades  Array  de  id's  das  localidades  em  que  o  sorteio  ocorreu  
+ varchar(255)   
+ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Status  Pedido  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   pedido_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'pedido'  
+foreign-key  int(11)   
+admin_estabelecimento_id  
+Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin_estabelecimento'  
+foreign-key  int(11)  null  
+usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)  null  
+tipo  1:  Referente  ao  status  do  pedido  2:  Referente  ao  status  do  pagamento  
+ int(11)  1  
+status  Status  do  pedido  ou  pagamento.  Os  mesmos  valores  disponíveis  nas  colunas  `pedido`  e  `status_pagamento`  da  tabela  Pedido.  
+ int(11)  0  
+data  Data  do  registro   datetime    
+Tabela  Status  Venda  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'venda'  
+foreign-key  int(11)   
+admin_jd  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'admin'  
+foreign-key  int(11)   
+status  0:  pendente  1:  ativo  2:  cancelado  3:  não  renovado  4:  suspenso  5:  desistência  
+ int(11)   
+data  Data  do  registro   datetime   observacao  Observação  da  venda   text    
+Tabela  Taxa  Serviço  (vazia)  
+Campo  Descrição  Chave  Formato  Padrão   
+  
+ 
+Tabela  Template  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   tipo_template_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'tipo_template'  
+foreign-key  int(11)   
+titulo  Título  do  template   varchar(255)   mensagem  Mensagem  do  template   varchar(255)   ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Tipo  Evento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   Nome  Nome  do  evento   varchar(200)    
+Tabela  Tipo  Notificação  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   Tipo  Tipo  da  notificação   varchar(100)  null   
+Tabela  Tipo  Template  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   Nome  Nome  do  template   varchar(255)   Ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Usuário  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   facebook_id  Id  do  facebook  do  usuário   text  null  nome  Nome  do  usuário   text  null  email  Email  do  usuário   varchar(200)  null  senha  Senha  do  usuário   text  null  contra_senha  Contra  senha  do  usuário   text  null  faixa_etaria  Idade  do  usuário   varchar(200)  null  sexo  Sexo  do  usuário   varchar(200)  null  cpf  CPF  do  usuário   varchar(20)  null  ddd  DDD  do  usuário   varchar(30)  null  telefone  Número  de  telefone  do  usuário   varchar(200)  null  origem  Origem  do  usuário,  podendo  ser:  site,  app,  cms,  app_pedidos,  ou  api  
+ varchar(200)  null  
+  
+ 
+permissao  0:  coluna  não  usada  1:  2:  3:  
+ int(11)  3  
+permissao_cardapio  0:  coluna  não  usada  1:  2:  3:  
+ int(11)  0  
+permissao_taxa_entrega  
+0:  coluna  não  usada  1:  
+ int(11)  1  
+localidades  Array  com  os  id's  das  localidades  que  o  usuário  realiza  pedidos  
+ text  null  
+data  Data  de  cadastro  do  usuário   datetime  null  telefone_validado  0:  Telefone  não  validado  1:  Telefone  validado  
+ int(11)  0  
+imagem  Foto  de  perfil  do  usuário   text  null  termo_uso  0:  Termo  de  uso  ainda  não  aceito  1:  Termo  de  uso  aceito  pelo  usuário  
+ int(11)  0  
+data_termo_uso  Data  que  o  usuário  aceitou  o  termo  de  uso   datetime  null  primeiro_pedido  Data  do  primeiro  pedido  do  usuário   datetime  null  ultimo_pedido  Data  do  último  pedido  do  usuário   datetime  null  ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Usuario  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   usuario_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'usuario'  
+foreign-key  int(11)   
+estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+Ativo  0:  Inativo  1:  Ativo  
+ int(11)  1  
+ 
+Tabela  Variação  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   categoria_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)   
+item_catalogo_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'item_catalogo'  
+foreign-key  int(11)   
+ 
+Tabela  Venda  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   dados_faturamento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'categoria'  
+foreign-key  int(11)  null  
+  
+ 
+estabelecimento_id  Campo  não  utilizado  foreign-key  int(11)   localidade_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'localidade'  
+foreign-key  int(11)   
+vendedor_id  Registro  de  vendedor   int(11)   pos_venda_id  Id  do  usuário  do  cms  admin  responsável  por  fazer  o  pós  venda  
+ int(11)  null  
+data_adesao  Data  de  adesão  do  estabelecimento   date  null  data_venc  Data  de  vencimento  da  venda   date  null  data_cancelamento  Data  de  cancelamento  da  venda   date  null  data_lancamento  Data  de  lançamento  do  estabelecimento   date  null  dia_vencimento  Dia  do  mês  que  a  fatura  do  estabelecimento  vence  
+ int(11)  10  
+vigencia  Coluna  não  utilizada   int(11)  null  isencao_comissao  Valor  mínimo  para  comissão  ser  cobrada   int(11)  0  valor  Valor  da  adesão  do  estabelecimento   decimal(10,2)  null  parcelas  Número  de  parcelas  da  adesão  do  parceiro   int(11)  null  adesao_paga  0:  Adesão  não  paga  1:  Adesão  paga  
+ int(11)  0  
+comissao  Valor  percentual  da  comissão  do  estabelecimento  
+ decimal(10,2)  null  
+tipo_comissao  0:  Coluna  não  utilizada  1:  
+ int(11)  0  
+tipo  1:  Coluna  não  utilizada  2:  3:  4:  
+ int(11)  1  
+taxa_administrativa  Taxa  administrativa   decimal(10,2)  0.00  faturamento_taxa_admin  
+Valor  do  faturamento  mínimo  do  parceiro  para  ser  cobrado  mensalidade  
+ decimal(10,2)  0.00  
+data_inicio_taxa_admin  
+Data  de  início  da  taxa  admin   date  null  
+comissao_delivery  Valor  percentual  de  comissão  do  estabelecimento  
+ decimal(10,2)  null  
+pagamento_online  0:  Não  aceita  pagamento  online  1:  Aceita  pagamento  online  
+ int(11)  0  
+taxa_pgt_online  Taxa  de  pagamento  online   decimal(10,2)  null  taxa_antecipacao  Taxa  de  antecipação   decimal(10,2)  null  taxa_transferencia  Taxa  de  transferência   decimal(10,2)  null  quantidade_transferencia_gratis  
+Quantidade  de  transferências  que  podem  ser  feitas  de  forma  gratuita  para  o  parceiro  
+ int(11)  0  
+carencia_taxa_admin  Quantidade  de  meses  de  isenção  de  cobrança  da  mensalidade  do  parceiro  
+ int(11)  0  
+responsavel  Nome  do  responsável  do  estabelecimento   varchar(200)  null  contato  Contatos  do  responsável  do  estabelecimento  
+ varchar(200)  null  
+status  0:  pendente  1:  ativo  2:  cancelado  3:  não  renovado  4:  suspenso  5:  desistência  
+ int(11)  null  
+renovacao  0:  Coluna  não  utilizada  1:  
+ int(11)  0  
+  
+ 
+cortesia  0:  Coluna  não  utilizada  1:  
+ int(11)  0  
+observacao  Observação  da  venda   text  null  forma_pagamento  1:  boleto  2:  cartão  de  crédito  3:  dinheiro  4:  pix  
+ int(11)  1  
+comissao_paga  0:  Comissão  paga  1:  Comissão  não  paga  
+ int(11)  0  
+data_pagamento_comissao  
+Data  de  pagamento  da  comissão   date  null  
+exclusividade  0:  Estabelecimento  exclusivo  1:  Estabelecimento  não  é  exclusivo  
+ int(11)  0  
+data_exclusividade  Data  em  que  o  estabelecimento  se  tornou  exclusivo  
+ date  null  
+comissao_pedido_expirado  
+0:  Estabelecimento  não  elegível  a  pagar  comissão  sob  pedidos  cancelados  por  tempo  expirado  1:  Estabelecimento  elegível  a  pagar  comissão  sob  pedidos  cancelados  por  tempo  expirado  
+ int(11)  1  
+data_inicio_comissao_pedido_expirado  
+Data  em  que  o  estabelecimento  se  tornou  elegível  a  pagar  comissão  sob  pedidos  cancelados  por  tempo  expirado  
+ date  null  
+ 
+Tabela  Venda  Estabelecimento  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   estabelecimento_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'estabelecimento'  
+foreign-key  int(11)   
+venda_id  Chave  estrangeira  que  referencia  o  identificador  da  tabela  'venda'  
+foreign-key  int(11)   
+principal  0:  Estabelecimento  secundário  vinculado  a  este  contrato  de  venda  1:  Define  o  estabelecimento  como  sendo  o  principal  deste  contrato  de  venda  
+ int(11)  0  
+ 
+Tabela  Vendedor  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   nome  Nome  do  vendedor   varchar(200)  NULL   
+Tabela  Versão  (não  usada)  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   mensagem  Versão  +  Número  da  versão   text  null  indice  Número  da  versão   int(11)   
+  
+ 
+producao  0:  desenvolvimento/teste  1:  produção  
+ int(11)   
+requisito  coluna  não  utilizada   int(11)  0  data  Data  do  registro   datetime    
+Tabela  Versão  Sistema  
+Campo  Descrição  Chave  Formato  Padrão  id  Identificador  primary-key   int(11)   versao  Número  da  versão   int(11)   rotulo  Rótulo  da  versão   varchar(11)   sistema  Sistema  na  qual  a  versão  se  refere  (cms_delivery)  
+ varchar(250)   
+data_atualizacao  Data  da  última  atualização   datetime   ativo  0:  Inativo  1:  Ativo  
+ int(11)   
+ 
+  VIEW  Comissao_View  
+Campo  Descrição  Chave  Formato  Padrão  pedido_id  Identificador     estabelecimento_id  Identificador     cidade_id  Identificador     data  data  do  pedido     status  status  do  pedido     comissao_bruta  comissao  bruta  do  pedido     comissao_liquida  comissao  liquida  do  pedido     gmv_bruto  gmv  bruto  do  pedido     gmv_liquido  gmv  líquido  do  pedido     cupom_parceiro  cupom  do  parceiro     cupom_bigou  cupom  arcado  pelo  bigou     reembolso  reembolso  de  subsídio     tipo_pgt  campo  tipo_pgt_online  da  tabela  pedido     taxa_pgt_online  valor  calculado  da  taxa  de  pagamento  online     taxa_gateway_aprox  valor  aproximado  da  taxa  de  gateway     
+*  Para  esta  View  só  é  considerado  cálculos  de  valores  de  pedidos  confirmados  (status  1  e  
+2)
+ 
+ 
+Regras  de  Cálculos  de  comissões,  gmv,  taxas  de  
+pagamento
+ 
+online
+ 
+ 
+  
+ 
+CREATE  OR  REPLACE  VIEW  Comissao_View  AS  
+SELECT  
+    p.id  AS  pedido_id,  
+    p.estabelecimento_id  AS  estabelecimento_id,  
+    e.nome  AS  estabelecimento,  
+    l.id  AS  cidade_id,  
+    l.nome  AS  cidade,  
+    p.data  AS  data,  
+    p.status  AS  status,  
+ 
+    --  Cálculo  da  Comissão  Bruta  para  o  pedido  
+        IF(p.status  IN  (1,  2),  
+            IF(p.data  >=  '2024-04-01  00:00:00',  
+                IF(p.comissao_entrega  =  1,  
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega  
++
+ 
+p.reembolso_promocao)
+ 
+*
+ 
+(p.comissao
+ 
+/
+ 
+100),
+ 
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  
+p.reembolso_promocao)
+ 
+*
+ 
+(p.comissao
+ 
+/
+ 
+100)
+ 
+                ),  
+                IF(p.comissao_entrega  =  1,  
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega)  
+*
+ 
+(p.comissao
+ 
+/
+ 
+100),
+ 
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0))  *  (p.comissao  /  
+100)
+ 
+                )  
+            ),  
+            0  
+        )  AS  comissao_bruta,  
+ 
+    --  Cálculo  da  Comissão  Líquida  para  o  pedido  
+  
+ 
+        IF(p.status  IN  (1,  2),  
+            IF(p.data  >=  '2024-04-01  00:00:00',  
+                IF(p.comissao_entrega  =  1,  
+                    ((p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega  
++
+ 
+p.reembolso_promocao)
+ 
+*
+ 
+(p.comissao
+ 
+/
+ 
+100))
+ 
+                    -  (IF(p.estabelecimento_cupom  =  0,  p.desconto,  0)  +  p.reembolso_promocao),  
+                    ((p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  
+p.reembolso_promocao)
+ 
+*
+ 
+(p.comissao
+ 
+/
+ 
+100))
+ 
+                    -  (IF(p.estabelecimento_cupom  =  0,  p.desconto,  0)  +  p.reembolso_promocao)  
+                ),  
+                IF(p.comissao_entrega  =  1,  
+                    ((p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  
+p.taxa_entrega)
+ 
+*
+ 
+(p.comissao
+ 
+/
+ 
+100))
+ 
+                    -  IF(p.estabelecimento_cupom  =  0,  p.desconto,  0),  
+                    ((p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0))  *  (p.comissao  /  
+100))
+ 
+                    -  IF(p.estabelecimento_cupom  =  0,  p.desconto,  0)  
+                )  
+            ),  
+            0  
+        )  AS  comissao_liquida,  
+ 
+ --  Cálculo  do  GMV  Bruto  para  o  pedido  
+        IF(p.status  IN  (1,  2),  
+            IF(p.data  >=  '2024-04-01  00:00:00',  
+                (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega  +  
+p.reembolso_promocao),
+ 
+                (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega)  
+            ),  
+            0  
+  
+ 
+        )  AS  gmv_bruto,  
+ 
+    --  Cálculo  da  GMV  Líquido  para  o  pedido  
+        IF(p.status  IN  (1,  2),  
+           p.total,  
+           --  (p.subtotal  +  p.taxa_entrega  -  p.desconto),  
+            0  
+        )  AS  gmv_liquido,  
+ 
+        IF(p.status  IN  (1,  2),  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0),0)  AS  
+cupom_parceiro,
+ 
+        IF(p.status  IN  (1,  2),  IF(p.estabelecimento_cupom  =  0,  p.desconto,  0),0)  AS  
+cupom_bigou,
+ 
+        IF(p.status  IN  (1,  2),  p.reembolso_promocao,  0)  AS  reembolso,  
+  IF(p.status  IN  (1,  2),  p.tipo_pgt_online,  0)  AS  tipo_pgt,  
+ 
+ --  Cálculo  da  Taxa  de  Pagamento  Online  
+        IF(p.status  IN  (1,  2),  
+            IF(p.data  >=  '2024-04-01  00:00:00',  
+                IF(p.comissao_entrega  =  1,  
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega  
++
+ 
+p.reembolso_promocao)
+ 
+*
+ 
+(p.taxa_pgt_online
+ 
+/
+ 
+100),
+ 
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  
+p.reembolso_promocao)
+ 
+*
+ 
+(p.taxa_pgt_online
+ 
+/
+ 
+100)
+ 
+                ),  
+                IF(p.comissao_entrega  =  1,  
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0)  +  p.taxa_entrega)  
+*
+ 
+(p.taxa_pgt_online
+ 
+/
+ 
+100),
+ 
+                    (p.subtotal  -  IF(p.estabelecimento_cupom  =  1,  p.desconto,  0))  *  
+(p.taxa_pgt_online
+ 
+/
+ 
+100)
+ 
+                )  
+  
+ 
+            ),  
+            0  
+        )  AS  taxa_pgt_online,  
+ 
+ CASE  
+        WHEN  p.status  IN  (1,  2)  THEN  
+            CASE  
+                WHEN  p.tipo_pgt_online  LIKE  'offline'  THEN  0  
+                WHEN  p.tipo_pgt_online  LIKE  'pix-sicoob'  THEN  0  
+                WHEN  p.tipo_pgt_online  LIKE  'pix-pagbank'  THEN  0.10  
+                WHEN  p.tipo_pgt_online  LIKE  'pix-mercadopago'  THEN  p.total  *  0.0062  
+                WHEN  p.tipo_pgt_online  LIKE  'picpay'  THEN  p.total  *  0.0219  
+                WHEN  p.tipo_pgt_online  LIKE  'nupay'  THEN  p.total  *  0.014  
+                ELSE  0  
+            END  
+        ELSE  0  --  Se  p.status  não  estiver  em  (1,  2),  a  taxa  será  0.  
+    END  AS  taxa_gateway_aprox  
+ 
+ 
+FROM  pedido  AS  p  
+LEFT  JOIN  estabelecimento  AS  e  ON  e.id  =  p.estabelecimento_id  
+LEFT  JOIN  localidade  AS  l  ON  l.id  =  e.localidade_id;  
+ 
+ 
+Regras  para  acessar  o  contrato  de  um  
+estabelecimento
+ 
+e
+ 
+vice-versa
+ 
+-  A  tabela  de  contratos  chama-se  `venda`  (alias  `v`).  
+-  A  tabela  que  associa  contratos  a  estabelecimentos  é  `venda_estabelecimento`  (alias  `ve`).  
+  
+ 
+-  A  tabela  de  estabelecimentos  é  `estabelecimento`  (alias  `e`).  
+ 
+Sempre  que  precisar  obter  dados  de  um  contrato  vinculado  a  um  estabelecimento,  gere  
+uma
+ 
+query
+ 
+no
+ 
+formato:
+ 
+ 
+FROM  venda  AS  v  
+LEFT  JOIN  venda_estabelecimento  AS  ve  
+  ON  ve.venda_id  =  v.id  
+LEFT  JOIN  estabelecimento  AS  e  
+  ON  e.id  =  ve.estabelecimento_id  
+ 
+E  inclua  um  `WHERE  e.id  =  ?`  para  filtrar  pelo  estabelecimento  desejado.  
+ 
+ 
+  

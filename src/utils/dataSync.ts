@@ -30,6 +30,8 @@ export const CACHE_KEYS = {
     crm_cupom: 'partner_journey_data_cache_v26_crm_cupom',
     crm_parceiros: 'partner_journey_data_cache_v26_crm_parceiros',
     lojas_delivery: 'partner_journey_data_cache_v27_lojas_delivery',
+    horarios_funcionamento: 'partner_journey_data_cache_v28_horarios_funcionamento',
+    recessos_estabelecimento: 'partner_journey_data_cache_v28_recessos_estabelecimento',
 } as const;
 
 export type DataCacheKey = keyof typeof CACHE_KEYS;

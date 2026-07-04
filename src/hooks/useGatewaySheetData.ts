@@ -11,6 +11,8 @@ interface UseGatewaySheetDataOptions {
     tab: string;
     cacheKey: string;
     enabled?: boolean;
+    allowEmpty?: boolean;
+    tabVariants?: string[];
 }
 
 export function useGatewaySheetData({
@@ -18,6 +20,8 @@ export function useGatewaySheetData({
     tab,
     cacheKey,
     enabled = true,
+    allowEmpty = false,
+    tabVariants = [],
 }: UseGatewaySheetDataOptions) {
     const [table, setTable] = useState<GatewaySheetTable>({ headers: [], rows: [] });
     const [isLoading, setIsLoading] = useState(true);
@@ -44,7 +48,10 @@ export function useGatewaySheetData({
 
         try {
             setError(null);
-            const data = await fetchGatewaySheetTable(sheetId, tab);
+            const data = await fetchGatewaySheetTable(sheetId, tab, {
+                allowEmpty,
+                tabVariants,
+            });
             const syncTime = new Date();
             setTable(data);
             setLastSyncTime(syncTime);
@@ -62,7 +69,7 @@ export function useGatewaySheetData({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [enabled, sheetId, tab, cacheKey]);
+    }, [enabled, sheetId, tab, cacheKey, allowEmpty, tabVariants]);
 
     useEffect(() => {
         if (!enabled) {

@@ -11,6 +11,8 @@ import {
     PARCEIRO_MENSAL_DATA_SOURCE,
     PARCEIROS_DATA_SOURCE,
     LOJAS_DELIVERY_DATA_SOURCE,
+    HORARIOS_FUNCIONAMENTO_DATA_SOURCE,
+    RECESSOS_ESTABELECIMENTO_DATA_SOURCE,
     CITY_IDS_DATA_SOURCE,
 } from '../config/dataSource';
 
@@ -133,6 +135,24 @@ function buildDataBases(): DataBaseLink[] {
             tab: LOJAS_DELIVERY_DATA_SOURCE.range,
             href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
             apiPath: gatewaySheetPath(LOJAS_DELIVERY_DATA_SOURCE.sheetId, LOJAS_DELIVERY_DATA_SOURCE.range),
+            kind: 'sheet',
+        },
+        {
+            id: 'horarios-funcionamento',
+            name: 'Horários de funcionamento (BIGOU)',
+            description: 'Grade semanal por estabelecimento — sync diário do banco BIGOU',
+            tab: HORARIOS_FUNCIONAMENTO_DATA_SOURCE.range,
+            href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
+            apiPath: gatewaySheetPath(HORARIOS_FUNCIONAMENTO_DATA_SOURCE.sheetId, HORARIOS_FUNCIONAMENTO_DATA_SOURCE.range),
+            kind: 'sheet',
+        },
+        {
+            id: 'recessos-estabelecimento',
+            name: 'Recessos de estabelecimento (BIGOU)',
+            description: 'Pausas programadas — últimos 3 meses e futuros',
+            tab: RECESSOS_ESTABELECIMENTO_DATA_SOURCE.range,
+            href: googleSheetUrl(MASTER_DATA_SOURCE.sheetId),
+            apiPath: gatewaySheetPath(RECESSOS_ESTABELECIMENTO_DATA_SOURCE.sheetId, RECESSOS_ESTABELECIMENTO_DATA_SOURCE.range),
             kind: 'sheet',
         },
         {
