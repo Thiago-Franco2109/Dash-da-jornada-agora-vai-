@@ -3,11 +3,116 @@ import { ptBR } from 'date-fns/locale/pt-BR';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { usePartnerFuncionamentoData } from '../hooks/usePartnerFuncionamentoData';
 import {
+    buildResumoFuncionamento,
     formatTurno,
     hasActiveRecesso,
+    type DiaResumo,
     type RecessoRecord,
     type RecessoStatus,
 } from '../utils/partnerFuncionamento';
+
+const RESUMO_DIAS = 14;
+
+const DIA_STATUS_META: Record<DiaResumo['status'], { label: string; dot: string; cell: string }> = {
+    operou: {
+        label: 'Funcionou',
+        dot: 'bg-emerald-500',
+        cell: 'bg-emerald-500/90 text-white',
+    },
+    recesso: {
+        label: 'Recesso',
+        dot: 'bg-amber-500',
+        cell: 'bg-amber-500/90 text-white',
+    },
+    fechado: {
+        label: 'Fechado',
+        dot: 'bg-slate-300 dark:bg-slate-600',
+        cell: 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
+    },
+};
+
+function ResumoUltimosDias({
+    dias,
+    diasOperou,
+    diasRecesso,
+    temHorario,
+}: {
+    dias: DiaResumo[];
+    diasOperou: number;
+    diasRecesso: number;
+    temHorario: boolean;
+}) {
+    let headline: { icon: string; title: string; sub: string; wrap: string; iconClass: string };
+
+    if (!temHorario) {
+        headline = {
+            icon: 'help',
+            title: 'Sem horário cadastrado',
+            sub: 'Não há grade de funcionamento para avaliar os últimos 14 dias.',
+            wrap: 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50',
+            iconClass: 'text-slate-400',
+        };
+    } else if (diasRecesso === 0) {
+        headline = {
+            icon: 'check_circle',
+            title: 'Funcionou normalmente nos últimos 14 dias',
+            sub: `${diasOperou} ${diasOperou === 1 ? 'dia de funcionamento' : 'dias de funcionamento'}, sem recesso no período.`,
+            wrap: 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20',
+            iconClass: 'text-emerald-600 dark:text-emerald-400',
+        };
+    } else {
+        headline = {
+            icon: 'pause_circle',
+            title: `Teve ${diasRecesso} ${diasRecesso === 1 ? 'dia' : 'dias'} de recesso nos últimos 14 dias`,
+            sub: `${diasOperou} ${diasOperou === 1 ? 'dia' : 'dias'} de funcionamento no período.`,
+            wrap: 'border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20',
+            iconClass: 'text-amber-600 dark:text-amber-400',
+        };
+    }
+
+    return (
+        <div className={`p-4 rounded-xl border ${headline.wrap}`}>
+            <div className="flex items-start gap-3">
+                <span className={`material-symbols-outlined ${headline.iconClass}`}>{headline.icon}</span>
+                <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-white">{headline.title}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">{headline.sub}</p>
+
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                        {dias.map(dia => {
+                            const meta = DIA_STATUS_META[dia.status];
+                            const dd = format(dia.date, 'dd/MM', { locale: ptBR });
+                            const diaSemana = format(dia.date, 'EEEEEE', { locale: ptBR });
+                            const title = `${dd} (${diaSemana}) — ${meta.label}${dia.recesso?.descricao ? `: ${dia.recesso.descricao}` : ''}`;
+                            return (
+                                <div
+                                    key={dia.date.toISOString()}
+                                    title={title}
+                                    className={`flex flex-col items-center justify-center rounded-md w-10 h-11 text-[10px] font-medium ${meta.cell}`}
+                                >
+                                    <span className="uppercase opacity-80">{diaSemana}</span>
+                                    <span className="text-[11px] font-semibold">{format(dia.date, 'dd', { locale: ptBR })}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2.5 rounded-full bg-emerald-500" /> Funcionou
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2.5 rounded-full bg-amber-500" /> Recesso
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2.5 rounded-full bg-slate-300 dark:bg-slate-600" /> Fechado (grade)
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 interface PartnerFuncionamentoSectionProps {
     partner: EnrichedPerformanceRow;
@@ -122,6 +227,8 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
     const recessoAtivo = hasActiveRecesso(recessos);
     const sheetVazia = !isLoading && sheetHorariosCount === 0 && sheetRecessosCount === 0;
     const parceiroSemDados = !isLoading && !sheetVazia && !hasPartnerHorarios && recessos.length === 0;
+    const resumo = buildResumoFuncionamento(horarios, recessos, RESUMO_DIAS);
+    const mostrarResumo = hasFetchedOnce && !sheetVazia && (hasPartnerHorarios || recessos.length > 0);
 
     if (!estabId && !estabelecimento) {
         return (
@@ -187,6 +294,15 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                     {estabId ? ` (ESTAB_ID ${estabId})` : ''}.
                     O sync filtra parceiros com contrato nos últimos 90 dias — lojas fora desse filtro não aparecem na planilha.
                 </div>
+            )}
+
+            {mostrarResumo && (
+                <ResumoUltimosDias
+                    dias={resumo.dias}
+                    diasOperou={resumo.diasOperou}
+                    diasRecesso={resumo.diasRecesso}
+                    temHorario={resumo.temHorario}
+                />
             )}
 
             {recessoAtivo && (

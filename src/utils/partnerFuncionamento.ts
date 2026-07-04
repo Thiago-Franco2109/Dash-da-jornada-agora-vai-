@@ -247,3 +247,103 @@ export function parseRecessosForEstab(
 export function hasActiveRecesso(recessos: RecessoRecord[]): RecessoRecord | null {
     return recessos.find(r => r.emRecessoAgora || r.statusRecesso === 'em_recesso') ?? null;
 }
+
+export type DiaStatus = 'operou' | 'recesso' | 'fechado';
+
+export interface DiaResumo {
+    date: Date;
+    diaSemana: number;
+    status: DiaStatus;
+    /** Recesso que cobre este dia, se houver */
+    recesso: RecessoRecord | null;
+}
+
+export interface ResumoFuncionamento {
+    dias: DiaResumo[];
+    diasOperou: number;
+    diasRecesso: number;
+    diasFechado: number;
+    temHorario: boolean;
+    /** Nº total de dias analisados */
+    totalDias: number;
+}
+
+function ymd(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+/** Extrai a parte YYYY-MM-DD de "2025-07-03 00:00:00" ou "2025-07-03T00:00:00" */
+function ymdFromRaw(raw: string): string {
+    const trimmed = raw.trim();
+    const match = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+}
+
+function horarioAbreNoDia(horarios: HorarioDia[], diaSemana: number): boolean {
+    const h = horarios.find(x => x.diaSemana === diaSemana);
+    if (!h) return false;
+    return formatTurno(h.turno1Inicio, h.turno1Fim) !== 'Fechado'
+        || formatTurno(h.turno2Inicio, h.turno2Fim) !== 'Fechado';
+}
+
+function recessoCobreDia(recessos: RecessoRecord[], dayYmd: string): RecessoRecord | null {
+    for (const r of recessos) {
+        const start = ymdFromRaw(r.dataInicio);
+        const end = ymdFromRaw(r.dataFim);
+        if (!start && !end) continue;
+        const lo = start || end;
+        const hi = end || start;
+        if (dayYmd >= lo && dayYmd <= hi) return r;
+    }
+    return null;
+}
+
+/**
+ * Resumo dos últimos N dias: cruza a grade semanal com os recessos.
+ * Regra: em recesso → não operou; senão com horário no dia da semana → operou;
+ * senão (dia fechado na grade) → fechado.
+ */
+export function buildResumoFuncionamento(
+    horarios: HorarioDia[],
+    recessos: RecessoRecord[],
+    days = 14,
+    now: Date = new Date(),
+): ResumoFuncionamento {
+    const temHorario = horarios.some(h =>
+        formatTurno(h.turno1Inicio, h.turno1Fim) !== 'Fechado'
+        || formatTurno(h.turno2Inicio, h.turno2Fim) !== 'Fechado',
+    );
+
+    const dias: DiaResumo[] = [];
+    let diasOperou = 0;
+    let diasRecesso = 0;
+    let diasFechado = 0;
+
+    for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(now);
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() - i);
+        const diaSemana = date.getDay();
+        const dayYmd = ymd(date);
+
+        const recesso = recessoCobreDia(recessos, dayYmd);
+        let status: DiaStatus;
+        if (recesso) {
+            status = 'recesso';
+            diasRecesso++;
+        } else if (horarioAbreNoDia(horarios, diaSemana)) {
+            status = 'operou';
+            diasOperou++;
+        } else {
+            status = 'fechado';
+            diasFechado++;
+        }
+
+        dias.push({ date, diaSemana, status, recesso });
+    }
+
+    return { dias, diasOperou, diasRecesso, diasFechado, temHorario, totalDias: days };
+}
