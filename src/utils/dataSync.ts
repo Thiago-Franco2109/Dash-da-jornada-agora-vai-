@@ -1671,6 +1671,7 @@ export async function fetchGatewaySheetTable(
         ];
 
         let lastError: Error | null = null;
+        let gatewayError: Error | null = null;
 
         for (let i = 0; i < strategies.length; i++) {
             const strategy = strategies[i];
@@ -1686,18 +1687,22 @@ export async function fetchGatewaySheetTable(
                 return table;
             } catch (err) {
                 lastError = err as Error;
+                if (strategy.name === 'gateway') gatewayError = lastError;
                 console.warn(`[dataSync] ${strategy.name} falhou para tabela "${trimmedTab}":`, lastError.message);
                 if (!isLast) continue;
                 if (options?.allowEmpty) {
                     console.warn(`[dataSync] Aba opcional "${trimmedTab}" indisponível — usando tabela vazia.`);
                     return EMPTY_GATEWAY_TABLE;
                 }
-                throw lastError;
+                // O Gateway é a estratégia principal em produção; as demais são
+                // fallbacks locais que só funcionam com service account. Priorize
+                // o erro do Gateway para o diagnóstico ser útil.
+                throw gatewayError ?? lastError;
             }
         }
 
         if (options?.allowEmpty) return EMPTY_GATEWAY_TABLE;
-        throw lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
+        throw gatewayError ?? lastError ?? new Error(`Falha ao carregar aba "${trimmedTab}"`);
     };
 
     return options?.skipQueue ? run() : enqueueSheetFetch(run);
