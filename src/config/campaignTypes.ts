@@ -9,7 +9,8 @@ export interface CampaignTypeConfig {
     id: CampaignTypeId;
     label: string;
     shortLabel: string;
-    icon: string;
+    /** Ícones Material Symbols que identificam a campanha na UI */
+    icons: string[];
     /** Nomes na coluna CAMPANHA da aba PROMO-ESPECIAL */
     sheetNames: string[];
     /** Campo de override manual no Supabase (null = só localStorage para ofertas) */
@@ -24,7 +25,7 @@ export const CAMPAIGN_TYPES: CampaignTypeConfig[] = [
         id: 'ofertas_da_casa',
         label: 'Ofertas da Casa',
         shortLabel: 'Ofertas',
-        icon: 'home_work',
+        icons: ['campaign'],
         sheetNames: ['ofertas da casa'],
         overrideField: null,
         cmsCadastroId: 31,
@@ -35,7 +36,7 @@ export const CAMPAIGN_TYPES: CampaignTypeConfig[] = [
         id: 'super_promos',
         label: 'Super Promos',
         shortLabel: 'Super Promos',
-        icon: 'percent',
+        icons: ['campaign', 'currency_exchange'],
         sheetNames: ['super promos', 'super promos!'],
         overrideField: 'promo_status_override',
         cmsCadastroId: 26,
@@ -46,7 +47,7 @@ export const CAMPAIGN_TYPES: CampaignTypeConfig[] = [
         id: 'cupons_destaque',
         label: 'Cupons de destaque',
         shortLabel: 'Cupons',
-        icon: 'confirmation_number',
+        icons: ['confirmation_number'],
         sheetNames: ['cupons de destaque', 'cupom de destaque', 'cupons destaque'],
         overrideField: 'cupom_status_override',
         accent: 'indigo',

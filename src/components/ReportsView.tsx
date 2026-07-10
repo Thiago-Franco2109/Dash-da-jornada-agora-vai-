@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { CAMPAIGN_TYPES, type CampaignTypeId } from '../config/campaignTypes';
+import CampaignIcons from './CampaignIcons';
 
 interface ReportsViewProps {
     data: EnrichedPerformanceRow[];
@@ -114,7 +115,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                         title="Ativação de Pedidos"
                         value={`${kpis.withOrders.percent.toFixed(1)}%`}
                         subtitle={`${kpis.withOrders.count} de ${kpis.total} parceiros`}
-                        icon="shopping_cart"
+                        icons={['shopping_cart']}
                         color="emerald"
                         trend="Receberam pelo menos 1 pedido"
                     />
@@ -122,7 +123,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                         title="Meta de 1 Pedido/Dia"
                         value={`${kpis.meetingGoal.percent.toFixed(1)}%`}
                         subtitle={`${kpis.meetingGoal.count} parceiros na meta`}
-                        icon="trending_up"
+                        icons={['trending_up']}
                         color="blue"
                         trend="Desempenho ideal (>= 1 pedido/dia)"
                     />
@@ -132,7 +133,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                             title={c.label}
                             value={`${kpis.campaigns[c.id].percent.toFixed(1)}%`}
                             subtitle={`${kpis.campaigns[c.id].withActive} com campanha ativa`}
-                            icon={c.icon}
+                            icons={c.icons}
                             color={c.id === 'ofertas_da_casa' ? 'amber' : c.id === 'super_promos' ? 'violet' : 'amber'}
                             trend="Penetração na base filtrada"
                         />
@@ -169,7 +170,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
     );
 }
 
-function KPICard({ title, value, subtitle, icon, color, trend }: { title: string; value: string; subtitle: string; icon: string; color: 'emerald' | 'blue' | 'violet' | 'amber'; trend: string }) {
+function KPICard({ title, value, subtitle, icons, color, trend }: { title: string; value: string; subtitle: string; icons: readonly string[]; color: 'emerald' | 'blue' | 'violet' | 'amber'; trend: string }) {
     const colors = {
         emerald: 'bg-emerald-500 shadow-emerald-500/20 text-emerald-500',
         blue: 'bg-blue-500 shadow-blue-500/20 text-blue-500',
@@ -181,7 +182,7 @@ function KPICard({ title, value, subtitle, icon, color, trend }: { title: string
         <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-lg shadow-slate-200/50 dark:shadow-none hover:shadow-xl transition-all hover:-translate-y-1 group">
             <div className="flex items-center justify-between mb-4">
                 <div className={`size-12 rounded-2xl ${colors[color].split(' ')[0]} flex items-center justify-center text-white shadow-lg ${colors[color].split(' ')[1]}`}>
-                    <span className="material-symbols-outlined">{icon}</span>
+                    <CampaignIcons icons={icons} iconClassName="text-[22px]" />
                 </div>
                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${colors[color].split(' ')[2]} bg-slate-50 dark:bg-slate-900/50`}>
                     KPI
@@ -218,7 +219,7 @@ function StoreMiniCard({ store, campaignId }: { store: EnrichedPerformanceRow; c
                 <div className={`absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-slate-50 dark:border-slate-900 flex items-center justify-center ${
                     campaignId === 'ofertas_da_casa' ? 'bg-amber-500' : campaignId === 'super_promos' ? 'bg-violet-500' : 'bg-indigo-500'
                 }`}>
-                    <span className="material-symbols-outlined text-[8px] text-white font-black">{campaign.icon}</span>
+                    <CampaignIcons icons={campaign.icons} iconClassName="text-[8px] text-white font-black" />
                 </div>
             </div>
             

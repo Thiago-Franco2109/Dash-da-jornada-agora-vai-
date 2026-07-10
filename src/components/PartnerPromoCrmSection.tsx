@@ -11,6 +11,8 @@ import {
     getOfertasDaCasaStatusMeta,
     isTopPriorityCity,
 } from '../config/crmCampaigns';
+import { CAMPAIGN_TYPES, getCampaignConfig } from '../config/campaignTypes';
+import CampaignIcons from './CampaignIcons';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { formatBRL } from '../utils/crmData';
@@ -145,7 +147,7 @@ export default function PartnerPromoCrmSection({
                         }`}>
                             <div className="flex items-start gap-4 flex-1 min-w-0">
                                 <div className="size-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-700 dark:text-amber-400 shrink-0">
-                                    <span className="material-symbols-outlined text-[24px]">home_work</span>
+                                    <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} iconClassName="text-[24px]" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -209,7 +211,7 @@ export default function PartnerPromoCrmSection({
 
                         {/* Super Promos */}
                         <CampaignCard
-                            icon="percent"
+                            icons={getCampaignConfig('super_promos').icons}
                             title="Super Promos"
                             description="Campanha de descontos em itens selecionados do cardápio (col. CAMPANHA: Super Promos!)."
                             status={crmPartner?.campaigns.super_promos.status ?? partner.promo_status}
@@ -221,7 +223,7 @@ export default function PartnerPromoCrmSection({
 
                         {/* Cupons de destaque */}
                         <CampaignCard
-                            icon="confirmation_number"
+                            icons={getCampaignConfig('cupons_destaque').icons}
                             title="Cupons de destaque"
                             description="Cupons promocionais de destaque para conversão e retenção."
                             status={crmPartner?.campaigns.cupons_destaque.status ?? partner.cupom_status}
@@ -274,10 +276,17 @@ export default function PartnerPromoCrmSection({
                     <div className="p-6 sm:p-8 space-y-7">
                     {crmPartner ? (
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                            <Metric icon="payments" accent="emerald" label={`GMV ${crmPartner.gmvMesLabel || 'mês'}`} value={crmPartner.indiceGmv != null ? formatBRL(crmPartner.indiceGmv) : '—'} />
-                            <Metric icon="home_work" accent="amber" label="Ofertas da Casa" value={crmPartner.campaigns.ofertas_da_casa.resumo} small />
-                            <Metric icon="percent" accent="violet" label="Super Promos" value={crmPartner.campaigns.super_promos.resumo} small />
-                            <Metric icon="confirmation_number" accent="indigo" label="Cupons de destaque" value={crmPartner.campaigns.cupons_destaque.resumo} small />
+                            <Metric icons={['payments']} accent="emerald" label={`GMV ${crmPartner.gmvMesLabel || 'mês'}`} value={crmPartner.indiceGmv != null ? formatBRL(crmPartner.indiceGmv) : '—'} />
+                            {CAMPAIGN_TYPES.map(c => (
+                                <Metric
+                                    key={c.id}
+                                    icons={c.icons}
+                                    accent={c.accent}
+                                    label={c.label}
+                                    value={crmPartner.campaigns[c.id].resumo}
+                                    small
+                                />
+                            ))}
                         </div>
                         ) : (
                             <div className="flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3">
@@ -318,7 +327,7 @@ export default function PartnerPromoCrmSection({
                             {/* Ofertas da casa */}
                             <div className="space-y-3">
                                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-[16px] text-amber-500">home_work</span>
+                                    <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} className="text-amber-500" iconClassName="text-[16px]" />
                                     Ofertas da casa
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-2">
@@ -380,7 +389,7 @@ export default function PartnerPromoCrmSection({
                             </div>
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                                    <span className="material-symbols-outlined text-[16px] text-amber-500">home_work</span>
+                                    <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} className="text-amber-500" iconClassName="text-[16px]" />
                                     Notas — Ofertas da casa
                                 </label>
                                 <textarea
@@ -434,13 +443,13 @@ function Metric({
     label,
     value,
     small,
-    icon,
+    icons,
     accent = 'slate',
 }: {
     label: string;
     value: string;
     small?: boolean;
-    icon?: string;
+    icons?: readonly string[];
     accent?: 'violet' | 'emerald' | 'amber' | 'slate' | 'indigo';
 }) {
     const accents: Record<string, string> = {
@@ -452,9 +461,9 @@ function Metric({
     };
     return (
         <div className="relative p-4 rounded-xl bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all">
-            {icon && (
+            {icons && icons.length > 0 && (
                 <span className={`absolute top-3 right-3 size-7 rounded-lg flex items-center justify-center ${accents[accent]}`}>
-                    <span className="material-symbols-outlined text-[16px]">{icon}</span>
+                    <CampaignIcons icons={icons} iconClassName="text-[14px]" />
                 </span>
             )}
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pr-8 leading-tight">{label}</p>
@@ -504,7 +513,7 @@ function CmsManageLink({
 }
 
 function CampaignCard({
-    icon,
+    icons,
     title,
     description,
     status,
@@ -513,7 +522,7 @@ function CampaignCard({
     localidadeId,
     cityIdsLoading,
 }: {
-    icon: string;
+    icons: readonly string[];
     title: string;
     description: string;
     status?: string;
@@ -526,7 +535,7 @@ function CampaignCard({
         <div className="flex items-center justify-between p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-4">
                 <div className="size-12 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                    <span className="material-symbols-outlined text-[24px]">{icon}</span>
+                    <CampaignIcons icons={icons} iconClassName="text-[24px]" />
                 </div>
                 <div>
                     <div className="flex items-center gap-3 flex-wrap">

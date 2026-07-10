@@ -9,6 +9,7 @@ import {
     getCampaignStatus,
     withDefaultCampaignStatus,
 } from '../config/campaignTypes';
+import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 
 export type CampaignStatusChangeHandler = (
@@ -435,7 +436,10 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 className="px-2 py-3.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[88px]"
                                                 title={campaign.label}
                                             >
-                                                {campaign.shortLabel}
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <CampaignIcons icons={campaign.icons} iconClassName="text-[14px]" />
+                                                    <span>{campaign.shortLabel}</span>
+                                                </div>
                                             </th>
                                         ))}
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('risco_churn')}>
@@ -499,7 +503,10 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 className="px-2 py-3.5 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[88px]"
                                                 title={campaign.label}
                                             >
-                                                {campaign.shortLabel}
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <CampaignIcons icons={campaign.icons} iconClassName="text-[14px]" />
+                                                    <span>{campaign.shortLabel}</span>
+                                                </div>
                                             </th>
                                         ))}
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_avaliacoes')}>

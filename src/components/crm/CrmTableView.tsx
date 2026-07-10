@@ -2,6 +2,8 @@ import type { CrmPartner, CrmPartnerNote } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { OfertasDaCasaStatus } from '../../types/crmCampaigns';
 import { OFERTAS_DA_CASA_CAMPAIGN, OFERTAS_DA_CASA_STATUS_OPTIONS, getOfertasDaCasaStatusMeta, isTopPriorityCity } from '../../config/crmCampaigns';
+import { getCampaignConfig } from '../../config/campaignTypes';
+import CampaignIcons from '../CampaignIcons';
 import { normalizeParceiroContratoStatus } from '../../utils/parceirosSheet';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv } from './crmShared';
 import { isPast, isToday, parseISO } from 'date-fns';
@@ -97,9 +99,24 @@ export default function CrmTableView({
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gestor</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Status</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">GMV {gmvHeader}</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Super Promos</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Cupons de destaque</th>
-                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Ofertas da Casa</th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    <div className="flex items-center gap-1.5">
+                                        <CampaignIcons icons={getCampaignConfig('super_promos').icons} iconClassName="text-[14px]" />
+                                        Super Promos
+                                    </div>
+                                </th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        <CampaignIcons icons={getCampaignConfig('cupons_destaque').icons} iconClassName="text-[14px]" />
+                                        Cupons de destaque
+                                    </div>
+                                </th>
+                                <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} iconClassName="text-[14px]" />
+                                        Ofertas da Casa
+                                    </div>
+                                </th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Último contato</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Follow-up</th>
                                 <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Notas</th>

@@ -7,6 +7,7 @@ import { useCrmViewMode } from '../hooks/useCrmViewMode';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
 import { CAMPAIGN_TYPES, CAMPAIGN_TYPE_IDS, getCampaignConfig } from '../config/campaignTypes';
+import CampaignIcons from './CampaignIcons';
 import { crmCitiesMatch, normalizeCrmCity } from '../utils/crmData';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { computeTopCitiesByGmv, isTopPriorityCity } from '../config/crmCampaigns';
@@ -271,7 +272,7 @@ export default function CrmView({
                         </h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1 font-semibold text-primary">
-                                <span className="material-symbols-outlined text-[16px]">{campaignConfig.icon}</span>
+                                <CampaignIcons icons={campaignConfig.icons} iconClassName="text-[16px]" />
                                 {campaignConfig.label}
                             </span>
                             <span className="text-slate-400">· Pipeline multi-visão · Kanban, lista, calendário e dashboard.</span>
@@ -340,7 +341,10 @@ export default function CrmView({
                                             : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                                     }`}
                                 >
-                                    <span className={`material-symbols-outlined text-[22px] ${selected ? 'text-primary' : 'text-slate-400'}`}>{c.icon}</span>
+                                    <CampaignIcons
+                                        icons={c.icons}
+                                        iconClassName={`text-[22px] ${selected ? 'text-primary' : 'text-slate-400'}`}
+                                    />
                                     <div className="min-w-0">
                                         <p className={`text-sm font-bold truncate ${selected ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>{c.label}</p>
                                         <p className="text-[11px] text-slate-400 truncate">
@@ -378,7 +382,7 @@ export default function CrmView({
 
                 {topCities.length > 0 && (
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 text-sm">
-                        <span className="material-symbols-outlined text-amber-600 shrink-0">home_work</span>
+                        <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} className="text-amber-600 shrink-0" iconClassName="text-[22px]" />
                         <p className="text-amber-900 dark:text-amber-200 flex-1">
                             <span className="font-bold">Ofertas da casa</span>
                             {' · '}Top 5 GMV: {topCities.join(', ')}
