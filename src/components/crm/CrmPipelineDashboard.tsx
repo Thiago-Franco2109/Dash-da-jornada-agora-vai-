@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import type { CrmGoalMetric, CrmPipelineAggregate } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { CrmPartner } from '../../types/crm';
+import type { CampaignTypeId } from '../../config/campaignTypes';
 import { aggregatePipeline, computeGoalProgress, findGoalForScope, getGoalMetricLabel } from '../../utils/crmPipeline';
 import { useCrmGoals } from '../../hooks/useCrmGoals';
 
 interface CrmPipelineDashboardProps {
     partners: CrmPartner[];
     localStatus: Record<string, PromoStatus>;
+    campaign?: CampaignTypeId;
     overdueByKey?: (key: string) => number;
 }
 
@@ -89,14 +91,14 @@ function GoalEditor({
     );
 }
 
-export default function CrmPipelineDashboard({ partners, localStatus }: CrmPipelineDashboardProps) {
+export default function CrmPipelineDashboard({ partners, localStatus, campaign = 'super_promos' }: CrmPipelineDashboardProps) {
     const [groupBy, setGroupBy] = useState<'manager' | 'city'>('manager');
     const [primaryMetric, setPrimaryMetric] = useState<CrmGoalMetric>('promo_ativa_rate');
     const { goals, upsertGoal } = useCrmGoals();
 
     const aggregates = useMemo(
-        () => aggregatePipeline(partners, groupBy, localStatus),
-        [partners, groupBy, localStatus],
+        () => aggregatePipeline(partners, groupBy, localStatus, campaign),
+        [partners, groupBy, localStatus, campaign],
     );
 
     const totals = useMemo(() => {

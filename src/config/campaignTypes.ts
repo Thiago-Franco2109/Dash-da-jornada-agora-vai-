@@ -125,8 +125,9 @@ export function resolveCampaignStatusFromSheet(
     indicadorCounts?: { aprov: number; aguar: number },
 ): PromoStatus {
     if (override) return override;
-    if (sheetInfo?.hasAprovadoAtivo) return 'ativo';
     if (indicadorCounts && indicadorCounts.aprov > 0) return 'ativo';
-    if (sheetInfo?.hasAguardando || (indicadorCounts && indicadorCounts.aguar > 0)) return 'ofertei';
+    if (indicadorCounts && indicadorCounts.aguar > 0) return 'ofertei';
+    if (sheetInfo?.hasAprovadoAtivo) return 'ativo';
+    if (sheetInfo?.hasAguardando) return 'ofertei';
     return 'aguardando';
 }

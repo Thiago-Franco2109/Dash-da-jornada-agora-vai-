@@ -1,5 +1,6 @@
 import type { GatewaySheetTable } from '../types/gatewaySheet';
 import { INDICADOR_DATA_SOURCE } from '../config/dataSource';
+import { agentDebugLog } from './agentDebugLog';
 
 /** Linha 1-based onde começam os parceiros (após cabeçalho + linha de fórmulas) */
 export const INDICADOR_FIRST_DATA_ROW = INDICADOR_DATA_SOURCE.firstDataRow;
@@ -9,7 +10,8 @@ export const INDICADOR_COL_HEADERS = [
     'ESTAB_ID',
     'ESTABELECIMENTO',
     'CONTRATO',
-    'PROMOÇÃO',
+    'OFERTAS DA CASA',
+    'SUPER PROMOS',
     'CUPOM PARC.',
 ] as const;
 
@@ -161,7 +163,43 @@ function mapMatrixRow(row: unknown[], orderedHeaders: string[]): Record<string, 
     return obj;
 }
 
-function matrixFromLooseRows(rows: unknown[], headerCount: number): unknown[][] {
+/** Aliases de colunas legadas → cabeçalho canônico atual (pós OFERTAS DA CASA) */
+const INDICADOR_COLUMN_ALIASES: Record<string, string[]> = {
+    'super promos': ['promocao', 'promoção', 'promo'],
+    'cupom parc': ['cupom parc', 'cupom parc.', 'cupom_parc'],
+    'ofertas da casa': ['ofertas da casa'],
+};
+
+function resolveRecordCell(record: Record<string, unknown>, header: string, index: number): unknown {
+    const key = header.trim();
+    if (key) {
+        if (record[key] != null && String(record[key]).trim()) return record[key];
+        const norm = normalizeKey(key);
+        for (const k of Object.keys(record)) {
+            if (normalizeKey(k) === norm && String(record[k] ?? '').trim()) return record[k];
+        }
+        const aliases = INDICADOR_COLUMN_ALIASES[norm] ?? [];
+        for (const alias of aliases) {
+            for (const k of Object.keys(record)) {
+                if (normalizeKey(k) === alias && String(record[k] ?? '').trim()) return record[k];
+            }
+        }
+    }
+    if (record[`__col_${index}`] != null && String(record[`__col_${index}`]).trim()) {
+        return record[`__col_${index}`];
+    }
+    if (record[String(index)] != null && String(record[String(index)]).trim()) {
+        return record[String(index)];
+    }
+    return '';
+}
+
+/** Converte linha { CIDADE: '…', SUPER PROMOS: '…' } para array alinhado aos cabeçalhos */
+function rowToArrayByHeaders(record: Record<string, unknown>, orderedHeaders: string[]): unknown[] {
+    return orderedHeaders.map((header, index) => resolveRecordCell(record, header, index));
+}
+
+function matrixFromLooseRows(rows: unknown[], headerCount: number, orderedHeaders?: string[]): unknown[][] {
     return rows.map(row => {
         if (Array.isArray(row)) return row;
         if (row && typeof row === 'object') {
@@ -171,10 +209,23 @@ function matrixFromLooseRows(rows: unknown[], headerCount: number): unknown[][] 
                 const width = Math.max(headerCount, ...numericKeys.map(k => Number(k) + 1));
                 return Array.from({ length: width }, (_, i) => record[String(i)] ?? record[i] ?? '');
             }
+            if (orderedHeaders?.length) {
+                return rowToArrayByHeaders(record, orderedHeaders);
+            }
             return Object.values(record);
         }
         return [];
     });
+}
+
+/** Cabeçalhos reconhecem colunas de campanha do layout atual (pós OFERTAS DA CASA) */
+export function indicadorHasCampaignColumns(headers: string[]): boolean {
+    const norms = headers.map(h => normalizeKey(h));
+    const hasPromo = norms.some(h =>
+        h === 'super promos' || h === 'promocao' || h === 'promoção' || h.startsWith('super promos'),
+    );
+    const hasCupom = norms.some(h => h.includes('cupom'));
+    return hasPromo && hasCupom;
 }
 
 /**
@@ -230,26 +281,50 @@ export function normalizeIndicadorGatewayPayload(
     rows: unknown[],
     values?: unknown[][],
 ): GatewaySheetTable {
-    if (values?.length && Array.isArray(values[0])) {
-        return normalizeIndicadorFromMatrix(values);
-    }
+    let branch = 'named-rows';
+    let result: GatewaySheetTable;
 
-    if (headersLookLikeIndicadorMisaligned(headers)) {
+    if (values?.length && Array.isArray(values[0])) {
+        branch = 'matrix-values';
+        result = normalizeIndicadorFromMatrix(values);
+    } else if (headersLookLikeIndicadorMisaligned(headers)) {
+        branch = 'misaligned-headers';
         const matrix = matrixFromLooseRows(rows, headers.length);
         if (matrix.length > 0) {
             const withSyntheticHeader = [headers, ...matrix];
-            return normalizeIndicadorFromMatrix(withSyntheticHeader);
+            result = normalizeIndicadorFromMatrix(withSyntheticHeader);
+        } else {
+            branch = 'misaligned-empty';
+            result = { headers: [], rows: [], orderedHeaders: [] };
         }
+    } else {
+        const headerSourceRow = headers.map(h => String(h ?? '').trim());
+        const provisionalWidth = Math.max(
+            headerSourceRow.length,
+            ...rows.map(row => {
+                if (Array.isArray(row)) return row.length;
+                if (row && typeof row === 'object') return Object.keys(row as object).length;
+                return 0;
+            }),
+        );
+        const orderedHeaders = buildOrderedHeaders(headerSourceRow, provisionalWidth);
+
+        const mappedRows = matrixFromLooseRows(rows, orderedHeaders.length, orderedHeaders)
+            .map(row => mapMatrixRow(row, orderedHeaders))
+            .filter(row => Object.values(row).some(v => String(v ?? '').trim() !== ''));
+
+        result = {
+            headers: orderedHeaders.filter(Boolean),
+            orderedHeaders,
+            rows: mappedRows,
+        };
     }
 
-    const orderedHeaders = buildOrderedHeaders(headers, Math.max(headers.length, ...matrixFromLooseRows(rows, headers.length).map(r => r.length)));
-    const mappedRows = matrixFromLooseRows(rows, orderedHeaders.length)
-        .map(row => mapMatrixRow(row, orderedHeaders))
-        .filter(row => Object.values(row).some(v => String(v ?? '').trim() !== ''));
+    // #region agent log
+    const oh = result.orderedHeaders ?? result.headers ?? [];
+    const sampleRow = result.rows.find(r => String(r['ESTAB_ID'] ?? r['__col_1'] ?? '').includes('26904'));
+    agentDebugLog({ hypothesisId: 'H1-H2', location: 'indicadorSheet.ts:normalizeIndicadorGatewayPayload', message: 'INDICADOR normalize branch', runId: 'post-fix', data: { branch, headerCount: oh.length, headers: oh.slice(0, 10), hasCampaignCols: indicadorHasCampaignColumns(oh), rowCount: result.rows.length, sample26904: sampleRow ? { promo: sampleRow['SUPER PROMOS'] ?? sampleRow['PROMOÇÃO'] ?? sampleRow['__col_5'], cupom: sampleRow['CUPOM PARC.'] ?? sampleRow['__col_6'] } : null } });
+    // #endregion
 
-    return {
-        headers: orderedHeaders.filter(Boolean),
-        orderedHeaders,
-        rows: mappedRows,
-    };
+    return result;
 }

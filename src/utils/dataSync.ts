@@ -7,6 +7,7 @@ import {
     parseCarteiraFromGatewayTable,
 } from './cidadesSheet';
 import { mergeIndicadorHeaderAndData, normalizeIndicadorGatewayPayload } from './indicadorSheet';
+import { CRM_PARSER_VERSION } from './crmData';
 import { CARTEIRA_DATA_SOURCE, INDICADOR_DATA_SOURCE, LOJAS_DELIVERY_DATA_SOURCE, LOGO_SHEET_SOURCE } from '../config/dataSource';
 import { normalizeEstabId } from './indicadorSheet';
 import { supabase } from '../lib/supabase';
@@ -24,11 +25,11 @@ export const CACHE_KEYS = {
     carteira: 'partner_journey_data_cache_v12_carteira',
     pedido_mensal: 'partner_journey_data_cache_v12_pedido_mensal',
     parceiro_mensal: 'partner_journey_data_cache_v17_parceiro_mensal',
-    crm: 'partner_journey_data_cache_v26_crm',
-    crm_indicador: 'partner_journey_data_cache_v26_crm_indicador',
-    crm_promo: 'partner_journey_data_cache_v26_crm_promo',
-    crm_cupom: 'partner_journey_data_cache_v26_crm_cupom',
-    crm_parceiros: 'partner_journey_data_cache_v26_crm_parceiros',
+    crm: `partner_journey_data_cache_v28_crm_p${CRM_PARSER_VERSION}`,
+    crm_indicador: `partner_journey_data_cache_v28_crm_indicador_p${CRM_PARSER_VERSION}`,
+    crm_promo: `partner_journey_data_cache_v28_crm_promo_p${CRM_PARSER_VERSION}`,
+    crm_cupom: `partner_journey_data_cache_v28_crm_cupom_p${CRM_PARSER_VERSION}`,
+    crm_parceiros: `partner_journey_data_cache_v28_crm_parceiros_p${CRM_PARSER_VERSION}`,
     lojas_delivery: 'partner_journey_data_cache_v27_lojas_delivery',
     horarios_funcionamento: 'partner_journey_data_cache_v28_horarios_funcionamento',
     recessos_estabelecimento: 'partner_journey_data_cache_v28_recessos_estabelecimento',

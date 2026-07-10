@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
+import type { CampaignTypeId } from '../../config/campaignTypes';
 import { formatBRL } from '../../utils/crmData';
 import type { CrmPartner } from '../../types/crm';
 
@@ -49,12 +50,16 @@ export function StatusDropdown({
     currentStatus,
     onStatusChange,
     onPartnerStatusChange,
+    onCampaignStatusChange,
+    campaign,
     compact = false,
 }: {
     partnerId: string;
     currentStatus?: PromoStatus;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange?: (partnerId: string, newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
+    campaign?: CampaignTypeId;
     compact?: boolean;
 }) {
     const [open, setOpen] = useState(false);
@@ -89,7 +94,11 @@ export function StatusDropdown({
                         <button
                             key={opt.value}
                             onClick={() => {
-                                onStatusChange?.(partnerId, 'promo_status_override', opt.value);
+                                if (onCampaignStatusChange && campaign) {
+                                    onCampaignStatusChange(partnerId, campaign, opt.value);
+                                } else {
+                                    onStatusChange?.(partnerId, 'promo_status_override', opt.value);
+                                }
                                 onPartnerStatusChange?.(partnerId, opt.value);
                                 setOpen(false);
                             }}

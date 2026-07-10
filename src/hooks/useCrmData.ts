@@ -8,7 +8,9 @@ import {
 } from '../config/dataSource';
 import type { CrmPartner, CrmParseInfo } from '../types/crm';
 import type { GatewaySheetTable } from '../types/gatewaySheet';
-import { parseCrmPartners } from '../utils/crmData';
+import { parseCrmPartners, CRM_PARSER_VERSION } from '../utils/crmData';
+import { indicadorHasCampaignColumns } from '../utils/indicadorSheet';
+import { agentDebugLog } from '../utils/agentDebugLog';
 import {
     fetchGatewaySheetTable,
     fetchPartnerLogoMap,
@@ -24,9 +26,38 @@ interface CrmCachePayload {
     parseInfo: CrmParseInfo;
     relevanceMap: Record<string, number>;
     lastSyncTime: Date;
+    parserVersion?: number;
 }
 
 const EMPTY_TABLE: GatewaySheetTable = { headers: [], rows: [] };
+
+function reparseFromGatewayCaches(
+    options?: { logoMap?: Record<string, string>; statusOverrides?: Record<string, { promo: string; cupom: string }> },
+): CrmCachePayload | null {
+    const indicadorCache = loadGatewaySheetCache(CACHE_KEYS.crm_indicador);
+    if (!indicadorCache?.data?.rows?.length) return null;
+
+    const promoCache = loadGatewaySheetCache(CACHE_KEYS.crm_promo);
+    const cupomCache = loadGatewaySheetCache(CACHE_KEYS.crm_cupom);
+    const parceirosCache = loadGatewaySheetCache(CACHE_KEYS.crm_parceiros);
+
+    const { partners, parseInfo } = parseCrmPartners(
+        indicadorCache.data,
+        promoCache?.data ?? EMPTY_TABLE,
+        cupomCache?.data ?? EMPTY_TABLE,
+        parceirosCache?.data ?? EMPTY_TABLE,
+        options,
+    );
+    if (partners.length === 0) return null;
+
+    return {
+        partners,
+        parseInfo,
+        relevanceMap: {},
+        lastSyncTime: indicadorCache.lastSyncTime,
+        parserVersion: CRM_PARSER_VERSION,
+    };
+}
 
 function loadCrmCache(): CrmCachePayload | null {
     try {
@@ -34,11 +65,13 @@ function loadCrmCache(): CrmCachePayload | null {
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed.partners)) return null;
+        if (parsed.parserVersion !== CRM_PARSER_VERSION) return null;
         return {
             partners: parsed.partners,
             parseInfo: parsed.parseInfo,
             relevanceMap: parsed.relevanceMap ?? {},
             lastSyncTime: new Date(parsed.lastSyncTime),
+            parserVersion: parsed.parserVersion,
         };
     } catch {
         return null;
@@ -52,10 +85,17 @@ function saveCrmCache(payload: CrmCachePayload): void {
             parseInfo: payload.parseInfo,
             relevanceMap: payload.relevanceMap,
             lastSyncTime: payload.lastSyncTime.toISOString(),
+            parserVersion: CRM_PARSER_VERSION,
         }));
     } catch {
         /* ignore */
     }
+}
+
+function loadInitialCrmPayload(): CrmCachePayload | null {
+    const cached = loadCrmCache();
+    if (cached) return cached;
+    return reparseFromGatewayCaches();
 }
 
 async function fetchOptionalCrmSheet(
@@ -95,7 +135,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
     const performSync = useCallback(async () => {
         if (!enabled) return;
 
-        const cached = loadCrmCache();
+        const cached = loadInitialCrmPayload();
         const hasCache = !!(cached?.partners?.length);
 
         if (hasCache) {
@@ -160,6 +200,11 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                 { logoMap, statusOverrides },
             );
 
+            const mega = parsed.find(p => p.estabId === '26904');
+            // #region agent log
+            agentDebugLog({ hypothesisId: 'H2-H5', location: 'useCrmData.ts:performSync', message: 'CRM sync completed', runId: 'post-fix-v6', data: { hadInitialCache: hasCache, parserVersion: CRM_PARSER_VERSION, cacheKeyIndicador: CACHE_KEYS.crm_indicador, indicadorRowCount: indicador.rows.length, indicadorHeaders: (indicador.orderedHeaders ?? indicador.headers).slice(0, 10), hasCampaignCols: indicadorHasCampaignColumns(indicador.orderedHeaders ?? indicador.headers ?? []), parsedCount: parsed.length, mega: mega ? { promoStatus: mega.campaigns.super_promos.status, cupomStatus: mega.campaigns.cupons_destaque.status, promoResumo: mega.campaigns.super_promos.resumo, cupomResumo: mega.campaigns.cupons_destaque.resumo } : null, carandaiSuperPromos: parsed.filter(p => p.cidade === 'Carandaí').reduce((a, p) => { a[p.campaigns.super_promos.status] = (a[p.campaigns.super_promos.status] ?? 0) + 1; return a; }, {} as Record<string, number>) } });
+            // #endregion
+
             if (parsed.length === 0 && indicador.rows.length > 0) {
                 console.warn('[useCrmData] Parser retornou 0 parceiros.', {
                     indicadorRows: indicador.rows.length,
@@ -187,28 +232,13 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             const message = err instanceof Error ? err.message : 'Falha ao carregar dados do CRM';
             setError(message);
 
-            const indicadorCache = loadGatewaySheetCache(CACHE_KEYS.crm_indicador);
-            if (indicadorCache?.data?.rows?.length) {
-                const promoCache = loadGatewaySheetCache(CACHE_KEYS.crm_promo);
-                const cupomCache = loadGatewaySheetCache(CACHE_KEYS.crm_cupom);
-                const parceirosCache = loadGatewaySheetCache(CACHE_KEYS.crm_parceiros);
-                const { partners: parsed, parseInfo: info } = parseCrmPartners(
-                    indicadorCache.data,
-                    promoCache?.data ?? EMPTY_TABLE,
-                    cupomCache?.data ?? EMPTY_TABLE,
-                    parceirosCache?.data ?? EMPTY_TABLE,
-                );
-                if (parsed.length > 0) {
-                    setPartners(parsed);
-                    setParseInfo(info);
-                    setIsUsingCache(true);
-                } else if (hasCache && cached) {
-                    setPartners(cached.partners);
-                    setParseInfo(cached.parseInfo);
-                    setRelevanceMap(cached.relevanceMap ?? {});
-                    setLastSyncTime(cached.lastSyncTime);
-                    setIsUsingCache(true);
-                }
+            const reparsed = reparseFromGatewayCaches();
+            if (reparsed) {
+                setPartners(reparsed.partners);
+                setParseInfo(reparsed.parseInfo);
+                setLastSyncTime(reparsed.lastSyncTime);
+                setIsUsingCache(true);
+                saveCrmCache(reparsed);
             } else if (hasCache && cached) {
                 setPartners(cached.partners);
                 setParseInfo(cached.parseInfo);
@@ -227,12 +257,12 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             setIsLoading(false);
             return;
         }
-        const cached = loadCrmCache();
-        if (cached?.partners?.length) {
-            setPartners(cached.partners);
-            setParseInfo(cached.parseInfo);
-            setRelevanceMap(cached.relevanceMap ?? {});
-            setLastSyncTime(cached.lastSyncTime);
+        const initial = loadInitialCrmPayload();
+        if (initial?.partners?.length) {
+            setPartners(initial.partners);
+            setParseInfo(initial.parseInfo);
+            setRelevanceMap(initial.relevanceMap ?? {});
+            setLastSyncTime(initial.lastSyncTime);
             setIsUsingCache(true);
             setIsLoading(false);
         }

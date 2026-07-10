@@ -13,24 +13,30 @@ import {
 import {
     cellText,
     cellByPosition,
+    findCellByNames,
     resolveSheetColumn,
 } from './sheetColumnMatch';
-import { normalizeEstabId } from './indicadorSheet';
+import { normalizeEstabId, normalizeIndicadorGatewayPayload } from './indicadorSheet';
 import { buildParceirosStatusMap, resolveParceiroStatusFromMap } from './parceirosSheet';
 import { getManagerForPartner } from '../config/managerMapping';
+import { agentDebugLog } from './agentDebugLog';
+
+/** Incrementar quando a lógica de parse/status mudar — invalida cache CRM pré-parseado */
+export const CRM_PARSER_VERSION = 6;
 
 /**
  * Layout fixo da aba INDICADOR (1 linha = 1 parceiro):
- * A=CIDADE B=ESTAB_ID C=ESTABELECIMENTO D=CONTRATO E=PROMOÇÃO F=CUPOM PARC. G+=GMV mensal
+ * A=CIDADE B=ESTAB_ID C=ESTABELECIMENTO D=CONTRATO E=OFERTAS DA CASA F=SUPER PROMOS G=CUPOM PARC. H+=GMV mensal
  */
 const INDICADOR_IDX = {
     cidade: 0,
     estabId: 1,
     estabelecimento: 2,
     contrato: 3,
-    promo: 4,
-    cupom: 5,
-    gmv: 6,
+    ofertas_da_casa: 4,
+    promo: 5,
+    cupom: 6,
+    gmv: 7,
 } as const;
 
 const INDICADOR_NAMES = {
@@ -38,8 +44,9 @@ const INDICADOR_NAMES = {
     estabId: ['ESTAB_ID', 'ESTAB ID'],
     estabelecimento: ['ESTABELECIMENTO'],
     contrato: ['CONTRATO'],
-    promo: ['PROMOÇÃO', 'PROMOCAO', 'Promoção'],
-    cupom: ['CUPOM PARC.', 'CUPOM PARC', 'CUPOM PARC.', 'CUPOM_PARC'],
+    ofertas_da_casa: ['OFERTAS DA CASA', 'Ofertas da Casa'],
+    promo: ['SUPER PROMOS', 'Super Promos', 'PROMOÇÃO', 'PROMOCAO', 'Promoção'],
+    cupom: ['CUPOM PARC.', 'CUPOM PARC', 'CUPOM_PARC'],
 } as const;
 
 export interface AprovAguarCounts {
@@ -147,6 +154,22 @@ function isHeaderDuplicateRow(estabelecimento: string, estabId: string): boolean
     return e === 'estabelecimento' || e === 'parceiro' || estabId.toLowerCase() === 'estab_id';
 }
 
+function readIndicadorCampaignCell(
+    row: Record<string, unknown>,
+    orderedHeaders: string[],
+    index: number,
+    names: readonly string[],
+    legacyKeys: string[],
+): string {
+    const primary = cellByPosition(row, orderedHeaders, index, [...names]);
+    if (primary) return primary;
+    for (const key of legacyKeys) {
+        const byKey = cellText(row, key) || findCellByNames(row, [key]);
+        if (byKey) return byKey;
+    }
+    return '';
+}
+
 /**
  * Lê uma linha do INDICADOR — fonte mestra, 1 linha = 1 parceiro.
  * O nome exibido no CRM vem sempre de ESTABELECIMENTO (coluna C).
@@ -184,8 +207,8 @@ export function parseIndicadorRow(
         estabId,
         estabelecimento: estabelecimento.trim(),
         contrato: cellByPosition(row, orderedHeaders, INDICADOR_IDX.contrato, [...INDICADOR_NAMES.contrato]) || 'ativo',
-        promoRaw: cellByPosition(row, orderedHeaders, INDICADOR_IDX.promo, [...INDICADOR_NAMES.promo]),
-        cupomRaw: cellByPosition(row, orderedHeaders, INDICADOR_IDX.cupom, [...INDICADOR_NAMES.cupom]),
+        promoRaw: readIndicadorCampaignCell(row, orderedHeaders, INDICADOR_IDX.promo, INDICADOR_NAMES.promo, ['PROMOÇÃO', 'PROMOCAO', 'Promoção']),
+        cupomRaw: readIndicadorCampaignCell(row, orderedHeaders, INDICADOR_IDX.cupom, INDICADOR_NAMES.cupom, ['CUPOM PARC', 'CUPOM_PARC']),
         gmvRaw,
         gmvCol,
         gmvSeries,
@@ -343,6 +366,11 @@ export function parseCrmPartners(
     },
 ): { partners: CrmPartner[]; parseInfo: CrmParseInfo } {
     const ordered = orderedHeadersOf(indicador);
+    // Sempre re-normaliza: aplica aliases legados (PROMOÇÃO → SUPER PROMOS) mesmo em cache local
+    const normalizedIndicador = normalizeIndicadorGatewayPayload(ordered, indicador.rows);
+    const parseHeaders = normalizedIndicador.orderedHeaders ?? ordered;
+    const parseRows = normalizedIndicador.rows;
+
     const promoCampaignMap = buildPromoEspecialCampaignMap(promoEspecial);
     const cupomMap = buildCupomParceiroMap(cupomParceiro);
     const parceirosStatusMap = buildParceirosStatusMap(parceiros);
@@ -353,8 +381,8 @@ export function parseCrmPartners(
     let skipped = 0;
     let parceirosMatched = 0;
 
-    for (const row of indicador.rows) {
-        const parsed = parseIndicadorRow(row, ordered);
+    for (const row of parseRows) {
+        const parsed = parseIndicadorRow(row, parseHeaders);
         if (!parsed) {
             skipped++;
             continue;
@@ -418,13 +446,18 @@ export function parseCrmPartners(
 
     if (import.meta.env.DEV) {
         console.info('[crmData] INDICADOR parseado:', {
-            linhas: indicador.rows.length,
+            linhas: parseRows.length,
             parceiros: partners.length,
             ignoradas: skipped,
             amostra: partners[0]?.estabelecimento,
-            colunas: ordered.slice(0, 8),
+            colunas: parseHeaders.slice(0, 8),
         });
     }
+
+    const mega = partners.find(p => p.estabId === '26904' || p.partnerId === '26904');
+    // #region agent log
+    agentDebugLog({ hypothesisId: 'H3-H4', location: 'crmData.ts:parseCrmPartners', message: 'CRM parse summary', runId: 'post-fix-v6', data: { parserVersion: CRM_PARSER_VERSION, indicadorHeaders: parseHeaders.slice(0, 10), partnerCount: partners.length, promoSheetRows: promoEspecial.rows.length, cupomSheetRows: cupomParceiro.rows.length, mega: mega ? { estabId: mega.estabId, cidade: mega.cidade, promoResumo: mega.campaigns.super_promos.resumo, cupomResumo: mega.campaigns.cupons_destaque.resumo, promoStatus: mega.campaigns.super_promos.status, cupomStatus: mega.campaigns.cupons_destaque.status, override: overrides[mega.estabId] ?? null } : null, statusDistribution: { aguardando: partners.filter(p => p.campaigns.super_promos.status === 'aguardando').length, ativo: partners.filter(p => p.campaigns.super_promos.status === 'ativo').length, ofertei: partners.filter(p => p.campaigns.super_promos.status === 'ofertei').length } } });
+    // #endregion
 
     return {
         partners,
@@ -434,8 +467,8 @@ export function parseCrmPartners(
             cupomParceiroRows: cupomParceiro.rows.length,
             parceirosRows: parceiros.rows.length,
             parceirosMatched,
-            indicadorHeaders: ordered.slice(0, 12).map((h, i) => h.trim() || `col ${i}`),
-            gmvColumn: findGmvMonthColumns(ordered)[0] ?? null,
+            indicadorHeaders: parseHeaders.slice(0, 12).map((h, i) => h.trim() || `col ${i}`),
+            gmvColumn: findGmvMonthColumns(parseHeaders)[0] ?? null,
             parsedPartners: partners.length,
             skippedRows: skipped,
         },

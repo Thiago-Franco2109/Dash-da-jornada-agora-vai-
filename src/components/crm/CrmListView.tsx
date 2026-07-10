@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CrmPartner, CrmPartnerNote } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
+import type { CampaignTypeId } from '../../config/campaignTypes';
 import { getPromoStatusForPartner } from '../../utils/crmPipeline';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv, getStatusMeta } from './crmShared';
 import { isPast, isToday, parseISO } from 'date-fns';
@@ -8,9 +9,11 @@ import { isPast, isToday, parseISO } from 'date-fns';
 interface CrmListViewProps {
     partners: CrmPartner[];
     localStatus: Record<string, PromoStatus>;
+    campaign?: CampaignTypeId;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     onEditPartner: (partnerId: string) => void;
     onRegisterContact: (partnerId: string) => void;
 }
@@ -32,9 +35,11 @@ function followUpClass(iso: string | null | undefined) {
 export default function CrmListView({
     partners,
     localStatus,
+    campaign = 'super_promos',
     getNote,
     onStatusChange,
     onPartnerStatusChange,
+    onCampaignStatusChange,
     onEditPartner,
     onRegisterContact,
 }: CrmListViewProps) {
@@ -47,7 +52,7 @@ export default function CrmListView({
             let key: string;
             switch (groupBy) {
                 case 'stage':
-                    key = getStatusMeta(getPromoStatusForPartner(row, localStatus)).label;
+                    key = getStatusMeta(getPromoStatusForPartner(row, localStatus, campaign)).label;
                     break;
                 case 'manager':
                     key = row.analista || 'Sem gestor';
@@ -63,16 +68,16 @@ export default function CrmListView({
         }
 
         return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, 'pt-BR'));
-    }, [partners, groupBy, localStatus]);
+    }, [partners, groupBy, localStatus, campaign]);
 
-    const renderRow = (row: CrmPartner) => {
+    const renderRow = (row: CrmPartner, idx: number) => {
         const note = getNote(row.partnerId);
-        const promoStatus = getPromoStatusForPartner(row, localStatus);
+        const promoStatus = getPromoStatusForPartner(row, localStatus, campaign);
         const meta = getStatusMeta(promoStatus);
 
         return (
             <div
-                key={row.partnerId}
+                key={`${row.partnerId}::${row.cidade}::${idx}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 last:border-0"
             >
                 <PartnerAvatar row={row} size="sm" />
@@ -91,6 +96,8 @@ export default function CrmListView({
                         currentStatus={promoStatus}
                         onStatusChange={onStatusChange}
                         onPartnerStatusChange={onPartnerStatusChange}
+                        onCampaignStatusChange={onCampaignStatusChange}
+                        campaign={campaign}
                         compact
                     />
                     <div className="text-right">
@@ -134,7 +141,7 @@ export default function CrmListView({
             </div>
 
             {groupBy === 'none' ? (
-                <div>{partners.map(renderRow)}</div>
+                <div>{partners.map((row, i) => renderRow(row, i))}</div>
             ) : (
                 groups.map(([label, items]) => (
                     <div key={label}>
@@ -142,7 +149,7 @@ export default function CrmListView({
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</span>
                             <span className="text-xs font-bold text-slate-500">{items.length}</span>
                         </div>
-                        {items.map(renderRow)}
+                        {items.map((row, i) => renderRow(row, i))}
                     </div>
                 ))
             )}

@@ -5,6 +5,8 @@ import type { CrmPartner, CrmParseInfo, CrmPipelineStage } from '../types/crm';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { useCrmViewMode } from '../hooks/useCrmViewMode';
 import type { PromoStatus } from '../hooks/useStatusOverride';
+import type { CampaignTypeId } from '../config/campaignTypes';
+import { CAMPAIGN_TYPES, CAMPAIGN_TYPE_IDS, getCampaignConfig } from '../config/campaignTypes';
 import { crmCitiesMatch, normalizeCrmCity } from '../utils/crmData';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { computeTopCitiesByGmv, isTopPriorityCity } from '../config/crmCampaigns';
@@ -39,6 +41,7 @@ interface CrmViewProps {
     setCityFilter?: (city: string) => void;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange?: (partnerId: string, newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
 }
 
 const PIPELINE_TABS: { id: CrmPipelineStage; label: string; icon: string }[] = [
@@ -48,6 +51,15 @@ const PIPELINE_TABS: { id: CrmPipelineStage; label: string; icon: string }[] = [
     { id: 'negado', label: 'Negado', icon: 'block' },
     { id: 'ativo', label: 'Promo ativa', icon: 'check_circle' },
 ];
+
+const CAMPAIGN_FILTER_STORAGE_KEY = 'crm_campaign_filter_v1';
+
+/** Rótulo do estágio "ativo" conforme a campanha selecionada */
+const ACTIVE_STAGE_LABEL: Record<CampaignTypeId, string> = {
+    super_promos: 'Promo ativa',
+    ofertas_da_casa: 'Participando',
+    cupons_destaque: 'Cupom ativo',
+};
 
 export default function CrmView({
     partners,
@@ -64,6 +76,7 @@ export default function CrmView({
     setCityFilter: setCityFilterProp,
     onStatusChange,
     onPartnerStatusChange,
+    onCampaignStatusChange,
 }: CrmViewProps) {
     const { getNote, upsertNote, registerContact } = useCrmNotes();
     const { getStatus: getOfertasStatus, setStatus: setOfertasStatus } = useOfertasDaCasa();
@@ -75,15 +88,31 @@ export default function CrmView({
     const [internalCityFilter, setInternalCityFilter] = useState('');
     const cityFilter = setCityFilterProp !== undefined ? (cityFilterProp ?? '') : internalCityFilter;
     const setCityFilter = setCityFilterProp ?? setInternalCityFilter;
+    const [campaignFilter, setCampaignFilter] = useState<CampaignTypeId>(() => {
+        const saved = localStorage.getItem(CAMPAIGN_FILTER_STORAGE_KEY);
+        return saved && (CAMPAIGN_TYPE_IDS as string[]).includes(saved) ? (saved as CampaignTypeId) : 'super_promos';
+    });
     const [statusParceiroFilter, setStatusParceiroFilter] = useState<'all' | 'ativo' | 'pendente' | 'suspenso' | 'cancelado'>('all');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editNotes, setEditNotes] = useState('');
     const [editFollowUp, setEditFollowUp] = useState('');
     const [sortKey, setSortKey] = useState<'gmv' | 'followUp' | 'lastContact' | 'cidade'>('gmv');
-    const [localStatus, setLocalStatus] = useState<Record<string, PromoStatus>>({});
+    // Overrides otimistas de status por campanha (evita vazar status entre CRMs distintos)
+    const [localStatusByCampaign, setLocalStatusByCampaign] = useState<Record<string, Record<string, PromoStatus>>>({});
+    const localStatus = useMemo(
+        () => localStatusByCampaign[campaignFilter] ?? {},
+        [localStatusByCampaign, campaignFilter],
+    );
     const [highlightId, setHighlightId] = useState<string | null>(null);
 
-    const getPromoStatus = (row: CrmPartner) => getPromoStatusForPartner(row, localStatus);
+    const campaignConfig = getCampaignConfig(campaignFilter);
+    const getPromoStatus = (row: CrmPartner) => getPromoStatusForPartner(row, localStatus, campaignFilter);
+
+    const changeCampaign = (id: CampaignTypeId) => {
+        setCampaignFilter(id);
+        localStorage.setItem(CAMPAIGN_FILTER_STORAGE_KEY, id);
+        setStageFilter('all');
+    };
 
     const cities = useMemo(() => {
         const seen = new Map<string, string>();
@@ -120,12 +149,13 @@ export default function CrmView({
             searchQuery,
             stageFilter: viewMode === 'table' ? stageFilter : 'all',
             localStatus,
+            campaign: campaignFilter,
             crmCitiesMatch,
         }).filter(row => {
             if (statusParceiroFilter === 'all') return true;
             return normalizeParceiroContratoStatus(row.statusParceiro) === statusParceiroFilter;
         });
-    }, [partnersInCity, managerFilter, searchQuery, stageFilter, localStatus, statusParceiroFilter, viewMode]);
+    }, [partnersInCity, managerFilter, searchQuery, stageFilter, localStatus, campaignFilter, statusParceiroFilter, viewMode]);
 
     const stageFiltered = useMemo(() => {
         if (viewMode === 'table' || stageFilter === 'all') return baseFiltered;
@@ -163,19 +193,18 @@ export default function CrmView({
         const scope = managerFilter
             ? partnersInCity.filter(r => r.analista === managerFilter)
             : partnersInCity;
-        const active = scope.filter(r => getPromoStatus(r) === 'ativo' || r.hasPromoAtiva).length;
+        const active = scope.filter(r => getPromoStatus(r) === 'ativo').length;
         const pending = scope.filter(r => getPromoStatus(r) === 'aguardando').length;
         const offered = scope.filter(r => getPromoStatus(r) === 'ofertei').length;
         const denied = scope.filter(r => getPromoStatus(r) === 'negado').length;
-        const semCupom = scope.filter(r => !r.hasCupomAtivo).length;
         const overdue = scope.filter(r => {
             const note = getNote(r.partnerId);
             if (!note?.nextFollowUp) return false;
             const d = parseISO(note.nextFollowUp);
             return isPast(d) && !isToday(d);
         }).length;
-        return { active, pending, offered, denied, semCupom, overdue, total: scope.length, cities: cities.length };
-    }, [partnersInCity, managerFilter, getNote, cities.length, localStatus]);
+        return { active, pending, offered, denied, overdue, total: scope.length, cities: cities.length };
+    }, [partnersInCity, managerFilter, getNote, cities.length, localStatus, campaignFilter]);
 
     const stageCounts = useMemo(() => {
         const scope = managerFilter
@@ -189,10 +218,13 @@ export default function CrmView({
             if (s in counts) counts[s as CrmPipelineStage]++;
         });
         return counts;
-    }, [partnersInCity, managerFilter, localStatus]);
+    }, [partnersInCity, managerFilter, localStatus, campaignFilter]);
 
     const handlePartnerStatusChange = (partnerId: string, newStatus: PromoStatus) => {
-        setLocalStatus(prev => ({ ...prev, [partnerId]: newStatus }));
+        setLocalStatusByCampaign(prev => ({
+            ...prev,
+            [campaignFilter]: { ...(prev[campaignFilter] ?? {}), [partnerId]: newStatus },
+        }));
         onPartnerStatusChange?.(partnerId, newStatus);
     };
 
@@ -237,8 +269,12 @@ export default function CrmView({
                         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
                             CRM — Prospecção de Promoções
                         </h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            Pipeline multi-visão · Kanban, lista, calendário e dashboard com metas.
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 font-semibold text-primary">
+                                <span className="material-symbols-outlined text-[16px]">{campaignConfig.icon}</span>
+                                {campaignConfig.label}
+                            </span>
+                            <span className="text-slate-400">· Pipeline multi-visão · Kanban, lista, calendário e dashboard.</span>
                         </p>
                         {parseInfo && (
                             <p className="text-[11px] text-slate-400 mt-1">
@@ -285,6 +321,39 @@ export default function CrmView({
 
                 <CrmFollowUpAlerts alerts={followUpAlerts} onPartnerClick={handleAlertPartnerClick} />
 
+                <div className="flex flex-col gap-3 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="material-symbols-outlined text-primary text-[22px]">tune</span>
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Qual CRM você vai trabalhar?</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {CAMPAIGN_TYPES.map(c => {
+                            const selected = campaignFilter === c.id;
+                            return (
+                                <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => changeCampaign(c.id)}
+                                    className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                                        selected
+                                            ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-sm'
+                                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                                    }`}
+                                >
+                                    <span className={`material-symbols-outlined text-[22px] ${selected ? 'text-primary' : 'text-slate-400'}`}>{c.icon}</span>
+                                    <div className="min-w-0">
+                                        <p className={`text-sm font-bold truncate ${selected ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>{c.label}</p>
+                                        <p className="text-[11px] text-slate-400 truncate">
+                                            {c.id === 'super_promos' ? 'Promoção subsidiada' : c.id === 'ofertas_da_casa' ? 'Ofertas da casa' : 'Cupons de destaque'}
+                                        </p>
+                                    </div>
+                                    {selected && <span className="material-symbols-outlined text-primary text-[18px] ml-auto shrink-0">check_circle</span>}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="flex items-center gap-2 shrink-0">
                         <span className="material-symbols-outlined text-primary text-[22px]">location_city</span>
@@ -325,8 +394,8 @@ export default function CrmView({
                         { label: 'Parceiros ativos', value: kpis.total, icon: 'store', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
                         { label: 'Não ofertado', value: kpis.pending, icon: 'campaign', color: 'text-red-500 bg-red-50 dark:bg-red-900/20' },
                         { label: 'Aguardando retorno', value: kpis.offered, icon: 'hourglass_top', color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' },
-                        { label: 'Promo ativa', value: kpis.active, icon: 'check_circle', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
-                        { label: 'Sem cupom', value: kpis.semCupom, icon: 'confirmation_number', color: 'text-violet-500 bg-violet-50 dark:bg-violet-900/20' },
+                        { label: ACTIVE_STAGE_LABEL[campaignFilter], value: kpis.active, icon: 'check_circle', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+                        { label: 'Negado', value: kpis.denied, icon: 'block', color: 'text-slate-500 bg-slate-50 dark:bg-slate-800/40' },
                         { label: 'Follow-up atrasado', value: kpis.overdue, icon: 'event_busy', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
                     ].map(kpi => (
                         <div key={kpi.label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center gap-3">
@@ -376,7 +445,7 @@ export default function CrmView({
                                             }`}
                                         >
                                             <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                                            {tab.label}
+                                            {tab.id === 'ativo' ? ACTIVE_STAGE_LABEL[campaignFilter] : tab.label}
                                             <span className={`py-0.5 px-2 rounded-full text-xs ${stageFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>
                                                 {stageCounts[tab.id].toLocaleString('pt-BR')}
                                             </span>
@@ -389,16 +458,18 @@ export default function CrmView({
                 )}
 
                 {viewMode === 'dashboard' && (
-                    <CrmPipelineDashboard partners={dashboardPartners} localStatus={localStatus} />
+                    <CrmPipelineDashboard partners={dashboardPartners} localStatus={localStatus} campaign={campaignFilter} />
                 )}
 
                 {viewMode === 'kanban' && (
                     <CrmKanbanBoard
                         partners={stageFiltered}
                         localStatus={localStatus}
+                        campaign={campaignFilter}
                         getNote={getNote}
                         onStatusChange={onStatusChange}
                         onPartnerStatusChange={handlePartnerStatusChange}
+                        onCampaignStatusChange={onCampaignStatusChange}
                         onEditPartner={openEdit}
                         onRegisterContact={registerContact}
                     />
@@ -408,9 +479,11 @@ export default function CrmView({
                     <CrmListView
                         partners={sorted}
                         localStatus={localStatus}
+                        campaign={campaignFilter}
                         getNote={getNote}
                         onStatusChange={onStatusChange}
                         onPartnerStatusChange={handlePartnerStatusChange}
+                        onCampaignStatusChange={onCampaignStatusChange}
                         onEditPartner={openEdit}
                         onRegisterContact={registerContact}
                     />

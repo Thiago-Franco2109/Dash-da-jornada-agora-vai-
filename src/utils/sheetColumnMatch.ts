@@ -63,20 +63,22 @@ export function cellByPosition(
     index: number,
     names: string[] = [],
 ): string {
+    if (names.length > 0) {
+        const byName = findCellByNames(row, names);
+        if (byName) return byName;
+
+        const resolved = resolveSheetColumn(orderedHeaders, names);
+        if (resolved) {
+            const byResolved = cellText(row, resolved);
+            if (byResolved) return byResolved;
+        }
+    }
+
     const byColKey = cellText(row, `__col_${index}`);
     if (byColKey) return byColKey;
 
     const byIndex = row[String(index)] ?? row[index];
     if (byIndex != null && String(byIndex).trim()) return String(byIndex).trim();
-
-    const byName = findCellByNames(row, names);
-    if (byName) return byName;
-
-    const resolved = resolveSheetColumn(orderedHeaders, names);
-    if (resolved) {
-        const byResolved = cellText(row, resolved);
-        if (byResolved) return byResolved;
-    }
 
     const headerAt = orderedHeaders[index]?.trim();
     if (headerAt) {

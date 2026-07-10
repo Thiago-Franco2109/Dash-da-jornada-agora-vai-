@@ -116,9 +116,9 @@ export default function CrmCalendarView({ partners, getNote, onEditPartner }: Cr
                                 </span>
                                 {dayEvents.length > 0 && (
                                     <div className="mt-1 space-y-0.5">
-                                        {dayEvents.slice(0, 2).map(ev => (
+                                        {dayEvents.slice(0, 2).map((ev, i) => (
                                             <div
-                                                key={ev.partner.partnerId}
+                                                key={`${ev.partner.partnerId}::${i}`}
                                                 className="text-[9px] font-medium truncate px-1 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200"
                                             >
                                                 {ev.partner.estabelecimento}
@@ -145,8 +145,8 @@ export default function CrmCalendarView({ partners, getNote, onEditPartner }: Cr
                     <p className="text-xs text-slate-500">Nenhum follow-up neste dia.</p>
                 )}
                 <ul className="space-y-2">
-                    {selectedEvents.map(ev => (
-                        <li key={ev.partner.partnerId}>
+                    {selectedEvents.map((ev, i) => (
+                        <li key={`${ev.partner.partnerId}::${i}`}>
                             <button
                                 type="button"
                                 onClick={() => onEditPartner(ev.partner.partnerId)}

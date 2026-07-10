@@ -535,6 +535,7 @@ function App() {
             cityFilter={cityFilter}
             setCityFilter={setCityFilter}
             onStatusChange={handleStatusChange}
+            onCampaignStatusChange={handleCampaignStatusChange}
           />
         ) : currentView === 'pedido_mensal' ? (
           <PedidoMensalView

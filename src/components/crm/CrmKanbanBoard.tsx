@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { CrmPartner } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { CrmPartnerNote } from '../../types/crm';
+import type { CampaignTypeId } from '../../config/campaignTypes';
 import { KANBAN_STAGES, getPromoStatusForPartner } from '../../utils/crmPipeline';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv } from './crmShared';
 import { isPast, isToday, parseISO } from 'date-fns';
@@ -9,9 +10,11 @@ import { isPast, isToday, parseISO } from 'date-fns';
 interface CrmKanbanBoardProps {
     partners: CrmPartner[];
     localStatus: Record<string, PromoStatus>;
+    campaign?: CampaignTypeId;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     onEditPartner: (partnerId: string) => void;
     onRegisterContact: (partnerId: string) => void;
 }
@@ -31,9 +34,11 @@ function followUpBadge(iso: string | null | undefined) {
 export default function CrmKanbanBoard({
     partners,
     localStatus,
+    campaign = 'super_promos',
     getNote,
     onStatusChange,
     onPartnerStatusChange,
+    onCampaignStatusChange,
     onEditPartner,
     onRegisterContact,
 }: CrmKanbanBoardProps) {
@@ -45,7 +50,7 @@ export default function CrmKanbanBoard({
         for (const stage of KANBAN_STAGES) map.set(stage.id, []);
 
         for (const row of partners) {
-            const status = getPromoStatusForPartner(row, localStatus);
+            const status = getPromoStatusForPartner(row, localStatus, campaign);
             if (map.has(status)) map.get(status)!.push(row);
             else map.get('aguardando')!.push(row);
         }
@@ -54,11 +59,12 @@ export default function CrmKanbanBoard({
             ...stage,
             cards: map.get(stage.id) ?? [],
         }));
-    }, [partners, localStatus]);
+    }, [partners, localStatus, campaign]);
 
     const handleDrop = (stage: PromoStatus) => {
         if (!draggingId) return;
-        onStatusChange?.(draggingId, 'promo_status_override', stage);
+        if (onCampaignStatusChange) onCampaignStatusChange(draggingId, campaign, stage);
+        else onStatusChange?.(draggingId, 'promo_status_override', stage);
         onPartnerStatusChange(draggingId, stage);
         setDraggingId(null);
         setDropTarget(null);
@@ -93,13 +99,13 @@ export default function CrmKanbanBoard({
                     </div>
 
                     <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-320px)]">
-                        {col.cards.map(row => {
+                        {col.cards.map((row, idx) => {
                             const note = getNote(row.partnerId);
                             const fbClass = followUpBadge(note?.nextFollowUp);
 
                             return (
                                 <div
-                                    key={row.partnerId}
+                                    key={`${row.partnerId}::${row.cidade}::${idx}`}
                                     draggable
                                     onDragStart={() => setDraggingId(row.partnerId)}
                                     onDragEnd={() => {
@@ -135,9 +141,11 @@ export default function CrmKanbanBoard({
                                     <div className="flex items-center justify-between gap-1 pt-2 border-t border-slate-100 dark:border-slate-800">
                                         <StatusDropdown
                                             partnerId={row.partnerId}
-                                            currentStatus={getPromoStatusForPartner(row, localStatus)}
+                                            currentStatus={getPromoStatusForPartner(row, localStatus, campaign)}
                                             onStatusChange={onStatusChange}
                                             onPartnerStatusChange={onPartnerStatusChange}
+                                            onCampaignStatusChange={onCampaignStatusChange}
+                                            campaign={campaign}
                                             compact
                                         />
                                         <div className="flex gap-0.5">

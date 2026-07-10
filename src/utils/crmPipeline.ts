@@ -2,6 +2,7 @@ import { differenceInCalendarDays, isPast, isToday, parseISO, startOfDay } from 
 import type { CrmPartner, CrmPartnerNote, CrmPipelineStage } from '../types/crm';
 import type { CrmFollowUpAlert, CrmGoal, CrmGoalMetric, CrmPipelineAggregate, CrmViewMode } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
+import type { CampaignTypeId } from '../config/campaignTypes';
 import { normalizeCrmCity } from './crmData';
 import { isParceiroContratoAtivo } from './parceirosSheet';
 
@@ -23,8 +24,19 @@ export const KANBAN_STAGES: { id: PromoStatus; label: string; icon: string; colo
 export function getPromoStatusForPartner(
     row: CrmPartner,
     localStatus: Record<string, PromoStatus>,
+    campaign: CampaignTypeId = 'super_promos',
 ): PromoStatus {
-    return localStatus[row.partnerId] ?? row.promoStatus;
+    const local = localStatus[row.partnerId];
+    if (local) return local;
+
+    const campaignStatus = row.campaigns?.[campaign]?.status;
+    if (campaignStatus) return campaignStatus;
+
+    // Fallback para dados legados/cache sem o campo `campaigns`.
+    // NUNCA cruzar campanhas: cada uma usa seu próprio status (ou default neutro).
+    if (campaign === 'super_promos') return row.promoStatus ?? 'aguardando';
+    if (campaign === 'cupons_destaque') return row.cupomStatus ?? 'aguardando';
+    return 'aguardando';
 }
 
 export function filterActiveCrmPartners(partners: CrmPartner[]): CrmPartner[] {
@@ -39,10 +51,11 @@ export function filterCrmPartners(
         searchQuery?: string;
         stageFilter?: CrmPipelineStage;
         localStatus?: Record<string, PromoStatus>;
+        campaign?: CampaignTypeId;
         crmCitiesMatch?: (a: string, b: string) => boolean;
     },
 ): CrmPartner[] {
-    const { cityFilter, managerFilter, searchQuery, stageFilter, localStatus = {}, crmCitiesMatch: matchCity } = opts;
+    const { cityFilter, managerFilter, searchQuery, stageFilter, localStatus = {}, campaign = 'super_promos', crmCitiesMatch: matchCity } = opts;
 
     return partners.filter(row => {
         if (cityFilter && matchCity && !matchCity(row.cidade, cityFilter)) return false;
@@ -51,7 +64,7 @@ export function filterCrmPartners(
             const q = searchQuery.toLowerCase();
             if (!row.estabelecimento.toLowerCase().includes(q) && !row.cidade.toLowerCase().includes(q)) return false;
         }
-        const promoStatus = getPromoStatusForPartner(row, localStatus);
+        const promoStatus = getPromoStatusForPartner(row, localStatus, campaign);
         if (stageFilter && stageFilter !== 'all' && promoStatus !== stageFilter) return false;
         return true;
     });
@@ -106,6 +119,7 @@ export function aggregatePipeline(
     partners: CrmPartner[],
     groupBy: 'manager' | 'city',
     localStatus: Record<string, PromoStatus> = {},
+    campaign: CampaignTypeId = 'super_promos',
 ): CrmPipelineAggregate[] {
     const map = new Map<string, CrmPipelineAggregate>();
 
@@ -133,7 +147,7 @@ export function aggregatePipeline(
         const agg = map.get(key)!;
         agg.total++;
 
-        const status = getPromoStatusForPartner(row, localStatus);
+        const status = getPromoStatusForPartner(row, localStatus, campaign);
         if (status in agg) agg[status as keyof Pick<CrmPipelineAggregate, 'aguardando' | 'ofertei' | 'negado' | 'ativo' | 'inativo'>]++;
         if (!row.hasCupomAtivo) agg.semCupom++;
     }
