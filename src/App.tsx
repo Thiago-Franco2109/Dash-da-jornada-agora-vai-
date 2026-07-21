@@ -71,6 +71,7 @@ function App() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
   const [partnerSearchOpen, setPartnerSearchOpen] = useState(false);
+  const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
 
   const activeSources = isCD ? CD_DATA_SOURCES : PARTNER_DATA_SOURCES;
   const activeCacheKey = isCD ? CACHE_KEYS.cd_novos : CACHE_KEYS.marketplace;
@@ -204,7 +205,7 @@ function App() {
 
     const success = await updateStatus(partnerId, field, newStatus);
     if (!success) {
-        console.error('Falha ao salvar o novo status no Supabase');
+        setStatusSaveError('Não foi possível salvar o novo status. Verifique sua conexão e tente novamente.');
     } else if (isIndicadorView) {
         refreshCrmData();
     }
@@ -236,6 +237,13 @@ function App() {
       setCurrentView('dashboard');
     }
   }, [mode]);
+
+  // Some o aviso de falha ao salvar status depois de alguns segundos
+  useEffect(() => {
+    if (!statusSaveError) return;
+    const timer = setTimeout(() => setStatusSaveError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [statusSaveError]);
 
   // Failsafe: se houver erro de autenticação em qualquer hook, força logout
   useEffect(() => {
@@ -842,6 +850,22 @@ function App() {
         onSelect={navigateToPartner}
         isLoading={partnerSearchOpen && (isCD ? loadingDesempenho : loadingCrm) && searchablePartners.length === 0}
       />
+
+      {statusSaveError && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 p-4 max-w-sm bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-500/20 rounded-xl text-red-800 dark:text-red-400 shadow-lg">
+          <span className="material-symbols-outlined shrink-0">error</span>
+          <div>
+            <p className="text-sm font-semibold">Erro ao salvar status</p>
+            <p className="text-sm opacity-90">{statusSaveError}</p>
+          </div>
+          <button
+            onClick={() => setStatusSaveError(null)}
+            className="material-symbols-outlined text-base opacity-60 hover:opacity-100 shrink-0"
+          >
+            close
+          </button>
+        </div>
+      )}
     </div>
   );
 }

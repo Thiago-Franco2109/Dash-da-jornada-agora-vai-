@@ -140,17 +140,26 @@ export function useDataSync({
             console.error("Data sync failed:", err);
             setError(err.message || "Failed to synchronize data.");
 
-            if (hasCache) {
-                setData(cached!.data);
-                setLastSyncTime(cached!.lastSyncTime);
-                setIsUsingCache(true);
-            } else {
-                const fallback = loadFromCache(cacheKey);
-                if (fallback) {
-                    setData(fallback.data);
-                    setLastSyncTime(fallback.lastSyncTime);
-                    setIsUsingCache(true);
+            const fallback = hasCache ? cached : loadFromCache(cacheKey);
+            if (fallback?.data?.length) {
+                let fallbackData = fallback.data;
+                // A planilha pode falhar (Gateway instável) mesmo com o Supabase saudável —
+                // busca overrides/relevância direto para não exibir status desatualizado.
+                if (!skipSideData) {
+                    try {
+                        const [fetchedRelevanceMap, fetchedStatusOverridesMap] = await Promise.all([
+                            fetchRelevanceMap().catch(() => ({} as Record<string, number>)),
+                            fetchStatusOverridesMap().catch(() => ({} as Record<string, { promo: string; cupom: string }>)),
+                        ]);
+                        fallbackData = mergeRelevanceMapIntoRows(fallbackData, fetchedRelevanceMap);
+                        fallbackData = mergeStatusOverridesIntoRows(fallbackData, fetchedStatusOverridesMap);
+                    } catch (overrideErr) {
+                        console.warn('[useDataSync] Falha ao mesclar overrides no fallback de cache.', overrideErr);
+                    }
                 }
+                setData(fallbackData);
+                setLastSyncTime(fallback.lastSyncTime);
+                setIsUsingCache(true);
             }
         } finally {
             setIsLoading(false);
