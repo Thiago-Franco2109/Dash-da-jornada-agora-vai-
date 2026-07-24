@@ -650,7 +650,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
 
                                 return (
                                     <tr
-                                        key={`${row.estabelecimento}-${row.cidade}`}
+                                        key={row.estab_id ? `id:${row.estab_id}` : `${row.estabelecimento}-${row.cidade}-${index}`}
                                         className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}
                                         onClick={() => handleRowClick(row)}
                                     >

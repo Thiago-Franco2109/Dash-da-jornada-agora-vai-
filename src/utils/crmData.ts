@@ -378,7 +378,9 @@ export function parseCrmPartners(
     const overrides = options?.statusOverrides ?? {};
 
     const partners: CrmPartner[] = [];
+    const seenEstabIds = new Set<string>();
     let skipped = 0;
+    let duplicates = 0;
     let parceirosMatched = 0;
 
     for (const row of parseRows) {
@@ -390,6 +392,15 @@ export function parseCrmPartners(
 
         const lookupKey = buildPartnerLookupKey(parsed.estabId);
         const partnerId = parsed.estabId;
+
+        // Deduplica: a planilha INDICADOR às vezes tem linhas repetidas para o
+        // mesmo parceiro. Duplicatas geram keys de React iguais (estabelecimento
+        // -cidade) e quebram a reconciliação ao filtrar. Mantém a 1ª ocorrência.
+        if (seenEstabIds.has(partnerId)) {
+            duplicates++;
+            continue;
+        }
+        seenEstabIds.add(partnerId);
         const override = overrides[partnerId] ?? overrides[parsed.estabelecimento];
 
         const promoCounts = parseAprovAguarCell(parsed.promoRaw);
@@ -449,6 +460,7 @@ export function parseCrmPartners(
             linhas: parseRows.length,
             parceiros: partners.length,
             ignoradas: skipped,
+            duplicadas: duplicates,
             amostra: partners[0]?.estabelecimento,
             colunas: parseHeaders.slice(0, 8),
         });
