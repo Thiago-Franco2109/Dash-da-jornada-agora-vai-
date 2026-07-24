@@ -53,6 +53,8 @@ export type PerformanceRow = {
     commercial_relevance?: number;
     /** INDICADOR col. G+ — rótulo do mês mais recente (ex. jun./26) */
     pedidos_mes_label?: string;
+    /** Valor numérico (com sinal) do GMV do mês — usado para ORDENAR a coluna. */
+    pedidos_mes_value?: number;
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -426,8 +428,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 </th>
                                 {isIndicador ? (
                                     <>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('total_pedidos')}>
-                                            {pedidosColLabel} {renderSortIcon('total_pedidos')}
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('pedidos_mes_value')}>
+                                            {pedidosColLabel} {renderSortIcon('pedidos_mes_value')}
                                         </th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                             Evolução

@@ -382,6 +382,10 @@ function App() {
       } else if (key === 'desempenho' && typeof aVal === 'string') {
         aVal = parseFloat((aVal as string).replace('%', ''));
         bVal = parseFloat((bVal as string).replace('%', ''));
+      } else if (key === 'pedidos_mes_value') {
+        // GMV do mês (coluna JUN./26) — garante comparação numérica
+        aVal = Number(aVal ?? 0);
+        bVal = Number(bVal ?? 0);
       }
 
       if (aVal < bVal) return direction === 'asc' ? -1 : 1;

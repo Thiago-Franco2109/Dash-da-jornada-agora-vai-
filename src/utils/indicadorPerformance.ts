@@ -44,6 +44,21 @@ function parsePedidosMesValue(partner: CrmPartner): number {
     return Number.isNaN(n) ? 0 : Math.round(n);
 }
 
+/** GMV numérico do mês PRESERVANDO o sinal (para ordenação da coluna). */
+function pedidosMesValueSigned(partner: CrmPartner): number {
+    if (partner.indiceGmv != null) return partner.indiceGmv; // já numérico (>0)
+    const raw = partner.indiceGmvRaw?.trim();
+    if (!raw || raw === '—') return 0;
+    const negative = raw.includes('-');
+    const digits = raw.replace(/[^\d.,]/g, '');
+    if (!digits) return 0;
+    const n = digits.includes(',')
+        ? parseFloat(digits.replace(/\./g, '').replace(',', '.'))
+        : parseFloat(digits);
+    if (Number.isNaN(n)) return 0;
+    return negative ? -n : n;
+}
+
 export function crmPartnerToEnrichedRow(
     partner: CrmPartner,
     relevanceMap?: Record<string, number>,
@@ -72,6 +87,7 @@ export function crmPartnerToEnrichedRow(
         commercial_relevance: relevance,
         pedidos_mes_label: partner.gmvMesLabel,
         pedidos_mes_raw: partner.indiceGmvRaw,
+        pedidos_mes_value: pedidosMesValueSigned(partner),
         gmv_mensal: partner.gmvMensal,
         dias_desde_lancamento: 0,
         total_pedidos: pedidosMes,
