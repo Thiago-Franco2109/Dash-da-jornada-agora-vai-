@@ -146,7 +146,7 @@ export default function CDDesempenhoView({
     const mrrMetrics = useMemo(() => calcularMRRMetrics(filteredData), [filteredData]);
 
     return (
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700">
+        <div className={`flex-1 min-w-0 min-h-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700 ${isChurnPreset ? 'overflow-y-auto' : 'flex flex-col'}`}>
             <div className="shrink-0 px-6 py-6 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
@@ -403,7 +403,7 @@ export default function CDDesempenhoView({
                     </button>
                 </div>
             ) : (
-                <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+                <div className={isChurnPreset ? '' : 'flex flex-1 flex-col min-h-0 overflow-hidden'}>
                     <PerformanceTable
                         data={filteredData}
                         sortConfig={sortConfig}
@@ -413,6 +413,7 @@ export default function CDDesempenhoView({
                         onStatusChange={onStatusChange}
                         variant={isIndicador ? 'indicador' : isMarketplace ? 'journey' : 'desempenho'}
                         pedidosMesHeader={pedidosMesHeader}
+                        fillHeight={!isChurnPreset}
                     />
                 </div>
             )}

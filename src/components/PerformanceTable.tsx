@@ -84,6 +84,9 @@ interface PerformanceTableProps {
     variant?: 'journey' | 'desempenho' | 'indicador';
     /** Cabeçalho da coluna de pedidos mensais (ex. jun./26) */
     pedidosMesHeader?: string;
+    /** true (padrão): tabela preenche altura e rola internamente.
+     *  false: cresce natural e rola com a página (usado no scroll único do churn). */
+    fillHeight?: boolean;
 }
 
 type ActiveDropdown = { rowIndex: number; field: CampaignTypeId } | null;
@@ -285,7 +288,7 @@ function Sparkline({
 // ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, variant = 'journey', pedidosMesHeader }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, variant = 'journey', pedidosMesHeader, fillHeight = true }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
     const isIndicador = variant === 'indicador';
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
@@ -394,8 +397,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     };
 
     return (
-        <div className="flex flex-1 flex-col min-h-0 px-6 pb-6 pt-2">
-            <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div className={`${fillHeight ? 'flex flex-1 flex-col min-h-0' : ''} px-6 pb-6 pt-2`}>
+            <div className={`${fillHeight ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'} rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm`}>
                 <table className={`performance-table min-w-full divide-y divide-slate-200 dark:divide-slate-700 ${isIndicador ? 'performance-table--compact' : ''}`}>
                     <thead className="bg-slate-50 dark:bg-slate-800">
                             <tr>

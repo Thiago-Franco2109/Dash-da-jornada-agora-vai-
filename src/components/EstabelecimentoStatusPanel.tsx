@@ -153,7 +153,7 @@ export default function EstabelecimentoStatusPanel() {
                                             {inativos.counts.warm} recuperáveis (pararam há {inativos.windowDays}–{inativos.warmWindowDays} dias) ·
                                             {' '}{inativos.counts.cold} frios (&gt; {inativos.warmWindowDays} dias). Ordenados por prioridade.
                                         </p>
-                                        <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/60">
+                                        <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/60">
                                             {inativos.data.map(p => {
                                                 const warm = !p.recencia.startsWith('>');
                                                 return (
