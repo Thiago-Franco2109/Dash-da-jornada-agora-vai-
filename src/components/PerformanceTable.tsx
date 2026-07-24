@@ -82,6 +82,8 @@ interface PerformanceTableProps {
     onCampaignStatusChange?: CampaignStatusChangeHandler;
     /** @deprecated use onCampaignStatusChange */
     onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatusValue) => void;
+    /** Marca a relevância (0-5) de um parceiro inline. 0 = limpar. */
+    onRelevanceChange?: (partnerId: string, score: number) => void;
     /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD; indicador = carteira INDICADOR_FORMATADO */
     variant?: 'journey' | 'desempenho' | 'indicador';
     /** Cabeçalho da coluna de pedidos mensais (ex. jun./26) */
@@ -288,9 +290,103 @@ function Sparkline({
 }
 
 // ──────────────────────────────────────────────────────────────
+// RelevanceCell — estrela clicável que abre um seletor 1-5 (+ limpar)
+// para marcar a relevância do parceiro sem abrir a página dele
+// ──────────────────────────────────────────────────────────────
+function RelevanceCell({
+    partnerId,
+    current,
+    onChange,
+    rowIndex,
+    totalRows,
+}: {
+    partnerId: string;
+    current?: number;
+    onChange?: (partnerId: string, score: number) => void;
+    rowIndex: number;
+    totalRows: number;
+}) {
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const [open, setOpen] = useState(false);
+    const canEdit = Boolean(onChange && partnerId);
+
+    useEffect(() => {
+        if (!open) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [open]);
+
+    const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
+
+    const select = (score: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        onChange?.(partnerId, score);
+        setOpen(false);
+    };
+
+    const toggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!canEdit) return;
+        setOpen(o => !o);
+    };
+
+    return (
+        <div ref={wrapperRef} className="relative inline-block text-left">
+            <button
+                type="button"
+                onClick={toggle}
+                disabled={!canEdit}
+                title={canEdit ? 'Clique para marcar a relevância' : 'Relevância'}
+                className={`inline-flex items-center justify-center gap-0.5 focus:outline-none ${canEdit ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
+            >
+                {current ? (
+                    <span className="flex items-center gap-0.5 text-amber-500">
+                        <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>grade</span>
+                        <span className="font-bold text-xs">{current}</span>
+                    </span>
+                ) : (
+                    <span className="text-slate-300 dark:text-slate-700 material-symbols-outlined text-[16px]">grade</span>
+                )}
+            </button>
+
+            {open && (
+                <div
+                    className={`absolute z-50 left-1/2 -translate-x-1/2 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'} rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 p-1.5`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map(n => (
+                            <button
+                                key={n}
+                                type="button"
+                                onClick={(e) => select(n, e)}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center transition-colors ${current === n ? 'bg-amber-500 text-white' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30'}`}
+                            >
+                                {n}
+                            </button>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={(e) => select(0, e)}
+                            title="Limpar"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">close</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, variant = 'journey', pedidosMesHeader, fillHeight = true }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, onRelevanceChange, variant = 'journey', pedidosMesHeader, fillHeight = true }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
     const isIndicador = variant === 'indicador';
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
@@ -604,15 +700,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             </>
                                         )}
                                         {!isDesempenho && (
-                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                                {row.commercial_relevance ? (
-                                                    <div className="flex items-center justify-center gap-0.5 text-amber-500">
-                                                        <span className="material-symbols-outlined text-[16px] fill-1" style={{ fontVariationSettings: "'FILL' 1" }}>grade</span>
-                                                        <span className="font-bold text-xs">{row.commercial_relevance}</span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-slate-300 dark:text-slate-700 material-symbols-outlined text-[16px]">grade</span>
-                                                )}
+                                            <td className="whitespace-nowrap px-3 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                <RelevanceCell
+                                                    partnerId={row.estab_id ?? ''}
+                                                    current={row.commercial_relevance}
+                                                    onChange={onRelevanceChange}
+                                                    rowIndex={index}
+                                                    totalRows={data.length}
+                                                />
                                             </td>
                                         )}
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">

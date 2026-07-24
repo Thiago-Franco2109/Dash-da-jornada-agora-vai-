@@ -26,6 +26,8 @@ interface AllPartnersViewProps {
     onCampaignStatusChange?: CampaignStatusChangeHandler;
     /** @deprecated use onCampaignStatusChange */
     onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => void;
+    /** Marca a relevância (0-5) de um parceiro inline, sem abrir a página. */
+    onRelevanceChange?: (partnerId: string, score: number) => void;
     /** journey = colunas da jornada; desempenho = semanas estendidas; indicador = INDICADOR_FORMATADO */
     tableVariant?: 'journey' | 'desempenho' | 'indicador';
     dataSourceLabel?: string;
@@ -52,6 +54,7 @@ export default function AllPartnersView({
     onRowClick,
     onCampaignStatusChange,
     onStatusChange,
+    onRelevanceChange,
     tableVariant = 'indicador',
     dataSourceLabel = 'INDICADOR_FORMATADO',
     pedidosMesHeader,
@@ -191,6 +194,7 @@ export default function AllPartnersView({
                         onRowClick={onRowClick}
                         onCampaignStatusChange={onCampaignStatusChange}
                         onStatusChange={onStatusChange}
+                        onRelevanceChange={onRelevanceChange}
                         variant={tableVariant}
                         pedidosMesHeader={pedidosMesHeader}
                     />

@@ -159,6 +159,7 @@ function App() {
     lastSyncTime: crmLastSync,
     isUsingCache: crmUsingCache,
     refreshData: refreshCrmData,
+    updateRelevance: updateCrmRelevance,
   } = useCrmData({ enabled: crmDataEnabled });
 
   const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
@@ -412,6 +413,11 @@ function App() {
     ? (activeEnrichedPool.find(r => r.estabelecimento === selectedRow.estabelecimento) ?? selectedRow)
     : null;
 
+  const handleRelevanceChange = (partnerId: string, score: number) => {
+    if (!partnerId) return;
+    void updateCrmRelevance(partnerId, score);
+  };
+
   const handleRowClick = (row: EnrichedPerformanceRow) => {
     const latest = activeEnrichedPool.find(r => r.estabelecimento === row.estabelecimento) ?? row;
     setSelectedRow(latest);
@@ -609,6 +615,7 @@ function App() {
               onRowClick={handleRowClick}
               onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
+              onRelevanceChange={handleRelevanceChange}
               dataSourceLabel="INDICADOR_FORMATADO"
               pedidosMesHeader={indicadorPedidosMesHeader}
             />

@@ -1052,6 +1052,34 @@ export async function fetchRelevanceMap(): Promise<Record<string, number>> {
 }
 
 /**
+ * Salva (upsert) a relevância de um parceiro no Supabase.
+ * score 0 = limpar (remove a marcação). Retorna sucesso/erro.
+ */
+export async function saveRelevanceScore(
+    partnerId: string,
+    score: number,
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const id = String(partnerId);
+        // usa upsert também para "limpar" (score 0) — a RLS da chave pública
+        // pode bloquear DELETE, então armazenamos 0 (renderiza como vazio).
+        const safeScore = score <= 0 ? 0 : score;
+        const { error } = await supabase
+            .from('partner_relevance')
+            .upsert(
+                { partner_id: id, relevance_score: safeScore, updated_at: new Date().toISOString() },
+                { onConflict: 'partner_id' },
+            );
+        if (error) throw error;
+        return { success: true };
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Erro ao salvar relevância';
+        console.error('Erro ao salvar relevância no Supabase', err);
+        return { success: false, error: message };
+    }
+}
+
+/**
  * Mescla o mapa de relevância nas linhas de performance
  */
 export function mergeRelevanceMapIntoRows(rows: PerformanceRow[], map: Record<string, number>): PerformanceRow[] {

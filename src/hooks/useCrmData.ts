@@ -16,6 +16,7 @@ import {
     fetchPartnerLogoMap,
     fetchStatusOverridesMap,
     fetchRelevanceMap,
+    saveRelevanceScore,
     saveGatewaySheetCache,
     loadGatewaySheetCache,
     CACHE_KEYS,
@@ -269,6 +270,29 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
         performSync();
     }, [performSync, enabled]);
 
+    const updateRelevance = useCallback(async (partnerId: string | number, score: number) => {
+        const id = String(partnerId);
+        const previous = relevanceMap[id];
+        // atualização otimista
+        setRelevanceMap(prev => {
+            const next = { ...prev };
+            if (score <= 0) delete next[id];
+            else next[id] = score;
+            return next;
+        });
+        const res = await saveRelevanceScore(id, score);
+        if (!res.success) {
+            // reverte em caso de falha
+            setRelevanceMap(prev => {
+                const next = { ...prev };
+                if (previous == null) delete next[id];
+                else next[id] = previous;
+                return next;
+            });
+        }
+        return res;
+    }, [relevanceMap]);
+
     return {
         partners,
         parseInfo,
@@ -279,5 +303,6 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
         lastSyncTime,
         isUsingCache,
         refreshData: performSync,
+        updateRelevance,
     };
 }
