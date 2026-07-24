@@ -126,6 +126,56 @@ export function useEstabelecimentoSummary() {
     return { summary, loading, error, refetch: () => load(true) };
 }
 
+// ─── Atividade: ativos com pedido numa janela de N dias ──────────────────
+export interface EstabelecimentoActivity {
+    windowDays: number;
+    totalAtivos: number;
+    comPedido: number;
+    semPedido: number;
+}
+
+const _activityCache: Record<number, EstabelecimentoActivity> = {};
+
+/**
+ * Quantos parceiros ativos (delivery=1) receberam pedido nos últimos N dias.
+ * Uso: const { activity, loading, error, refetch } = useEstabelecimentoActivity(28);
+ */
+export function useEstabelecimentoActivity(windowDays = 28) {
+    const [activity, setActivity] = useState<EstabelecimentoActivity | null>(
+        _activityCache[windowDays] ?? null,
+    );
+    const [loading, setLoading] = useState(!_activityCache[windowDays]);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = useCallback((force = false) => {
+        if (!force && _activityCache[windowDays]) {
+            setActivity(_activityCache[windowDays]);
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        fetchFn<EstabelecimentoActivity>(`?activity=${windowDays}`)
+            .then(res => {
+                _activityCache[windowDays] = res;
+                setActivity(res);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.warn('[useEstabelecimentoActivity] falha:', err);
+                setError(err.message);
+                setLoading(false);
+            });
+    }, [windowDays]);
+
+    useEffect(() => {
+        if (_activityCache[windowDays]) return;
+        load();
+    }, [load, windowDays]);
+
+    return { activity, loading, error, refetch: () => load(true) };
+}
+
 /** Monta a query string a partir dos filtros. */
 function buildListQuery(params: EstabelecimentoListParams): string {
     const q = new URLSearchParams();

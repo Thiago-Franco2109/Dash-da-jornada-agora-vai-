@@ -89,6 +89,38 @@ export const handler: Handler = async (event) => {
             };
         }
 
+        // ---- modo atividade: ativos (delivery=1) com pedido numa janela ----
+        const activityRaw = q.activity?.trim();
+        if (activityRaw != null && activityRaw !== '') {
+            const windowDays = Math.min(Math.max(parseInt(activityRaw, 10) || 28, 1), 365);
+            // windowDays é inteiro sanitizado → seguro interpolar no INTERVAL
+            const [rows] = await connection.query<RowDataPacket[]>(
+                `SELECT
+                    (SELECT COUNT(*) FROM estabelecimento WHERE delivery = 1) AS totalAtivos,
+                    (SELECT COUNT(DISTINCT p.estabelecimento_id)
+                       FROM pedido p
+                       JOIN estabelecimento e ON e.id = p.estabelecimento_id
+                       WHERE e.delivery = 1
+                         AND p.data >= NOW() - INTERVAL ${windowDays} DAY
+                    ) AS comPedido`,
+            );
+            const totalAtivos = Number(rows[0]?.totalAtivos ?? 0);
+            const comPedido = Number(rows[0]?.comPedido ?? 0);
+            return {
+                statusCode: 200,
+                headers: jsonHeaders,
+                body: JSON.stringify({
+                    ok: true,
+                    mode: 'activity',
+                    windowDays,
+                    totalAtivos,
+                    comPedido,
+                    semPedido: totalAtivos - comPedido,
+                    elapsedMs: Date.now() - started,
+                }),
+            };
+        }
+
         // ---- modo lista: parceiros com campos-chave ----
         const where: string[] = [];
         const params: (string | number)[] = [];

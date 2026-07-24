@@ -38,6 +38,39 @@ por `estabelecimento` → `pedido` → `fatura`/`parcela_fatura`.
 
 ---
 
+## 🔐 Atualização 24/07/2026 (parte 2) — Auth da function + painel na tela Churn
+
+Primeira function de negócio no ar e integrada ao front:
+
+- **`netlify/functions/estabelecimento.ts`** — read-only, modos `?summary=1`
+  (contagem por status = gabarito de churn) e lista (`?status=`, `?search=`,
+  `?limit`/`?offset`). Mapa: `1=ativo 2=cancelado 4=suspenso 5=desistência`.
+- **Front:** `src/hooks/useEstabelecimentos.ts` +
+  `src/components/EstabelecimentoStatusPanel.tsx`, renderizado **só na tela
+  Churn** (`CDDesempenhoView`, preset churn). Não toca no `PerformanceTable`.
+- Números atuais do banco: 1.387 ativos · 5.151 cancelados · 200 suspensos ·
+  276 desistências (26.356 cadastros no total).
+
+### ⚠️ Problema de auth descoberto (importante)
+O login do app é **por cookie cross-domain do Gateway** (`*.railway.app`).
+Esse cookie **não é enviado** para a function (domínio `*.netlify.app`), e o
+`/auth/me` do Gateway **não devolve token** (só `userId/email/name`). Ou seja,
+uma Netlify Function **não consegue validar o login sozinha** hoje.
+
+**Solução atual = STOPGAP (proteção fraca):** a function valida `Referer/Origin`
+contra uma allowlist (`checkOrigin` em `_shared/auth.ts`; env
+`ALLOWED_ORIGIN_HOSTS` ou default do site). Isso é **falsificável** — não é
+segurança real. O helper `verifyAuth` (via `/auth/me`) ficou no código para uso
+futuro.
+
+**Auth definitiva — decidir depois (2 caminhos):**
+1. **Gateway** — pedir a quem administra (Railway) para expor um token no
+   `/auth/me` ou um `/auth/token`; o front manda Bearer e a function valida.
+2. **Supabase Auth** — usar o Supabase (já no stack) para emitir um JWT que a
+   function valida com o segredo do projeto (env). Autocontido, sem Gateway.
+
+---
+
 ## 0. Como retomar no PC da empresa
 
 ```bash

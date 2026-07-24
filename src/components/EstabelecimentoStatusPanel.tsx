@@ -1,4 +1,6 @@
-import { useEstabelecimentoSummary, type EstabelecimentoStatusCount } from '../hooks/useEstabelecimentos';
+import { useEstabelecimentoSummary, useEstabelecimentoActivity, type EstabelecimentoStatusCount } from '../hooks/useEstabelecimentos';
+
+const ACTIVITY_WINDOW_DAYS = 28;
 
 /**
  * Painel do "gabarito de churn" — distribuição real de status de contrato
@@ -20,8 +22,14 @@ function countFor(byStatus: EstabelecimentoStatusCount[], key: string): number {
     return byStatus.find(s => s.status === key)?.total ?? 0;
 }
 
+function pct(part: number, total: number): string {
+    if (!total) return '—';
+    return `${((part / total) * 100).toFixed(0)}%`;
+}
+
 export default function EstabelecimentoStatusPanel() {
     const { summary, loading, error, refetch } = useEstabelecimentoSummary();
+    const { activity, loading: actLoading, error: actError } = useEstabelecimentoActivity(ACTIVITY_WINDOW_DAYS);
 
     return (
         <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
@@ -64,6 +72,39 @@ export default function EstabelecimentoStatusPanel() {
                     ))}
                 </div>
             ) : null}
+
+            {/* Atividade recente dos parceiros ativos (cruza com a tabela pedido) */}
+            <div className="mt-4 border-t border-slate-100 dark:border-slate-700 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Atividade dos ativos · últimos {ACTIVITY_WINDOW_DAYS} dias
+                </p>
+                {actLoading ? (
+                    <p className="mt-2 text-sm text-slate-400">Calculando pedidos recentes…</p>
+                ) : actError ? (
+                    <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">Não foi possível calcular: {actError}</p>
+                ) : activity ? (
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ativos (contrato)</p>
+                            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{activity.totalAtivos.toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-900/10 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Com pedido</p>
+                            <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                                {activity.comPedido.toLocaleString('pt-BR')}
+                                <span className="ml-1 text-sm font-medium opacity-70">({pct(activity.comPedido, activity.totalAtivos)})</span>
+                            </p>
+                        </div>
+                        <div className="rounded-lg border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">Sem pedido (risco)</p>
+                            <p className="mt-1 text-2xl font-bold text-red-700 dark:text-red-300">
+                                {activity.semPedido.toLocaleString('pt-BR')}
+                                <span className="ml-1 text-sm font-medium opacity-70">({pct(activity.semPedido, activity.totalAtivos)})</span>
+                            </p>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
         </div>
     );
 }
