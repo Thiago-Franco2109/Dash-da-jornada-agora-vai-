@@ -71,6 +71,32 @@ futuro.
 
 ---
 
+## 📊 Atualização 24/07/2026 (parte 3) — Atividade + lista "quem contatar"
+
+Cruzamento `estabelecimento` × `pedido` (4,4M linhas) na tela Churn:
+
+- **`?activity=N`** — dos ativos (delivery=1), quantos receberam pedido nos
+  últimos N dias. Hoje: **1.130 de 1.387 (81%)** com pedido em 28d; **257
+  sem pedido (risco)**.
+- **`?activity=N&list=inativos`** — lista acionável dos sem-pedido, com nome +
+  cidade + faixa de recência (**recuperável** 28–90d = 78 · **frio** >90d =
+  179). Ordenada por prioridade. Carregada sob demanda no painel (~4s / 5s req).
+- Front: `useEstabelecimentoActivity`, `fetchInativos` +
+  `EstabelecimentoStatusPanel` (bloco de atividade + botão "Ver os N sem pedido").
+
+### ⚠️ Limitação de performance do banco de teste
+Não há índice composto **`(estabelecimento_id, data)`** em `pedido`. Por isso:
+- `MAX(data)` por parceiro (data exata do último pedido) = **30s+** → inviável
+  ao vivo. Por ora usamos faixas de recência via `DISTINCT` por janela de data
+  (rápido: 28d ~0,3s, 90d ~3,6s, 180d ~5,8s).
+- **Recomendação:** pedir a quem administra o banco para criar o índice
+  `(estabelecimento_id, data)`. Aí data exata do último pedido e recência por
+  parceiro ficam instantâneas.
+- Evitar `NOT IN (subquery)` e `MAX/IN por parceiro` — travam. Padrão que
+  funciona: filtrar `pedido` por `data` primeiro (usa índice) + diff em JS.
+
+---
+
 ## 0. Como retomar no PC da empresa
 
 ```bash
