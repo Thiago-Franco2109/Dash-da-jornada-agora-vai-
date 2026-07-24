@@ -93,6 +93,62 @@ export const handler: Handler = async (event) => {
         const activityRaw = q.activity?.trim();
         if (activityRaw != null && activityRaw !== '') {
             const windowDays = Math.min(Math.max(parseInt(activityRaw, 10) || 28, 1), 365);
+
+            // ---- sub-modo: lista dos ativos SEM pedido na janela (acionável) ----
+            // Evita MAX(data)/IN por parceiro (sem índice composto = lento). Usa
+            // só DISTINCT por janela de data (índice) + diferença de conjuntos.
+            if (q.list === 'inativos') {
+                const WARM_WINDOW = 90; // faixa "recuperável": parou entre `windowDays` e 90 dias
+                const [ativos] = await connection.query<RowDataPacket[]>(
+                    `SELECT id, nome, localidade_id FROM estabelecimento WHERE delivery = 1`,
+                );
+                const [rWin] = await connection.query<RowDataPacket[]>(
+                    `SELECT DISTINCT estabelecimento_id AS id FROM pedido
+                     WHERE data >= NOW() - INTERVAL ${windowDays} DAY AND estabelecimento_id IS NOT NULL`,
+                );
+                const [rWarm] = await connection.query<RowDataPacket[]>(
+                    `SELECT DISTINCT estabelecimento_id AS id FROM pedido
+                     WHERE data >= NOW() - INTERVAL ${WARM_WINDOW} DAY AND estabelecimento_id IS NOT NULL`,
+                );
+                const [locs] = await connection.query<RowDataPacket[]>(
+                    `SELECT id, nome FROM localidade`,
+                );
+                const locMap = new Map(locs.map(l => [l.id as number, l.nome as string]));
+                const inWindow = new Set(rWin.map(r => r.id as number));
+                const inWarm = new Set(rWarm.map(r => r.id as number));
+
+                const inativos = ativos
+                    .filter(a => !inWindow.has(a.id as number))
+                    .map(a => ({
+                        id: a.id as number,
+                        nome: a.nome as string,
+                        cidade: locMap.get(a.localidade_id as number) ?? null,
+                        recencia: inWarm.has(a.id as number) ? `${windowDays}-${WARM_WINDOW}d` : `>${WARM_WINDOW}d`,
+                    }))
+                    // recuperáveis primeiro, depois por cidade/nome
+                    .sort((x, y) =>
+                        (x.recencia === y.recencia ? 0 : x.recencia.startsWith('>') ? 1 : -1) ||
+                        (x.cidade ?? '').localeCompare(y.cidade ?? '') ||
+                        x.nome.localeCompare(y.nome),
+                    );
+
+                const warm = inativos.filter(i => !i.recencia.startsWith('>')).length;
+                return {
+                    statusCode: 200,
+                    headers: jsonHeaders,
+                    body: JSON.stringify({
+                        ok: true,
+                        mode: 'inactive-list',
+                        windowDays,
+                        warmWindowDays: WARM_WINDOW,
+                        total: inativos.length,
+                        counts: { warm, cold: inativos.length - warm },
+                        data: inativos,
+                        elapsedMs: Date.now() - started,
+                    }),
+                };
+            }
+
             // windowDays é inteiro sanitizado → seguro interpolar no INTERVAL
             const [rows] = await connection.query<RowDataPacket[]>(
                 `SELECT

@@ -176,6 +176,28 @@ export function useEstabelecimentoActivity(windowDays = 28) {
     return { activity, loading, error, refetch: () => load(true) };
 }
 
+// ─── Lista acionável de ativos SEM pedido na janela ──────────────────────
+export interface InativoPartner {
+    id: number;
+    nome: string;
+    cidade: string | null;
+    /** faixa de recência, ex: "28-90d" (recuperável) ou ">90d" (frio) */
+    recencia: string;
+}
+
+export interface InativosResult {
+    windowDays: number;
+    warmWindowDays: number;
+    total: number;
+    counts: { warm: number; cold: number };
+    data: InativoPartner[];
+}
+
+/** Busca lazy da lista de inativos (chamada sob demanda — query ~6s). */
+export function fetchInativos(windowDays = 28): Promise<InativosResult> {
+    return fetchFn<InativosResult>(`?activity=${windowDays}&list=inativos`);
+}
+
 /** Monta a query string a partir dos filtros. */
 function buildListQuery(params: EstabelecimentoListParams): string {
     const q = new URLSearchParams();

@@ -1,4 +1,11 @@
-import { useEstabelecimentoSummary, useEstabelecimentoActivity, type EstabelecimentoStatusCount } from '../hooks/useEstabelecimentos';
+import { useState } from 'react';
+import {
+    useEstabelecimentoSummary,
+    useEstabelecimentoActivity,
+    fetchInativos,
+    type EstabelecimentoStatusCount,
+    type InativosResult,
+} from '../hooks/useEstabelecimentos';
 
 const ACTIVITY_WINDOW_DAYS = 28;
 
@@ -30,6 +37,24 @@ function pct(part: number, total: number): string {
 export default function EstabelecimentoStatusPanel() {
     const { summary, loading, error, refetch } = useEstabelecimentoSummary();
     const { activity, loading: actLoading, error: actError } = useEstabelecimentoActivity(ACTIVITY_WINDOW_DAYS);
+
+    // lista acionável de inativos — carregada sob demanda (query ~6s)
+    const [showList, setShowList] = useState(false);
+    const [inativos, setInativos] = useState<InativosResult | null>(null);
+    const [listLoading, setListLoading] = useState(false);
+    const [listError, setListError] = useState<string | null>(null);
+
+    const toggleList = () => {
+        const next = !showList;
+        setShowList(next);
+        if (next && !inativos && !listLoading) {
+            setListLoading(true);
+            setListError(null);
+            fetchInativos(ACTIVITY_WINDOW_DAYS)
+                .then(res => { setInativos(res); setListLoading(false); })
+                .catch(err => { setListError(err.message); setListLoading(false); });
+        }
+    };
 
     return (
         <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
@@ -104,6 +129,54 @@ export default function EstabelecimentoStatusPanel() {
                         </div>
                     </div>
                 ) : null}
+
+                {/* Lista acionável — quem contatar */}
+                {activity && activity.semPedido > 0 && (
+                    <div className="mt-3">
+                        <button
+                            onClick={toggleList}
+                            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">{showList ? 'expand_less' : 'expand_more'}</span>
+                            {showList ? 'Ocultar lista' : `Ver os ${activity.semPedido} parceiros sem pedido`}
+                        </button>
+
+                        {showList && (
+                            <div className="mt-2">
+                                {listLoading ? (
+                                    <p className="text-sm text-slate-400">Montando a lista (pode levar alguns segundos)…</p>
+                                ) : listError ? (
+                                    <p className="text-sm text-amber-600 dark:text-amber-400">Não foi possível carregar a lista: {listError}</p>
+                                ) : inativos ? (
+                                    <>
+                                        <p className="text-xs text-slate-400 mb-2">
+                                            {inativos.counts.warm} recuperáveis (pararam há {inativos.windowDays}–{inativos.warmWindowDays} dias) ·
+                                            {' '}{inativos.counts.cold} frios (&gt; {inativos.warmWindowDays} dias). Ordenados por prioridade.
+                                        </p>
+                                        <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/60">
+                                            {inativos.data.map(p => {
+                                                const warm = !p.recencia.startsWith('>');
+                                                return (
+                                                    <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                                                        <div className="min-w-0">
+                                                            <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{p.nome}</p>
+                                                            <p className="text-xs text-slate-400 truncate">{p.cidade ?? 'cidade ?'}</p>
+                                                        </div>
+                                                        <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${warm
+                                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                                            : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                                                            {warm ? 'recuperável' : 'frio'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                ) : null}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
