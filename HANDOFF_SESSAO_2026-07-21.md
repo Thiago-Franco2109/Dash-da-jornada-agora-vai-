@@ -5,12 +5,45 @@ Claude Code e diga: **"leia o HANDOFF_SESSAO_2026-07-21.md"**.
 
 ---
 
+## 🔄 Atualização 24/07/2026 — Integração direta com o banco: APROVADA e VALIDADA
+
+A decisão em aberto da seção 5 foi **resolvida e testada de ponta a ponta em
+produção**. Resumo do que mudou:
+
+- **Arquitetura escolhida:** camada read-only via **Netlify Functions** (o
+  Railway/Gateway está fora — só serve pro login por e-mail; sem acesso ao
+  código dele).
+- **Conectividade confirmada:** a Netlify **alcança o banco de teste MySQL**
+  sem IP allowlist nem VPN. Testado pela função `db-ping` em produção
+  (respondeu `ok:true`, 111 tabelas, ~114ms). Cadeia validada:
+  `React → Netlify Function → MySQL banco de teste`.
+- **Banco de teste:** `143.198.0.91:3306`, schema `bigou`, **111 tabelas**
+  (mais rico que os 67 documentados). Todas as tabelas do roadmap presentes.
+- **Novos arquivos:** `netlify/functions/db-ping.ts` (teste de conectividade,
+  read-only) e `scripts/db-ping-local.mjs` (mesmo teste local). Dependência
+  `mysql2` adicionada.
+- **Segurança:** o `.env` estava sendo versionado — foi removido do
+  rastreamento do git (`git rm --cached .env`) e continua no `.gitignore`. As
+  credenciais do banco **nunca** foram pro GitHub. Credenciais só via env
+  vars (local no `.env`; produção em Netlify → Environment variables).
+
+**Pendências desta atualização:**
+- A `db-ping` está **pública/sem autenticação** (só expõe nomes de tabelas).
+  Proteger ou remover depois. As functions de negócio precisam reaproveitar o
+  login por cookie do Gateway.
+- Respostas às 4 perguntas da seção 5 estão anotadas lá embaixo (✔).
+
+**Próximo passo real:** escrever as functions de negócio read-only, começando
+por `estabelecimento` → `pedido` → `fatura`/`parcela_fatura`.
+
+---
+
 ## 0. Como retomar no PC da empresa
 
 ```bash
 git clone https://github.com/Thiago-Franco2109/Dash-da-jornada-agora-vai-
 cd Dash-da-jornada-agora-vai-
-git checkout handoff-2026-07-21     # branch com as correções + este handoff
+# já está tudo na branch main (a antiga handoff-2026-07-21 foi mesclada)
 npm install
 npm run dev                          # http://localhost:5173
 ```
@@ -65,6 +98,23 @@ VITE_SUPABASE_ANON_KEY=<copiar da Netlify>
 
 (A `anon key` é pública por design, protegida por RLS.)
 
+**Banco de teste MySQL** (para as functions de dados — desde 24/07/2026).
+Mesmas 5 variáveis no `.env` local e em Netlify → Environment variables:
+
+```
+DB_HOST=143.198.0.91
+DB_PORT=3306
+DB_USER=<usuário>
+DB_PASSWORD="<senha>"     # ⚠️ ENTRE ASPAS no .env se tiver # ou caractere especial
+DB_NAME=bigou
+```
+
+> ⚠️ No arquivo `.env`, senha com `#` **precisa** de aspas duplas, senão a lib
+> lê só até o `#` (foi o que travou o primeiro teste). No painel da Netlify,
+> cola a senha sem aspas.
+
+Teste rápido de conexão local: `node scripts/db-ping-local.mjs`.
+
 ---
 
 ## 4. Pendência de limpeza no Supabase
@@ -93,14 +143,17 @@ app. Dois candidatos no projeto:
 - **Estender o Bigou Gateway** (Railway) — reaproveita o login por cookie.
 - **Netlify Functions** — já existem em `netlify/functions/`.
 
-### Perguntas que ficaram para você responder
-1. **Camada de servidor:** Gateway ou Netlify Functions? Você tem acesso ao
-   código do Gateway (Railway) ou é de outra equipe?
-2. **Banco de teste é estável** ou é resetado/recriado periodicamente?
-3. **Rede:** o banco de teste aceita conexão da Railway/Netlify (IP
-   allowlist / VPN)?
-4. Confirmar que o schema do banco de teste = o documentado em
-   `docs/bigou/documentacao-extraida.txt` (as 67 tabelas).
+### Perguntas que ficaram para você responder — RESPONDIDAS (24/07/2026)
+1. **Camada de servidor:** ✔ **Netlify Functions.** Sem acesso ao Gateway
+   (Railway); ele só faz o login por e-mail da empresa.
+2. **Banco de teste é estável?** ✔ **Sim** — estável, atualizado diariamente
+   com informações novas (réplica).
+3. **Rede aceita conexão?** ✔ **Sim** — validado em produção pela `db-ping`.
+   Sem IP allowlist/VPN. (O Apps Script já conectava de IPs do Google, o que
+   antecipava o bom sinal.)
+4. **Schema bate com a doc?** ✔ Parcial: o banco tem **111 tabelas** (a doc
+   citava 67). Todas as tabelas do roadmap existem. A doc está desatualizada
+   pra menos, mas não falta nada do que precisamos — o banco é um superconjunto.
 
 ### Dados a puxar do banco (mapa resumido)
 As 3 primeiras já destravam Saúde + Risco de Churn + Receita Recuperável:
@@ -119,10 +172,19 @@ As 3 primeiras já destravam Saúde + Risco de Churn + Receita Recuperável:
 
 ---
 
-## 6. Próximo passo sugerido
-Responder as 4 perguntas da seção 5. Com isso, atualizo o PRD da Fase 1 com a
-arquitetura de banco direto e já defino as primeiras queries (`pedido`,
-`estabelecimento`, `fatura`).
+## 6. Próximo passo sugerido — ATUALIZADO (24/07/2026)
+As 4 perguntas foram respondidas e a integração está validada (ver bloco de
+atualização no topo). Agora:
+
+1. Escrever a **function read-only `estabelecimento`** (com proteção de login
+   por cookie, reaproveitando o Gateway) → status de contrato / gabarito de
+   churn.
+2. Depois `pedido` (demanda, GMV, cancelamentos, novos clientes).
+3. Depois `fatura` + `parcela_fatura` (inadimplência).
+4. Proteger ou remover a `db-ping` (hoje pública).
+
+A "Parte B do PRD" (exports para planilha) sai — entra a camada read-only com
+queries no banco de teste, conforme já sinalizado na seção 5.
 
 ---
 

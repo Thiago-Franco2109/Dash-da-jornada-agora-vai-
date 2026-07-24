@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { calcularMRRMetrics, formatarMoedaBRL } from '../config/cdContracts';
 import FilterToolbar from './FilterToolbar';
+import EstabelecimentoStatusPanel from './EstabelecimentoStatusPanel';
 import PerformanceTable, { type CampaignStatusChangeHandler, type SortConfig } from './PerformanceTable';
 import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
@@ -331,6 +332,8 @@ export default function CDDesempenhoView({
                         )}
                     </div>
                 )}
+
+                {isChurnPreset && <EstabelecimentoStatusPanel />}
             </div>
 
             <div className="shrink-0">
