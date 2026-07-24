@@ -18,6 +18,50 @@ export interface AuthResult {
     error?: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// STOPGAP: checagem de origem (Referer/Origin).
+//
+// ⚠️ NÃO é segurança de verdade — o header Referer/Origin é falsificável por
+// quem chama a function fora do navegador (ex: curl). Serve apenas para
+// bloquear acesso casual enquanto a autenticação definitiva não é decidida
+// (opções: token via Gateway, ou Supabase Auth). Ver HANDOFF.
+//
+// Hosts liberados: env ALLOWED_ORIGIN_HOSTS (CSV) ou o default abaixo.
+// Casa o host exato e subdomínios (ex: deploy previews *.netlify.app do site).
+// ─────────────────────────────────────────────────────────────────────────
+const DEFAULT_ALLOWED_HOSTS = ['jornada-netlifyreserva.netlify.app', 'localhost', '127.0.0.1'];
+
+export interface OriginResult {
+    ok: boolean;
+    status: number;
+    host?: string;
+    error?: string;
+}
+
+export function checkOrigin(event: HandlerEvent): OriginResult {
+    const configured = (process.env.ALLOWED_ORIGIN_HOSTS || '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+    const allowed = configured.length ? configured : DEFAULT_ALLOWED_HOSTS;
+
+    const raw =
+        event.headers?.origin || event.headers?.Origin ||
+        event.headers?.referer || event.headers?.Referer || '';
+
+    if (!raw) return { ok: false, status: 403, error: 'Origem ausente' };
+
+    let host: string;
+    try {
+        host = new URL(raw).hostname;
+    } catch {
+        return { ok: false, status: 403, error: 'Origem inválida' };
+    }
+
+    const ok = allowed.some(h => host === h || host.endsWith(`.${h}`));
+    return ok
+        ? { ok: true, status: 200, host }
+        : { ok: false, status: 403, host, error: `Origem não permitida: ${host}` };
+}
+
 /**
  * Revalida a sessão do usuário reaproveitando o mesmo Gateway que o front usa.
  *

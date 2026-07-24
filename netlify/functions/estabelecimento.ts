@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import type { RowDataPacket } from 'mysql2';
 import { getConnection } from './_shared/db';
-import { verifyAuth } from './_shared/auth';
+import { checkOrigin } from './_shared/auth';
 
 /**
  * Function read-only: dados de parceiros (tabela `estabelecimento`).
@@ -44,10 +44,11 @@ export const handler: Handler = async (event) => {
         return { statusCode: 405, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: 'Method Not Allowed' }) };
     }
 
-    // 1) autenticação (reaproveita o Gateway)
-    const auth = await verifyAuth(event);
-    if (!auth.ok) {
-        return { statusCode: auth.status, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: auth.error }) };
+    // 1) STOPGAP: checagem de origem (ver _shared/auth.ts).
+    //    ⚠️ proteção fraca/temporária — trocar por auth real (Gateway/Supabase).
+    const origin = checkOrigin(event);
+    if (!origin.ok) {
+        return { statusCode: origin.status, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
     const q = event.queryStringParameters ?? {};
