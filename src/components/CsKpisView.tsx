@@ -89,13 +89,40 @@ export default function CsKpisView() {
                             />
                         </div>
 
-                        {/* Fluxo de receita */}
-                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-6 mb-2">Fluxo de receita (30d)</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <Kpi label="R$ perdido (zeraram)" value={brl(kpis.perdido.valor)} sub={`${kpis.perdido.count} parceiros pararam de gerar comissão`} tone="red" />
-                            <Kpi label="Em queda (>50%)" value={brl(kpis.emQueda.valor)} sub={`${kpis.emQueda.count} parceiros caindo — em risco`} tone="amber" />
-                            <Kpi label="Receita de novos" value={brl(kpis.novos.valor)} sub={`${kpis.novos.count} parceiros novos gerando comissão`} tone="emerald" />
+                        {/* Decomposição do NRR: expansão vs contração */}
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-6 mb-2">
+                            Movimento da receita — decompõe o NRR (vs. 30d anteriores)
+                        </p>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Kpi
+                                label="Expansão"
+                                value={`+${brl(kpis.expansao.valor)}`}
+                                sub={`${kpis.expansao.count} parceiros cresceram (upsell)`}
+                                tone="emerald"
+                            />
+                            <Kpi
+                                label="Contração"
+                                value={`−${brl(kpis.contracao.valor)}`}
+                                sub={`${kpis.contracao.count} parceiros encolheram`}
+                                tone="amber"
+                            />
+                            <Kpi
+                                label="Perdido (zerou)"
+                                value={`−${brl(kpis.perdido.valor)}`}
+                                sub={`${kpis.perdido.count} pararam de gerar comissão`}
+                                tone="red"
+                            />
+                            <Kpi
+                                label="Receita de novos"
+                                value={`+${brl(kpis.novos.valor)}`}
+                                sub={`${kpis.novos.count} parceiros novos`}
+                                tone="indigo"
+                            />
                         </div>
+                        <p className="text-xs text-slate-400 mt-2">
+                            NRR {pct1(kpis.nrrPct)} = base + expansão − contração − perdido.
+                            {' '}{kpis.estavelCount} parceiros estáveis.
+                        </p>
 
                         {/* Quem contatar — por R$ */}
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-6 mb-2">

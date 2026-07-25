@@ -49,6 +49,7 @@ export const handler: Handler = async (event) => {
 
         let totCur = 0, totPrev = 0, nrrNum = 0, nrrDen = 0, grrNum = 0;
         let perdidoVal = 0, perdidoCount = 0, quedaVal = 0, quedaCount = 0, novosVal = 0, novosCount = 0;
+        let expansaoVal = 0, expansaoCount = 0, contracaoVal = 0, contracaoCount = 0, estavelCount = 0;
         const risco: { id: number; nome: string; cidade: string | null; anterior: number; atual: number; perda: number; tipo: 'zerou' | 'queda' }[] = [];
 
         for (const r of rows) {
@@ -57,6 +58,11 @@ export const handler: Handler = async (event) => {
             totCur += cur; totPrev += prev;
             if (prev > 0) {
                 nrrDen += prev; nrrNum += cur; grrNum += Math.min(cur, prev);
+                // decomposição do NRR entre os parceiros retidos
+                if (cur > prev) { expansaoVal += (cur - prev); expansaoCount++; }
+                else if (cur > 0 && cur < prev) { contracaoVal += (prev - cur); contracaoCount++; }
+                else if (cur === prev) { estavelCount++; }
+
                 if (cur <= 0) {
                     perdidoVal += prev; perdidoCount++;
                     risco.push({ id: r.id as number, nome: r.nome as string, cidade: (r.cidade as string) ?? null, anterior: prev, atual: cur, perda: prev, tipo: 'zerou' });
@@ -100,6 +106,9 @@ export const handler: Handler = async (event) => {
                 nrrPct: pct(nrrNum, nrrDen),
                 grrPct: pct(grrNum, nrrDen),
                 churnReceitaPct: nrrDen > 0 ? (1 - grrNum / nrrDen) * 100 : 0,
+                expansao: { valor: expansaoVal, count: expansaoCount },
+                contracao: { valor: contracaoVal, count: contracaoCount },
+                estavelCount,
                 perdido: { valor: perdidoVal, count: perdidoCount },
                 emQueda: { valor: quedaVal, count: quedaCount },
                 novos: { valor: novosVal, count: novosCount },
