@@ -5,6 +5,7 @@ export type AppView =
     | 'crm'
     | 'cd_desempenho'
     | 'churn'
+    | 'cs_kpis'
     | 'todos_parceiros'
     | 'settings'
     | 'about'

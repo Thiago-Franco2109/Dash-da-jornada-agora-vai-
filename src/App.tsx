@@ -15,6 +15,7 @@ import ProfileView from './components/ProfileView';
 import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
+import CsKpisView from './components/CsKpisView';
 import CarteiraView from './components/CarteiraView';
 import PedidoMensalView from './components/PedidoMensalView';
 import CrmView from './components/CrmView';
@@ -509,7 +510,9 @@ function App() {
           onNavigate={setCurrentView}
         />
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-all duration-300">
-          {currentView === 'settings' ? (
+          {currentView === 'cs_kpis' ? (
+            <CsKpisView />
+        ) : currentView === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <SettingsView />
           </div>

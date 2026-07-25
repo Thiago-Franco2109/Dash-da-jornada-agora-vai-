@@ -27,6 +27,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
             { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' },
             { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
         ]),
+        { id: 'cs_kpis', icon: 'monitoring', label: 'KPIs CS' },
         { id: 'reports', icon: 'assessment', label: 'Relatórios' },
         { id: 'contacts', icon: 'contact_phone', label: 'Contatos' },
         { id: 'managers', icon: 'badge', label: 'Gestores' },
