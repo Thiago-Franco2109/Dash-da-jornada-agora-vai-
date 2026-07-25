@@ -17,8 +17,25 @@ npm install
 npm run dev                           # http://localhost:5173
 ```
 
-- **GitHub auth em casa:** provavelmente vai precisar logar de novo. Use o
-  Cursor (Source Control → Sync) ou `gh auth login` (`brew install gh`).
+- **GitHub auth em casa:** o GitHub não aceita mais senha via HTTPS, então
+  provavelmente vai precisar autenticar de novo pra dar `push`. Duas formas:
+
+  **Opção 1 — Cursor (mais fácil):** painel Source Control (`Cmd+Shift+G`) →
+  botão **Sync / Push**. Ele abre o navegador pra logar no GitHub (OAuth), sem
+  token.
+
+  **Opção 2 — GitHub CLI (terminal):**
+  ```bash
+  brew install gh        # se ainda não tiver (compila o Go do zero, ~5-15 min)
+  gh auth login
+  ```
+  Responda: **GitHub.com** → **HTTPS** → "Authenticate Git with your GitHub
+  credentials?" **Yes** → **Login with a web browser** → copie o código
+  (`XXXX-XXXX`), o navegador abre, cole o código e autorize. Depois `git push`
+  funciona normal.
+
+  > ⚠️ Não coloque token do GitHub em chat/arquivo. No fluxo acima você nunca
+  > digita token — o login é pelo navegador.
 - **`.env` (não está no GitHub):** recrie na raiz. Precisa de:
   - Google Sheets IDs + `VITE_API_ORIGIN` (copie do `.env` do trabalho ou da Netlify)
   - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (Netlify → Environment variables)
