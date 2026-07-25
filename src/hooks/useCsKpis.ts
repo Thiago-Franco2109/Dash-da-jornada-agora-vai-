@@ -16,9 +16,8 @@ export interface CsRiscoPartner {
     tipo: 'zerou' | 'queda';
 }
 
-export interface CsKpis {
-    windowDays: number;
-    activityDays: number;
+/** Conjunto de KPIs — usado tanto no global quanto por cidade. */
+export interface CsKpiFigures {
     comissao: { atual: number; anterior: number; variacaoPct: number };
     nrrPct: number;
     grrPct: number;
@@ -31,6 +30,16 @@ export interface CsKpis {
     novos: { valor: number; count: number };
     atividade: { totalAtivos: number; comPedido: number; semPedido: number; taxaPct: number };
     topRisco: CsRiscoPartner[];
+}
+
+export interface CsCityKpis extends CsKpiFigures {
+    cidade: string;
+}
+
+export interface CsKpis extends CsKpiFigures {
+    windowDays: number;
+    activityDays: number;
+    cidades: CsCityKpis[];
     elapsedMs?: number;
 }
 
