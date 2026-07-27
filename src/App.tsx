@@ -40,6 +40,7 @@ import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/of
 import { getCampaignOverrideField, type CampaignTypeId } from './config/campaignTypes';
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
 import { useDataSync } from './hooks/useDataSync';
+import { useRelevanceMap } from './hooks/useRelevanceMap';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -153,15 +154,16 @@ function App() {
   const {
     partners: crmPartners,
     parseInfo: crmParseInfo,
-    relevanceMap: crmRelevanceMap,
     isLoading: loadingCrm,
     isRefreshing: refreshingCrm,
     error: crmError,
     lastSyncTime: crmLastSync,
     isUsingCache: crmUsingCache,
     refreshData: refreshCrmData,
-    updateRelevance: updateCrmRelevance,
   } = useCrmData({ enabled: crmDataEnabled });
+
+  // Fonte única de relevância (app-wide), usada por todas as telas.
+  const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
 
   const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
 
@@ -281,7 +283,10 @@ function App() {
     const rows = rawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
-      return enrichPartnerData(row, undefined, noCityIndex, mode);
+      const enriched = enrichPartnerData(row, undefined, noCityIndex, mode);
+      // relevância comercial da fonte única (aparece/edita no dashboard também)
+      const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
+      return rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -290,14 +295,14 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap]);
 
   const indicadorEnrichedData = useMemo(
     () => mergeOfertasManualStatus(
-      crmPartnersToEnrichedRows(crmPartners, crmRelevanceMap),
+      crmPartnersToEnrichedRows(crmPartners, relMap),
       ofertasRecords,
     ),
-    [crmPartners, crmRelevanceMap, forceRender, ofertasRecords],
+    [crmPartners, relMap, forceRender, ofertasRecords],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
@@ -416,7 +421,7 @@ function App() {
 
   const handleRelevanceChange = (partnerId: string, score: number) => {
     if (!partnerId) return;
-    void updateCrmRelevance(partnerId, score);
+    void updateRel(partnerId, score);
   };
 
   const handleRowClick = (row: EnrichedPerformanceRow) => {
@@ -849,6 +854,7 @@ function App() {
                       onRowClick={handleRowClick}
                       onCampaignStatusChange={handleCampaignStatusChange}
                       onStatusChange={handleStatusChange}
+                      onRelevanceChange={handleRelevanceChange}
                     />
                   </div>
                 )}
