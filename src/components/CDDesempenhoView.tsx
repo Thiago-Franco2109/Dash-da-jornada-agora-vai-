@@ -30,6 +30,8 @@ interface CDDesempenhoViewProps {
     onCampaignStatusChange?: CampaignStatusChangeHandler;
     /** @deprecated use onCampaignStatusChange */
     onStatusChange?: (partnerId: string, field: StatusOverrideField, newStatus: PromoStatus) => void;
+    /** Marca a relevância (0-5) de um parceiro inline. */
+    onRelevanceChange?: (partnerId: string, score: number) => void;
     preset?: 'all' | 'churn';
     /** cd_desempenho | marketplace (jornada) | indicador (INDICADOR_FORMATADO) */
     dataSource?: 'cd_desempenho' | 'marketplace' | 'indicador';
@@ -72,6 +74,7 @@ export default function CDDesempenhoView({
     onRowClick,
     onCampaignStatusChange,
     onStatusChange,
+    onRelevanceChange,
     preset = 'all',
     dataSource = 'cd_desempenho',
     pedidosMesHeader,
@@ -411,6 +414,7 @@ export default function CDDesempenhoView({
                         onRowClick={onRowClick}
                         onCampaignStatusChange={onCampaignStatusChange}
                         onStatusChange={onStatusChange}
+                        onRelevanceChange={onRelevanceChange}
                         variant={isIndicador ? 'indicador' : isMarketplace ? 'journey' : 'desempenho'}
                         pedidosMesHeader={pedidosMesHeader}
                         fillHeight={!isChurnPreset}

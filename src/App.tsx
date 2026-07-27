@@ -663,6 +663,7 @@ function App() {
               onRowClick={handleRowClick}
               onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
+              onRelevanceChange={handleRelevanceChange}
               preset="churn"
               dataSource={isCD ? 'cd_desempenho' : 'indicador'}
               pedidosMesHeader={indicadorPedidosMesHeader}
@@ -700,6 +701,7 @@ function App() {
               onRowClick={handleRowClick}
               onCampaignStatusChange={handleCampaignStatusChange}
               onStatusChange={handleStatusChange}
+              onRelevanceChange={handleRelevanceChange}
               preset="all"
               dataSource="cd_desempenho"
             />
