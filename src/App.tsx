@@ -41,6 +41,8 @@ import { getCampaignOverrideField, type CampaignTypeId } from './config/campaign
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
 import { useDataSync } from './hooks/useDataSync';
 import { useRelevanceMap } from './hooks/useRelevanceMap';
+import { useCampanhas } from './hooks/useCampanhas';
+import { overlayCampanhas } from './utils/campanhasOverlay';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -164,6 +166,8 @@ function App() {
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
+  // Estado real de campanhas (banco), aplicado por cima do status de trabalho do CS.
+  const { campanhasMap } = useCampanhas();
 
   const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
 
@@ -286,7 +290,8 @@ function App() {
       const enriched = enrichPartnerData(row, undefined, noCityIndex, mode);
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
-      return rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
+      const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
+      return overlayCampanhas(withRel, campanhasMap);
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -295,14 +300,14 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap]);
 
   const indicadorEnrichedData = useMemo(
     () => mergeOfertasManualStatus(
-      crmPartnersToEnrichedRows(crmPartners, relMap),
+      crmPartnersToEnrichedRows(crmPartners, relMap).map(r => overlayCampanhas(r, campanhasMap)),
       ofertasRecords,
     ),
-    [crmPartners, relMap, forceRender, ofertasRecords],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
