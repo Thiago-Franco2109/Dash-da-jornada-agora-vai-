@@ -43,6 +43,7 @@ import { useDataSync } from './hooks/useDataSync';
 import { useRelevanceMap } from './hooks/useRelevanceMap';
 import { useCampanhas } from './hooks/useCampanhas';
 import { overlayCampanhas } from './utils/campanhasOverlay';
+import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -168,6 +169,8 @@ function App() {
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
   // Estado real de campanhas (banco), aplicado por cima do status de trabalho do CS.
   const { campanhasMap } = useCampanhas();
+  // Parceiros ativos do banco — suplementam a carteira (novos sem pedido aparecem).
+  const { parceiros: parceirosAtivos } = useParceirosAtivos();
 
   const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
 
@@ -303,11 +306,32 @@ function App() {
   }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap]);
 
   const indicadorEnrichedData = useMemo(
-    () => mergeOfertasManualStatus(
-      crmPartnersToEnrichedRows(crmPartners, relMap).map(r => overlayCampanhas(r, campanhasMap)),
-      ofertasRecords,
-    ),
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap],
+    () => {
+      const base = mergeOfertasManualStatus(
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => overlayCampanhas(r, campanhasMap)),
+        ofertasRecords,
+      );
+      // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
+      // (ex: recém-ativados sem pedido). Assim eles aparecem na carteira.
+      const existing = new Set(base.map(r => String(r.estab_id ?? '')));
+      const extras: EnrichedPerformanceRow[] = [];
+      for (const p of parceirosAtivos) {
+        if (existing.has(String(p.id))) continue;
+        const minimal = {
+          cidade: p.cidade ?? '', estabelecimento: p.nome, estab_id: String(p.id),
+          status: 'ativo', lancamento: '', desempenho: '',
+          week_1: 0, week_2: 0, week_3: 0, week_4: 0,
+        };
+        let row = enrichPartnerData(minimal, undefined, undefined, mode);
+        // sem lançamento/pedido no banco → zera métricas derivadas (evita NaN)
+        row = { ...row, dias_desde_lancamento: 0, pedidos_esperados: 0, indice_desempenho: 0, priority_stars: 0 };
+        const rel = relMap[String(p.id)];
+        if (rel != null) row = { ...row, commercial_relevance: rel };
+        extras.push(overlayCampanhas(row, campanhasMap));
+      }
+      return [...base, ...extras];
+    },
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
