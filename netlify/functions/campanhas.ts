@@ -43,10 +43,13 @@ export const handler: Handler = async (event) => {
         const data: Record<string, { superPromos: boolean; ofertasDaCasa: boolean; cupons: boolean; campanhas: string[] }> = {};
         const ensure = (id: string) => (data[id] ??= { superPromos: false, ofertasDaCasa: false, cupons: false, campanhas: [] });
 
+        // vigência null-safe: data nula = sem prazo = sempre válido
+        const VIGENTE = `(data_inicio IS NULL OR data_inicio <= NOW()) AND (data_fim IS NULL OR data_fim >= NOW())`;
+
         // 1) campanhas de promoção ativas/vigentes → participantes via config
         const [camps] = await connection.query<RowDataPacket[]>(
             `SELECT nome, config FROM campanha_promocao
-             WHERE ativo = 1 AND NOW() BETWEEN data_inicio AND data_fim`,
+             WHERE ativo = 1 AND ${VIGENTE}`,
         );
         for (const cp of camps) {
             const nome = cp.nome as string;
@@ -65,7 +68,7 @@ export const handler: Handler = async (event) => {
         // 2) cupons de destaque ativos/vigentes
         const [cupons] = await connection.query<RowDataPacket[]>(
             `SELECT DISTINCT estabelecimento_id AS id FROM cupom_desconto
-             WHERE ativo = 1 AND destaque = 1 AND NOW() BETWEEN data_inicio AND data_fim`,
+             WHERE ativo = 1 AND destaque = 1 AND ${VIGENTE}`,
         );
         for (const r of cupons) {
             const id = String(r.id);
