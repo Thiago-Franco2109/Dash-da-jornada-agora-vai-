@@ -55,6 +55,8 @@ export type PerformanceRow = {
     pedidos_mes_label?: string;
     /** Valor numérico (com sinal) do GMV do mês — usado para ORDENAR a coluna. */
     pedidos_mes_value?: number;
+    /** Campanhas de promoção ativas no banco (tooltip da coluna Promoções). */
+    promo_campanhas?: string[];
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -392,6 +394,12 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
     const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
 
+    // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
+    // super_promos) + Cupons. Ofertas fica embutida em Promoções (escondida).
+    const displayCampaigns = CAMPAIGN_TYPES.filter(c => c.id !== 'ofertas_da_casa');
+    const campaignLabel = (c: typeof CAMPAIGN_TYPES[number]) =>
+        c.id === 'super_promos' ? 'Promoções' : c.shortLabel;
+
     // Fecha dropdown ao pressionar Escape
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveDropdown(null); };
@@ -530,7 +538,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                             Evolução
                                         </th>
-                                        {CAMPAIGN_TYPES.map(campaign => (
+                                        {displayCampaigns.map(campaign => (
                                             <th
                                                 key={campaign.id}
                                                 scope="col"
@@ -539,7 +547,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             >
                                                 <div className="flex flex-col items-center gap-0.5">
                                                     <CampaignIcons icons={campaign.icons} iconClassName="text-[14px]" />
-                                                    <span>{campaign.shortLabel}</span>
+                                                    <span>{campaignLabel(campaign)}</span>
                                                 </div>
                                             </th>
                                         ))}
@@ -597,7 +605,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('priority_stars')}>
                                             Prioridade {renderSortIcon('priority_stars')}
                                         </th>
-                                        {CAMPAIGN_TYPES.map(campaign => (
+                                        {displayCampaigns.map(campaign => (
                                             <th
                                                 key={campaign.id}
                                                 scope="col"
@@ -606,7 +614,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             >
                                                 <div className="flex flex-col items-center gap-0.5">
                                                     <CampaignIcons icons={campaign.icons} iconClassName="text-[14px]" />
-                                                    <span>{campaign.shortLabel}</span>
+                                                    <span>{campaignLabel(campaign)}</span>
                                                 </div>
                                             </th>
                                         ))}
@@ -730,10 +738,10 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                     <Sparkline data={row.gmv_mensal} />
                                                 </td>
-                                                {CAMPAIGN_TYPES.map(campaign => {
+                                                {displayCampaigns.map(campaign => {
                                                     const status = getRowCampaignStatus(row, campaign.id);
                                                     return (
-                                                        <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                        <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()} title={campaign.id === 'super_promos' && row.promo_campanhas && row.promo_campanhas.length > 0 ? `Campanhas: ${row.promo_campanhas.join(', ')}` : undefined}>
                                                             <StatusDropdown
                                                                 rowIndex={index}
                                                                 totalRows={data.length}
@@ -816,10 +824,10 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             {renderStars(row.priority_stars)}
                                         </td>
 
-                                        {CAMPAIGN_TYPES.map(campaign => {
+                                        {displayCampaigns.map(campaign => {
                                             const status = getRowCampaignStatus(row, campaign.id);
                                             return (
-                                                <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
+                                                <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()} title={campaign.id === 'super_promos' && row.promo_campanhas && row.promo_campanhas.length > 0 ? `Campanhas: ${row.promo_campanhas.join(', ')}` : undefined}>
                                                     <StatusDropdown
                                                         rowIndex={index}
                                                         totalRows={data.length}

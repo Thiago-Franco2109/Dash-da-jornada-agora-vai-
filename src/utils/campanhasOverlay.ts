@@ -23,8 +23,14 @@ export function overlayCampanhas(row: EnrichedPerformanceRow, map: CampanhasMap)
     const id = String(row.estab_id ?? '');
     const db = map[id];
     const cs = { ...(row.campaign_statuses ?? {}) } as CampaignStatuses;
+    const campanhas = db?.campanhas ?? [];
 
-    cs.super_promos = resolve(cs.super_promos ?? row.promo_status, Boolean(db?.superPromos));
+    // "Promoções" = CONSOLIDADO de qualquer campanha de promoção (Super Promos,
+    // Ofertas da Casa, Super Bigou, etc.). Usa a coluna super_promos como base.
+    const temPromo = campanhas.length > 0;
+    const csPromo = [cs.super_promos, cs.ofertas_da_casa, row.promo_status]
+        .find((s): s is PromoStatusValue => Boolean(s) && s !== 'ativo' && s !== 'inativo');
+    cs.super_promos = csPromo ?? (temPromo ? 'ativo' : 'inativo');
     cs.ofertas_da_casa = resolve(cs.ofertas_da_casa, Boolean(db?.ofertasDaCasa));
     cs.cupons_destaque = resolve(cs.cupons_destaque ?? row.cupom_status, Boolean(db?.cupons));
 
@@ -33,5 +39,6 @@ export function overlayCampanhas(row: EnrichedPerformanceRow, map: CampanhasMap)
         campaign_statuses: cs,
         promo_status: cs.super_promos,
         cupom_status: cs.cupons_destaque,
+        promo_campanhas: campanhas,
     };
 }
