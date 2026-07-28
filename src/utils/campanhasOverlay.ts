@@ -16,12 +16,32 @@ function resolve(current: PromoStatusValue | undefined, dbActive: boolean): Prom
     return dbActive ? 'ativo' : 'inativo';
 }
 
-export function overlayCampanhas(row: EnrichedPerformanceRow, map: CampanhasMap): EnrichedPerformanceRow {
+/** Normaliza nome p/ casar (minúsculo, sem acento, sem espaços extras). */
+export function normalizeNome(nome: string): string {
+    return (nome || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+export function overlayCampanhas(
+    row: EnrichedPerformanceRow,
+    map: CampanhasMap,
+    nomeToId?: Map<string, string>,
+): EnrichedPerformanceRow {
     // enquanto o mapa não carregou, não mexe (evita "Não ofertado" falso)
     if (!map || Object.keys(map).length === 0) return row;
 
     const id = String(row.estab_id ?? '');
-    const db = map[id];
+    // 1) casa por estab_id; 2) fallback por nome (via lista do banco) quando o
+    //    ID da planilha não bate (ex: dashboard "novos formatado")
+    let db = map[id];
+    if (!db && nomeToId) {
+        const byName = nomeToId.get(normalizeNome(row.estabelecimento));
+        if (byName) db = map[byName];
+    }
     const cs = { ...(row.campaign_statuses ?? {}) } as CampaignStatuses;
     const campanhas = db?.campanhas ?? [];
 
