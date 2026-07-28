@@ -21,7 +21,8 @@ export function normalizeNome(nome: string): string {
     return (nome || '')
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')   // acentos
+        .replace(/[^a-z0-9\s]/g, '')       // ap\u00f3strofo/h\u00edfen/pontua\u00e7\u00e3o (' vs ')
         .replace(/\s+/g, ' ')
         .trim();
 }
