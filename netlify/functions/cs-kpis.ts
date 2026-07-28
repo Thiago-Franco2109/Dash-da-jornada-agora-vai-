@@ -16,7 +16,7 @@ import { checkOrigin } from './_shared/auth';
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
 
-const jsonHeaders = { 'Content-Type': 'application/json' };
+const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 
 interface RiscoItem {
     id: number; nome: string; cidade: string | null;

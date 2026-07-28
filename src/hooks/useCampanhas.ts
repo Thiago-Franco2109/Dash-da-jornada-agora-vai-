@@ -19,7 +19,7 @@ export type CampanhasMap = Record<string, CampanhaPartner>;
 let _cache: CampanhasMap | null = null;
 
 async function fetchCampanhas(): Promise<CampanhasMap> {
-    const res = await fetch(FN_URL, { credentials: 'include' as RequestCredentials });
+    const res = await fetch(FN_URL, { credentials: 'include' as RequestCredentials, cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json?.ok === false) {
         throw new Error(json?.error || `Erro ${res.status} ao carregar campanhas.`);

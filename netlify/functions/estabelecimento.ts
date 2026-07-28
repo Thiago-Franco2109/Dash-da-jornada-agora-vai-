@@ -37,7 +37,7 @@ function labelFor(delivery: number | null): string {
     return STATUS_LABELS[delivery] ?? `codigo_${delivery}`;
 }
 
-const jsonHeaders = { 'Content-Type': 'application/json' };
+const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'GET') {
