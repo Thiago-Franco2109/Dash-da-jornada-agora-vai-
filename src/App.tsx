@@ -44,6 +44,7 @@ import { useRelevanceMap } from './hooks/useRelevanceMap';
 import { useCampanhas } from './hooks/useCampanhas';
 import { overlayCampanhas, normalizeNome } from './utils/campanhasOverlay';
 import { useParceirosAtivos } from './hooks/useParceirosAtivos';
+import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -51,7 +52,7 @@ import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 import { buildNoCityIndexMap } from './config/managerMapping';
 import { CACHE_KEYS } from './utils/dataSync';
-import { useStatusOverride, type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
+import { type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
 import { useCarteiraData } from './hooks/useCarteiraData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
@@ -171,6 +172,8 @@ function App() {
   const { campanhasMap } = useCampanhas();
   // Parceiros ativos do banco — suplementam a carteira (novos sem pedido aparecem).
   const { parceiros: parceirosAtivos } = useParceirosAtivos();
+  // Decisões de trabalho do CS (Supabase) — única fonte de override de campanha.
+  const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Índice nome→id (do banco) p/ o overlay casar por nome quando o estab_id da
   // planilha não bate (ex: dashboard "novos formatado").
   const parceirosNomeToId = useMemo(() => {
@@ -213,41 +216,21 @@ function App() {
     ) ?? null;
   }, [selectedRow, crmPartners, isCD]);
 
-  const { updateStatus } = useStatusOverride();
   const { setStatus: setOfertasStatus, records: ofertasRecords } = useOfertasDaCasa();
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
   const handleCampaignStatusChange = async (partnerId: string, campaignId: CampaignTypeId, newStatus: PromoStatus) => {
-    const isIndicadorView = !isCD && (currentView === 'churn' || currentView === 'todos_parceiros');
-    const activeRows = currentView === 'cd_desempenho' || (currentView === 'churn' && isCD)
-      ? desempenhoRawRows
-      : isIndicadorView
-        ? []
-        : rawRows;
-    const row = activeRows.find(r => (r.estab_id || r.estabelecimento) === partnerId);
-    if (row) {
-        const statuses = { ...(row.campaign_statuses ?? {}) };
-        statuses[campaignId] = newStatus;
-        if (campaignId === 'super_promos') row.promo_status = newStatus;
-        if (campaignId === 'cupons_destaque') row.cupom_status = newStatus;
-        row.campaign_statuses = statuses;
-        setForceRender(prev => prev + 1);
-    }
-
     if (campaignId === 'ofertas_da_casa') {
         setOfertasStatus(partnerId, promoStatusToOfertasStatus(newStatus), 'manual');
         setForceRender(prev => prev + 1);
         return;
     }
-
     const field = getCampaignOverrideField(campaignId);
     if (!field) return;
-
-    const success = await updateStatus(partnerId, field, newStatus);
+    // decisão de trabalho do CS → Supabase (otimista); o overlay reflete na hora
+    const success = await setCampanhaOverride(partnerId, field, newStatus);
     if (!success) {
         setStatusSaveError('Não foi possível salvar o novo status. Verifique sua conexão e tente novamente.');
-    } else if (isIndicadorView) {
-        refreshCrmData();
     }
   };
 
@@ -323,7 +306,7 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId));
+      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides));
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -332,23 +315,12 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco]);
-
-  // DEBUG temporário: inspecionar match de campanhas no runtime
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const jota = enrichedData.find(r => /jota/i.test(r.estabelecimento));
-    (window as unknown as Record<string, unknown>).__dbgCampanhas = {
-      jotaRow: jota ? { estab_id: jota.estab_id, estabelecimento: jota.estabelecimento, campaign_statuses: jota.campaign_statuses, promo_campanhas: jota.promo_campanhas } : null,
-      map28443: campanhasMap['28443'],
-      mapSize: Object.keys(campanhasMap).length,
-    };
-  }, [enrichedData, campanhasMap]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides]);
 
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
-        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId))),
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides))),
         ofertasRecords,
       );
       // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
@@ -367,11 +339,11 @@ function App() {
         row = { ...row, dias_desde_lancamento: 0, pedidos_esperados: 0, indice_desempenho: 0, priority_stars: 0 };
         const rel = relMap[String(p.id)];
         if (rel != null) row = { ...row, commercial_relevance: rel };
-        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId));
+        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides));
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;

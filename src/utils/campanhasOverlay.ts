@@ -11,9 +11,9 @@ import type { CampaignStatuses } from '../config/campaignTypes';
  *
  * Cobre as 3 colunas: super_promos, ofertas_da_casa, cupons_destaque.
  */
-function resolve(current: PromoStatusValue | undefined, dbActive: boolean): PromoStatusValue {
-    if (current && current !== 'ativo' && current !== 'inativo') return current; // decisão do CS
-    return dbActive ? 'ativo' : 'inativo';
+/** Decisão de trabalho do CS (ofertei/aguardando/negado) — não ativo/inativo. */
+function csDecision(s: string | undefined): PromoStatusValue | undefined {
+    return s && s !== 'ativo' && s !== 'inativo' ? (s as PromoStatusValue) : undefined;
 }
 
 /** Normaliza nome p/ casar (minúsculo, sem acento, sem espaços extras). */
@@ -31,29 +31,32 @@ export function overlayCampanhas(
     row: EnrichedPerformanceRow,
     map: CampanhasMap,
     nomeToId?: Map<string, string>,
+    overridesMap?: Record<string, { promo: string; cupom: string }>,
 ): EnrichedPerformanceRow {
     // enquanto o mapa não carregou, não mexe (evita "Não ofertado" falso)
     if (!map || Object.keys(map).length === 0) return row;
 
-    const id = String(row.estab_id ?? '');
-    // 1) casa por estab_id; 2) fallback por nome (via lista do banco) quando o
-    //    ID da planilha não bate (ex: dashboard "novos formatado")
+    // resolve o id do banco: 1) estab_id; 2) fallback por nome (dashboard)
+    let id = String(row.estab_id ?? '');
     let db = map[id];
     if (!db && nomeToId) {
         const byName = nomeToId.get(normalizeNome(row.estabelecimento));
-        if (byName) db = map[byName];
+        if (byName) { id = byName; db = map[byName]; }
     }
-    const cs = { ...(row.campaign_statuses ?? {}) } as CampaignStatuses;
     const campanhas = db?.campanhas ?? [];
+    const ov = overridesMap?.[id];
 
-    // "Promoções" = CONSOLIDADO de qualquer campanha de promoção (Super Promos,
-    // Ofertas da Casa, Super Bigou, etc.). Usa a coluna super_promos como base.
-    const temPromo = campanhas.length > 0;
-    const csPromo = [cs.super_promos, cs.ofertas_da_casa, row.promo_status]
-        .find((s): s is PromoStatusValue => Boolean(s) && s !== 'ativo' && s !== 'inativo');
-    cs.super_promos = csPromo ?? (temPromo ? 'ativo' : 'inativo');
-    cs.ofertas_da_casa = resolve(cs.ofertas_da_casa, Boolean(db?.ofertasDaCasa));
-    cs.cupons_destaque = resolve(cs.cupons_destaque ?? row.cupom_status, Boolean(db?.cupons));
+    // Fonte da verdade = BANCO. A planilha (campaign_statuses) é IGNORADA aqui —
+    // ela é export estático e polui (ex: ofertas_da_casa hardcoded 'aguardando').
+    // Só a decisão real do CS (Supabase) ganha do estado do banco.
+    const cs = { ...(row.campaign_statuses ?? {}) } as CampaignStatuses;
+
+    // Promoções (consolidado): qualquer campanha ativa no banco
+    cs.super_promos = csDecision(ov?.promo) ?? (campanhas.length > 0 ? 'ativo' : 'inativo');
+    // Cupons de destaque
+    cs.cupons_destaque = csDecision(ov?.cupom) ?? (db?.cupons ? 'ativo' : 'inativo');
+    // Ofertas (não exibida como coluna; mantém coerente)
+    cs.ofertas_da_casa = db?.ofertasDaCasa ? 'ativo' : 'inativo';
 
     return {
         ...row,
