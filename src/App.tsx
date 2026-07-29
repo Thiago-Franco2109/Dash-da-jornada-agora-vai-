@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import Header from './components/Header';
@@ -181,6 +181,25 @@ function App() {
     }
     return m;
   }, [parceirosAtivos]);
+  // Índice id→nome (do banco) — o banco é a fonte de verdade do NOME. A planilha
+  // (INDICADOR) costuma trazer o nome defasado (ex: "Honori Burguer" vs o real
+  // "Honori Coxinha e Companhia"), então casamos por estab_id e substituímos o
+  // nome exibido/pesquisado pelo do banco. Métricas seguem vindo da planilha.
+  const parceirosIdToNome = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of parceirosAtivos) {
+      const id = String(p.id).trim();
+      if (id && p.nome) m.set(id, p.nome);
+    }
+    return m;
+  }, [parceirosAtivos]);
+  const applyNomeBanco = useCallback((row: EnrichedPerformanceRow): EnrichedPerformanceRow => {
+    const id = String(row.estab_id ?? '').trim();
+    if (!id) return row;
+    const nomeBanco = parceirosIdToNome.get(id);
+    if (!nomeBanco || nomeBanco === row.estabelecimento) return row;
+    return { ...row, estabelecimento: nomeBanco };
+  }, [parceirosIdToNome]);
 
   const topCitiesByGmv = useMemo(() => computeTopCitiesByGmv(crmPartners, 5), [crmPartners]);
 
@@ -304,7 +323,7 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      return overlayCampanhas(withRel, campanhasMap, parceirosNomeToId);
+      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId));
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -313,12 +332,12 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco]);
 
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
-        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => overlayCampanhas(r, campanhasMap, parceirosNomeToId)),
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId))),
         ofertasRecords,
       );
       // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
@@ -341,7 +360,7 @@ function App() {
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
