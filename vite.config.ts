@@ -122,7 +122,49 @@ function sheetReadDevPlugin(): Plugin {
   }
 }
 
+/**
+ * Em `vite dev`, expõe as Netlify Functions que batem no banco (ex.: cs-kpis)
+ * reaproveitando o handler REAL via ssrLoadModule (transpila o .ts na hora).
+ * Só ativo em desenvolvimento — em produção a própria Netlify serve as functions.
+ */
+function dbFunctionsDevPlugin(): Plugin {
+  const FN_PREFIX = '/.netlify/functions/'
+  const DB_FNS = new Set(['cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'campanhas'])
+  return {
+    name: 'db-functions-dev',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const rawUrl = req.url || ''
+        if (!rawUrl.startsWith(FN_PREFIX)) return next()
+        const parsed = new URL(rawUrl, 'http://localhost')
+        const fnName = parsed.pathname.slice(FN_PREFIX.length).split('/')[0]
+        if (!DB_FNS.has(fnName)) return next()
+
+        try {
+          const mod = await server.ssrLoadModule(`/netlify/functions/${fnName}.ts`)
+          const queryStringParameters = Object.fromEntries(parsed.searchParams.entries())
+          const result = await mod.handler(
+            {
+              httpMethod: req.method || 'GET',
+              queryStringParameters,
+              headers: { origin: 'http://localhost' },
+            },
+            {},
+          )
+          res.statusCode = result.statusCode ?? 200
+          for (const [k, v] of Object.entries(result.headers ?? {})) res.setHeader(k, v as string)
+          res.end(result.body ?? '')
+        } catch (err: unknown) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : 'Erro no dev plugin' }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
   envDir: repoEnvDir,
-  plugins: [react(), tailwindcss(), sheetReadDevPlugin()],
+  plugins: [react(), tailwindcss(), sheetReadDevPlugin(), dbFunctionsDevPlugin()],
 })

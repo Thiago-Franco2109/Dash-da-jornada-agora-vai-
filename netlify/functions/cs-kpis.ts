@@ -53,7 +53,7 @@ function fold(acc: Acc, id: number, nome: string, cidade: string | null, cur: nu
 
 const pct = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0);
 
-function finalize(acc: Acc, totalAtivos: number, comPedido: number, topN: number) {
+function finalize(acc: Acc, totalAtivos: number, comPedido: number, pedidosCount: number, topN: number) {
     return {
         comissao: { atual: acc.totCur, anterior: acc.totPrev, variacaoPct: acc.totPrev > 0 ? (acc.totCur / acc.totPrev - 1) * 100 : 0 },
         nrrPct: pct(acc.nrrNum, acc.nrrDen),
@@ -65,7 +65,7 @@ function finalize(acc: Acc, totalAtivos: number, comPedido: number, topN: number
         perdido: { valor: acc.perdidoVal, count: acc.perdidoCount },
         emQueda: { valor: acc.quedaVal, count: acc.quedaCount },
         novos: { valor: acc.novosVal, count: acc.novosCount },
-        atividade: { totalAtivos, comPedido, semPedido: totalAtivos - comPedido, taxaPct: pct(comPedido, totalAtivos) },
+        atividade: { totalAtivos, comPedido, semPedido: totalAtivos - comPedido, taxaPct: pct(comPedido, totalAtivos), pedidosCount },
         topRisco: acc.risco.sort((a, b) => b.perda - a.perda).slice(0, topN),
     };
 }
@@ -135,16 +135,31 @@ export const handler: Handler = async (event) => {
              WHERE e.delivery = 1 AND p.data >= NOW() - INTERVAL ${activityDays} DAY
              GROUP BY l.nome`,
         );
+        // nº de pedidos (contagem de linhas em `pedido`) na janela de atividade — global e por cidade
+        const [pedidosRows] = await connection.query<RowDataPacket[]>(
+            `SELECT COUNT(*) AS n
+             FROM pedido p JOIN estabelecimento e ON e.id = p.estabelecimento_id
+             WHERE e.delivery = 1 AND p.data >= NOW() - INTERVAL ${activityDays} DAY`,
+        );
+        const [pedidosCidade] = await connection.query<RowDataPacket[]>(
+            `SELECT l.nome AS cidade, COUNT(*) AS n
+             FROM pedido p JOIN estabelecimento e ON e.id = p.estabelecimento_id
+             JOIN localidade l ON l.id = e.localidade_id
+             WHERE e.delivery = 1 AND p.data >= NOW() - INTERVAL ${activityDays} DAY
+             GROUP BY l.nome`,
+        );
         const ativosMap = new Map(ativosCidade.map(r => [r.cidade as string, Number(r.n)]));
         const comPedidoMap = new Map(comPedidoCidade.map(r => [r.cidade as string, Number(r.n)]));
+        const pedidosMap = new Map(pedidosCidade.map(r => [r.cidade as string, Number(r.n)]));
 
         const totalAtivos = Number(ativosRows[0]?.n ?? 0);
         const comPedido = Number(comPedidoRows[0]?.n ?? 0);
+        const pedidosTotal = Number(pedidosRows[0]?.n ?? 0);
 
         const cidades = [...byCity.entries()]
             .map(([cidade, acc]) => ({
                 cidade,
-                ...finalize(acc, ativosMap.get(cidade) ?? 0, comPedidoMap.get(cidade) ?? 0, 10),
+                ...finalize(acc, ativosMap.get(cidade) ?? 0, comPedidoMap.get(cidade) ?? 0, pedidosMap.get(cidade) ?? 0, 10),
             }))
             .sort((a, b) => b.comissao.atual - a.comissao.atual);
 
@@ -155,7 +170,7 @@ export const handler: Handler = async (event) => {
                 ok: true,
                 windowDays,
                 activityDays,
-                ...finalize(global, totalAtivos, comPedido, 20),
+                ...finalize(global, totalAtivos, comPedido, pedidosTotal, 20),
                 cidades,
                 elapsedMs: Date.now() - started,
             }),

@@ -28,7 +28,7 @@ export interface CsKpiFigures {
     perdido: { valor: number; count: number };
     emQueda: { valor: number; count: number };
     novos: { valor: number; count: number };
-    atividade: { totalAtivos: number; comPedido: number; semPedido: number; taxaPct: number };
+    atividade: { totalAtivos: number; comPedido: number; semPedido: number; taxaPct: number; pedidosCount: number };
     topRisco: CsRiscoPartner[];
 }
 
