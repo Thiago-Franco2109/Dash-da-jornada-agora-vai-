@@ -334,6 +334,17 @@ function App() {
     return mergeOfertasManualStatus(rows, ofertasRecords);
   }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco]);
 
+  // DEBUG temporário: inspecionar match de campanhas no runtime
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const jota = enrichedData.find(r => /jota/i.test(r.estabelecimento));
+    (window as unknown as Record<string, unknown>).__dbgCampanhas = {
+      jotaRow: jota ? { estab_id: jota.estab_id, estabelecimento: jota.estabelecimento, campaign_statuses: jota.campaign_statuses, promo_campanhas: jota.promo_campanhas } : null,
+      map28443: campanhasMap['28443'],
+      mapSize: Object.keys(campanhasMap).length,
+    };
+  }, [enrichedData, campanhasMap]);
+
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
