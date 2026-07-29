@@ -11,9 +11,10 @@ import type { CampaignStatuses } from '../config/campaignTypes';
  *
  * Cobre as 3 colunas: super_promos, ofertas_da_casa, cupons_destaque.
  */
-/** Decisão de trabalho do CS (ofertei/aguardando/negado) — não ativo/inativo. */
+/** Decisão de PROCESSO do CS que ganha do banco: ofertei / negado.
+ *  (aguardando="Não ofertado" e ativo/inativo NÃO sobrescrevem o estado real.) */
 function csDecision(s: string | undefined): PromoStatusValue | undefined {
-    return s && s !== 'ativo' && s !== 'inativo' ? (s as PromoStatusValue) : undefined;
+    return s === 'ofertei' || s === 'negado' ? (s as PromoStatusValue) : undefined;
 }
 
 /** Normaliza nome p/ casar (minúsculo, sem acento, sem espaços extras). */
@@ -51,12 +52,13 @@ export function overlayCampanhas(
     // Só a decisão real do CS (Supabase) ganha do estado do banco.
     const cs = { ...(row.campaign_statuses ?? {}) } as CampaignStatuses;
 
-    // Promoções (consolidado): qualquer campanha ativa no banco
-    cs.super_promos = csDecision(ov?.promo) ?? (campanhas.length > 0 ? 'ativo' : 'inativo');
+    // Promoções (consolidado): qualquer campanha ativa no banco.
+    // 'aguardando' = "Não ofertado" (base); 'ativo' = "Ativo".
+    cs.super_promos = csDecision(ov?.promo) ?? (campanhas.length > 0 ? 'ativo' : 'aguardando');
     // Cupons de destaque
-    cs.cupons_destaque = csDecision(ov?.cupom) ?? (db?.cupons ? 'ativo' : 'inativo');
+    cs.cupons_destaque = csDecision(ov?.cupom) ?? (db?.cupons ? 'ativo' : 'aguardando');
     // Ofertas (não exibida como coluna; mantém coerente)
-    cs.ofertas_da_casa = db?.ofertasDaCasa ? 'ativo' : 'inativo';
+    cs.ofertas_da_casa = db?.ofertasDaCasa ? 'ativo' : 'aguardando';
 
     return {
         ...row,
