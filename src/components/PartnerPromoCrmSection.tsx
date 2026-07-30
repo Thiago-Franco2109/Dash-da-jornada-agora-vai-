@@ -138,108 +138,56 @@ export default function PartnerPromoCrmSection({
                         </div>
                     </div>
 
-                    {/* Campanhas ativas no banco (todas — inclui Super Bigou etc.) */}
-                    <div className="mb-6">
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Campanhas ativas no banco</p>
-                        {partner.promo_campanhas && partner.promo_campanhas.length > 0 ? (
+                    {/* Campanhas ativas no banco (resumo) */}
+                    {(partner.promo_campanhas && partner.promo_campanhas.length > 0) || partner.cupom_status === 'ativo' ? (
+                        <div className="mb-8 pb-6 border-b border-slate-200 dark:border-slate-700">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Status no banco</p>
                             <div className="flex flex-wrap gap-2">
-                                {partner.promo_campanhas.map(c => (
-                                    <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-200 dark:ring-violet-800/40">
-                                        <span className="material-symbols-outlined text-[13px]">campaign</span>{c}
+                                {partner.promo_campanhas && partner.promo_campanhas.map(c => (
+                                    <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800/40">
+                                        <span className="material-symbols-outlined text-[13px]">verified</span>{c}
                                     </span>
                                 ))}
                                 {partner.cupom_status === 'ativo' && (
                                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800/40">
-                                        <span className="material-symbols-outlined text-[13px]">confirmation_number</span>Cupons de destaque
+                                        <span className="material-symbols-outlined text-[13px]">verified</span>Cupons de destaque
                                     </span>
                                 )}
                             </div>
-                        ) : (
-                            <p className="text-sm text-slate-400">
-                                {partner.cupom_status === 'ativo'
-                                    ? 'Só cupons de destaque ativos (nenhuma promoção).'
-                                    : 'Nenhuma campanha ativa no banco no momento.'}
-                            </p>
-                        )}
-                    </div>
-
-                    <div className="grid gap-6">
-                        {/* Ofertas da casa — prioridade top 5 */}
-                        <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-xl border shadow-sm ${
-                            isTopCity
-                                ? 'bg-amber-50/80 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40'
-                                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700'
-                        }`}>
-                            <div className="flex items-start gap-4 flex-1 min-w-0">
-                                <div className="size-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-700 dark:text-amber-400 shrink-0">
-                                    <CampaignIcons icons={getCampaignConfig('ofertas_da_casa').icons} iconClassName="text-[24px]" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h4 className="text-lg font-bold text-slate-800 dark:text-white">
-                                            {OFERTAS_DA_CASA_CAMPAIGN.name}
-                                        </h4>
-                                        {isTopCity && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-200 text-amber-900 dark:bg-amber-800/50 dark:text-amber-200">
-                                                <span className="material-symbols-outlined text-[12px]">star</span>
-                                                Top 5 GMV
-                                            </span>
-                                        )}
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${ofertasMeta.badge}`}>
-                                            <span className="material-symbols-outlined text-[12px]">{ofertasMeta.icon}</span>
-                                            {ofertasMeta.label}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                        {OFERTAS_DA_CASA_CAMPAIGN.description}
-                                    </p>
-                                        {ofertasRecord?.source === 'auto' && (
-                                            <p className="text-[10px] text-slate-400 mt-1">Atualizado automaticamente</p>
-                                        )}
-                                        {crmPartner && crmPartner.campaigns.ofertas_da_casa.itemCount > 0 && (
-                                            <p className="text-[10px] text-slate-400 mt-1">
-                                                {crmPartner.campaigns.ofertas_da_casa.itemCount} item(ns) na planilha (CAMPANHA: Ofertas da Casa)
-                                            </p>
-                                        )}
-                                </div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
-                                <div className="flex flex-col gap-2 min-w-[200px]">
-                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                        Participação (manual)
-                                    </label>
-                                    <select
-                                        value={ofertasStatus}
-                                        onChange={e => setStatus(pid, e.target.value as OfertasDaCasaStatus, 'manual')}
-                                        className="h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm px-3 text-slate-700 dark:text-slate-200"
-                                    >
-                                        {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
-                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        type="button"
-                                        onClick={openCrmEdit}
-                                        className="text-xs font-semibold text-violet-600 hover:underline text-left"
-                                    >
-                                        Anotar no CRM →
-                                    </button>
-                                </div>
-                                <CmsManageLink
-                                    href={ofertasDaCasaUrl}
-                                    localidadeId={localidadeId}
-                                    cityIdsLoading={cityIdsLoading}
-                                    label="Abrir campanha no CMS"
-                                />
-                            </div>
                         </div>
+                    ) : null}
+
+                    {/* Grid de campanhas — 3 colunas com cards uniformes */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {/* Ofertas da casa */}
+                        <CampaignCard
+                            icons={getCampaignConfig('ofertas_da_casa').icons}
+                            accentColor="amber"
+                            title={OFERTAS_DA_CASA_CAMPAIGN.name}
+                            description={OFERTAS_DA_CASA_CAMPAIGN.description}
+                            status={ofertasMeta.label}
+                            statusBadge={ofertasMeta.badge}
+                            statusIcon={ofertasMeta.icon}
+                            itemCount={crmPartner?.campaigns.ofertas_da_casa.itemCount}
+                            href={ofertasDaCasaUrl}
+                            localidadeId={localidadeId}
+                            cityIdsLoading={cityIdsLoading}
+                            showManualToggle
+                            currentStatus={ofertasStatus}
+                            onStatusChange={(val) => setStatus(pid, val as OfertasDaCasaStatus, 'manual')}
+                            isTopCity={isTopCity}
+                            onOpenCrm={openCrmEdit}
+                        />
 
                         {/* Super Promos */}
                         <CampaignCard
                             icons={getCampaignConfig('super_promos').icons}
+                            accentColor="violet"
                             title="Super Promos"
                             description="Campanha de descontos em itens selecionados do cardápio."
-                            status={partner.promo_campanhas?.includes('Super Promos!') ? 'ativo' : 'aguardando'}
+                            status={partner.promo_campanhas?.includes('Super Promos!') ? 'Ativo no Painel' : 'Aguardando Configuração'}
+                            statusBadge={partner.promo_campanhas?.includes('Super Promos!') ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}
+                            statusIcon={partner.promo_campanhas?.includes('Super Promos!') ? 'check_circle' : 'schedule'}
                             itemCount={crmPartner?.campaigns.super_promos.itemCount}
                             href={promoUrl}
                             localidadeId={localidadeId}
@@ -249,9 +197,12 @@ export default function PartnerPromoCrmSection({
                         {/* Cupons de destaque */}
                         <CampaignCard
                             icons={getCampaignConfig('cupons_destaque').icons}
+                            accentColor="indigo"
                             title="Cupons de destaque"
                             description="Cupons promocionais de destaque para conversão e retenção."
-                            status={partner.cupom_status ?? 'aguardando'}
+                            status={partner.cupom_status === 'ativo' ? 'Ativo no Painel' : 'Aguardando Configuração'}
+                            statusBadge={partner.cupom_status === 'ativo' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}
+                            statusIcon={partner.cupom_status === 'ativo' ? 'check_circle' : 'schedule'}
                             itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
                             href={cupomUrl}
                             localidadeId={localidadeId}
@@ -539,62 +490,115 @@ function CmsManageLink({
 
 function CampaignCard({
     icons,
+    accentColor = 'violet',
     title,
     description,
     status,
+    statusBadge,
+    statusIcon,
     itemCount,
     href,
     localidadeId,
     cityIdsLoading,
+    showManualToggle,
+    currentStatus,
+    onStatusChange,
+    isTopCity,
+    onOpenCrm,
 }: {
     icons: readonly string[];
+    accentColor?: 'amber' | 'violet' | 'indigo';
     title: string;
     description: string;
     status?: string;
+    statusBadge?: string;
+    statusIcon?: string;
     itemCount?: number;
     href: string;
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
+    showManualToggle?: boolean;
+    currentStatus?: string;
+    onStatusChange?: (val: string) => void;
+    isTopCity?: boolean;
+    onOpenCrm?: () => void;
 }) {
+    const accentMap: Record<string, string> = {
+        amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+        violet: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
+        indigo: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
+    };
+
     return (
-        <div className="flex items-center justify-between p-5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 shadow-sm">
-            <div className="flex items-center gap-4">
-                <div className="size-12 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
-                    <CampaignIcons icons={icons} iconClassName="text-[24px]" />
-                </div>
-                <div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                        <h4 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h4>
-                        {status === 'ativo' && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20">
-                                <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                Ativo no Painel
-                            </span>
-                        )}
-                        {status === 'aguardando' && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 ring-1 ring-inset ring-amber-600/20">
-                                <span className="material-symbols-outlined text-[14px]">schedule</span>
-                                Aguardando Configuração
-                            </span>
-                        )}
-                        {(!status || status === 'inativo') && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
-                                <span className="material-symbols-outlined text-[14px]">remove_circle</span>
-                                Não Configurado
-                            </span>
-                        )}
-                    </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{description}</p>
-                    {itemCount != null && itemCount > 0 && (
-                        <p className="text-[10px] text-slate-400 mt-1">{itemCount} item(ns) na planilha PROMO-ESPECIAL</p>
-                    )}
+        <div className="flex flex-col rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all p-5 h-full">
+            {/* Icon + Title */}
+            <div className="flex items-start justify-between mb-4">
+                <div className={`size-14 rounded-lg flex items-center justify-center shrink-0 ${accentMap[accentColor]}`}>
+                    <CampaignIcons icons={icons} iconClassName="text-[28px]" />
                 </div>
             </div>
-            <CmsManageLink
-                href={href}
-                localidadeId={localidadeId}
-                cityIdsLoading={cityIdsLoading}
-            />
+
+            {/* Title + Top City badge */}
+            <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1 line-clamp-2">{title}</h4>
+            {isTopCity && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 mb-3">
+                    <span className="material-symbols-outlined text-[12px]">star</span>
+                    Top 5 GMV
+                </span>
+            )}
+
+            {/* Description */}
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 line-clamp-2 flex-grow">{description}</p>
+
+            {/* Status badge */}
+            {status && statusBadge && statusIcon && (
+                <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold mb-4 ${statusBadge}`}>
+                    <span className="material-symbols-outlined text-[14px]">{statusIcon}</span>
+                    {status}
+                </div>
+            )}
+
+            {/* Item count */}
+            {itemCount != null && itemCount > 0 && (
+                <p className="text-[10px] text-slate-400 mb-4">{itemCount} item(ns) adicionado(s)</p>
+            )}
+
+            {/* Manual toggle (só Ofertas da Casa) */}
+            {showManualToggle && currentStatus && onStatusChange && (
+                <div className="mb-4 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Participação
+                    </label>
+                    <select
+                        value={currentStatus}
+                        onChange={e => onStatusChange(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-2.5 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-violet-500/20 outline-none transition-colors"
+                    >
+                        {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex flex-col gap-2 mt-auto pt-3 border-t border-slate-100 dark:border-slate-700">
+                <CmsManageLink
+                    href={href}
+                    localidadeId={localidadeId}
+                    cityIdsLoading={cityIdsLoading}
+                    fullWidth
+                />
+                {showManualToggle && onOpenCrm && (
+                    <button
+                        type="button"
+                        onClick={onOpenCrm}
+                        className="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 text-center py-2 transition-colors"
+                    >
+                        Anotar no CRM →
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
