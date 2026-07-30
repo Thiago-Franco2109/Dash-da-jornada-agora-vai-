@@ -11,6 +11,7 @@ import {
 } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
+import type { PromoResumo } from '../hooks/usePromoStatus';
 
 export type CampaignStatusChangeHandler = (
     partnerId: string,
@@ -57,6 +58,8 @@ export type PerformanceRow = {
     pedidos_mes_value?: number;
     /** Campanhas de promoção ativas no banco (tooltip da coluna Promoções). */
     promo_campanhas?: string[];
+    /** Resumo de status dos itens promocionais (coluna Promoções). */
+    promo_resumo?: PromoResumo;
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -465,6 +468,45 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
         );
     };
 
+    // Coluna Promoções: resumo dos itens promocionais (pendente/aprovado/sem item)
+    const promoResumoTitle = (r?: PromoResumo) =>
+        r?.detalhe?.length ? r.detalhe.map(d => `${d.campanha}: ${d.status}`).join(' · ') : undefined;
+
+    const renderPromoResumo = (r?: PromoResumo) => {
+        const pill = 'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap';
+        if (!r || (r.pendente === 0 && r.aprovado === 0 && r.rascunho === 0 && r.semItem === 0)) {
+            return (
+                <span className={`${pill} bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700`}>
+                    <span className="material-symbols-outlined text-[13px]">remove</span>—
+                </span>
+            );
+        }
+        return (
+            <div className="flex items-center justify-center gap-1 flex-wrap">
+                {r.pendente > 0 && (
+                    <span className={`${pill} bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 ring-1 ring-inset ring-orange-400/30`} title="Disponíveis no painel do parceiro (pendentes)">
+                        {r.pendente} pend.
+                    </span>
+                )}
+                {r.aprovado > 0 && (
+                    <span className={`${pill} bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20`} title="Aprovadas">
+                        {r.aprovado} aprov.
+                    </span>
+                )}
+                {r.rascunho > 0 && (
+                    <span className={`${pill} bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-inset ring-slate-300/60`}>
+                        {r.rascunho} rasc.
+                    </span>
+                )}
+                {r.semItem > 0 && (
+                    <span className={`${pill} bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-300 ring-1 ring-inset ring-red-300/50`} title="Campanha na cidade sem item pro parceiro">
+                        {r.semItem} sem item
+                    </span>
+                )}
+            </div>
+        );
+    };
+
     const renderAvaliacaoBadge = (total: number | undefined, diasAtivo: number) => {
         if (total === undefined) {
             return <span className="text-slate-400">—</span>;
@@ -739,9 +781,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                     <Sparkline data={row.gmv_mensal} />
                                                 </td>
                                                 {displayCampaigns.map(campaign => {
+                                                    if (campaign.id === 'super_promos') {
+                                                        return (
+                                                            <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" title={promoResumoTitle(row.promo_resumo)}>
+                                                                {renderPromoResumo(row.promo_resumo)}
+                                                            </td>
+                                                        );
+                                                    }
                                                     const status = getRowCampaignStatus(row, campaign.id);
                                                     return (
-                                                        <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()} title={campaign.id === 'super_promos' && row.promo_campanhas && row.promo_campanhas.length > 0 ? `Campanhas: ${row.promo_campanhas.join(', ')}` : undefined}>
+                                                        <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
                                                             <StatusDropdown
                                                                 rowIndex={index}
                                                                 totalRows={data.length}
@@ -825,9 +874,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         </td>
 
                                         {displayCampaigns.map(campaign => {
+                                            if (campaign.id === 'super_promos') {
+                                                return (
+                                                    <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" title={promoResumoTitle(row.promo_resumo)}>
+                                                        {renderPromoResumo(row.promo_resumo)}
+                                                    </td>
+                                                );
+                                            }
                                             const status = getRowCampaignStatus(row, campaign.id);
                                             return (
-                                                <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()} title={campaign.id === 'super_promos' && row.promo_campanhas && row.promo_campanhas.length > 0 ? `Campanhas: ${row.promo_campanhas.join(', ')}` : undefined}>
+                                                <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
                                                     <StatusDropdown
                                                         rowIndex={index}
                                                         totalRows={data.length}

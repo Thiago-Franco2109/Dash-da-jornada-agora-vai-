@@ -2,6 +2,7 @@ import type { EnrichedPerformanceRow } from './calculations';
 import type { CampanhasMap } from '../hooks/useCampanhas';
 import type { PromoStatusValue } from '../components/PerformanceTable';
 import type { CampaignStatuses } from '../config/campaignTypes';
+import { computePromoResumo, type PromoStatusData } from '../hooks/usePromoStatus';
 
 /**
  * Aplica o estado REAL de campanhas (do banco) sobre as linhas, respeitando o
@@ -33,6 +34,8 @@ export function overlayCampanhas(
     map: CampanhasMap,
     nomeToId?: Map<string, string>,
     overridesMap?: Record<string, { promo: string; cupom: string }>,
+    promoData?: PromoStatusData,
+    estabIdToLoc?: Map<string, string>,
 ): EnrichedPerformanceRow {
     // enquanto o mapa não carregou, não mexe (evita "Não ofertado" falso)
     if (!map || Object.keys(map).length === 0) return row;
@@ -46,6 +49,10 @@ export function overlayCampanhas(
     }
     const campanhas = db?.campanhas ?? [];
     const ov = overridesMap?.[id];
+    // resumo de status dos itens promocionais (coluna Promoções)
+    const promo_resumo = promoData
+        ? computePromoResumo(id, estabIdToLoc?.get(id), promoData)
+        : undefined;
 
     // Fonte da verdade = BANCO. A planilha (campaign_statuses) é IGNORADA aqui —
     // ela é export estático e polui (ex: ofertas_da_casa hardcoded 'aguardando').
@@ -66,5 +73,6 @@ export function overlayCampanhas(
         promo_status: cs.super_promos,
         cupom_status: cs.cupons_destaque,
         promo_campanhas: campanhas,
+        promo_resumo,
     };
 }

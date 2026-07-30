@@ -45,6 +45,7 @@ import { useCampanhas } from './hooks/useCampanhas';
 import { overlayCampanhas, normalizeNome } from './utils/campanhasOverlay';
 import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
+import { usePromoStatus } from './hooks/usePromoStatus';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -174,6 +175,16 @@ function App() {
   const { parceiros: parceirosAtivos } = useParceirosAtivos();
   // Decisões de trabalho do CS (Supabase) — única fonte de override de campanha.
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
+  // Status dos itens promocionais por parceiro/campanha (banco).
+  const { promoData } = usePromoStatus();
+  // Mapa estab_id → localidade_id (p/ saber as campanhas da cidade do parceiro).
+  const estabIdToLoc = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of parceirosAtivos) {
+      if (p.localidadeId != null) m.set(String(p.id), String(p.localidadeId));
+    }
+    return m;
+  }, [parceirosAtivos]);
   // Índice nome→id (do banco) p/ o overlay casar por nome quando o estab_id da
   // planilha não bate (ex: dashboard "novos formatado").
   const parceirosNomeToId = useMemo(() => {
@@ -306,7 +317,7 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides));
+      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -315,12 +326,12 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc]);
 
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
-        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides))),
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc))),
         ofertasRecords,
       );
       // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
@@ -339,11 +350,11 @@ function App() {
         row = { ...row, dias_desde_lancamento: 0, pedidos_esperados: 0, indice_desempenho: 0, priority_stars: 0 };
         const rel = relMap[String(p.id)];
         if (rel != null) row = { ...row, commercial_relevance: rel };
-        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides));
+        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
