@@ -66,6 +66,20 @@ export type PerformanceRow = {
     gmv_mensal?: { label: string; value: number }[];
 };
 
+/**
+ * Coluna Promoções — slots em ordem e largura FIXAS.
+ * Cada estado tem sempre a mesma posição horizontal, então a coluna pode ser
+ * varrida verticalmente: "a 1ª posição tem número" = tem item pendente.
+ * Pílulas que embrulham quebram esse alinhamento, por isso ícone + número.
+ * Semântica travada pelo briefing — não alterar os significados.
+ */
+const PROMO_SLOTS = [
+    { key: 'pendente', icon: 'pending', tone: 'text-orange-600 dark:text-orange-400', hint: 'pendente(s) — disponível no painel do parceiro pra ativar' },
+    { key: 'aprovado', icon: 'check_circle', tone: 'text-emerald-600 dark:text-emerald-400', hint: 'aprovada(s) — ativa no painel' },
+    { key: 'rascunho', icon: 'edit_note', tone: 'text-slate-500 dark:text-slate-400', hint: 'em rascunho' },
+    { key: 'semItem', icon: 'block', tone: 'text-red-500 dark:text-red-400', hint: 'na cidade, sem item pro parceiro' },
+] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe'>; icon: string; tone: string; hint: string }[];
+
 function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
     const fromMap = getCampaignStatus(row.campaign_statuses, campaignId);
     if (fromMap) return fromMap;
@@ -473,36 +487,26 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
         r?.detalhe?.length ? r.detalhe.map(d => `${d.campanha}: ${d.status}`).join(' · ') : undefined;
 
     const renderPromoResumo = (r?: PromoResumo) => {
-        const pill = 'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap';
         if (!r || (r.pendente === 0 && r.aprovado === 0 && r.rascunho === 0 && r.semItem === 0)) {
-            return (
-                <span className={`${pill} bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700`}>
-                    <span className="material-symbols-outlined text-[13px]">remove</span>—
-                </span>
-            );
+            return <span className="text-[13px] text-slate-300 dark:text-slate-600">—</span>;
         }
         return (
-            <div className="flex items-center justify-center gap-1 flex-wrap">
-                {r.pendente > 0 && (
-                    <span className={`${pill} bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 ring-1 ring-inset ring-orange-400/30`} title="Disponíveis no painel do parceiro (pendentes)">
-                        {r.pendente} pend.
-                    </span>
-                )}
-                {r.aprovado > 0 && (
-                    <span className={`${pill} bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20`} title="Aprovadas">
-                        {r.aprovado} aprov.
-                    </span>
-                )}
-                {r.rascunho > 0 && (
-                    <span className={`${pill} bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-inset ring-slate-300/60`}>
-                        {r.rascunho} rasc.
-                    </span>
-                )}
-                {r.semItem > 0 && (
-                    <span className={`${pill} bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-300 ring-1 ring-inset ring-red-300/50`} title="Campanha na cidade sem item pro parceiro">
-                        {r.semItem} sem item
-                    </span>
-                )}
+            <div className="inline-flex items-center">
+                {PROMO_SLOTS.map(slot => {
+                    const n = r[slot.key];
+                    // Slot vazio ocupa o espaço mesmo assim: mantém o alinhamento da coluna.
+                    if (!n) return <span key={slot.key} className="w-7" aria-hidden="true" />;
+                    return (
+                        <span
+                            key={slot.key}
+                            className={`w-7 inline-flex items-center justify-center gap-0.5 ${slot.tone}`}
+                            title={`${n} ${slot.hint}`}
+                        >
+                            <span className="material-symbols-outlined text-[14px] leading-none">{slot.icon}</span>
+                            <span className="text-[11px] font-bold tabular-nums leading-none">{n}</span>
+                        </span>
+                    );
+                })}
             </div>
         );
     };
