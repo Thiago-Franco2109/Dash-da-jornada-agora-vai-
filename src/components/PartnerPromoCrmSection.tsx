@@ -11,13 +11,78 @@ import {
     getOfertasDaCasaStatusMeta,
     isTopPriorityCity,
 } from '../config/crmCampaigns';
-import { CAMPAIGN_TYPES, getCampaignConfig } from '../config/campaignTypes';
+import { CAMPAIGN_TYPES, getCampaignConfig, resolveCampaignTypeId, type CampaignTypeId } from '../config/campaignTypes';
+import type { PromoCampanhaStatus } from '../hooks/usePromoStatus';
 import CampaignIcons from './CampaignIcons';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { formatBRL } from '../utils/crmData';
 
 type PromoSubTab = 'campanhas' | 'crm';
+
+type CardTone = 'active' | 'pending' | 'denied' | 'idle';
+
+/**
+ * Cor = estado (o que precisa de atenção), não categoria.
+ * A trilha lateral do card é o único lugar onde a cor de estado aparece forte.
+ */
+const TONE_STYLES: Record<CardTone, { rail: string; stamp: string; dot: string }> = {
+    active: { rail: 'bg-emerald-500', stamp: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500' },
+    pending: { rail: 'bg-amber-500', stamp: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
+    denied: { rail: 'bg-rose-500', stamp: 'text-rose-700 dark:text-rose-400', dot: 'bg-rose-500' },
+    idle: { rail: 'bg-slate-400 dark:bg-slate-500', stamp: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-400' },
+};
+
+/** Identidade da campanha vive no ícone (convenção de campaignTypes.ts), nunca no estado. */
+const ACCENT_STYLES: Record<'amber' | 'violet' | 'indigo', string> = {
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
+    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400',
+    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400',
+};
+
+/**
+ * Estados de item promocional vindos de promo_resumo.detalhe.
+ * Semântica travada pelo briefing: pendente = disponível pro dono ativar;
+ * sem item = campanha na cidade mas sem item pro parceiro; aprovado = ativo no painel.
+ */
+const PROMO_STATUS_TONE: Record<PromoCampanhaStatus, { tone: CardTone; label: string }> = {
+    pendente: { tone: 'pending', label: 'Pendente' },
+    aprovado: { tone: 'active', label: 'Aprovada' },
+    rascunho: { tone: 'idle', label: 'Rascunho' },
+    'sem item': { tone: 'denied', label: 'Sem item' },
+};
+
+/** Cupons mantêm o modelo antigo (StatusDropdown) — 5 valores, não promo_resumo. */
+const CUPOM_TONE: Record<string, { tone: CardTone; label: string }> = {
+    ativo: { tone: 'active', label: 'Ativo' },
+    aguardando: { tone: 'denied', label: 'Não ofertado' },
+    ofertei: { tone: 'pending', label: 'Aguard. retorno' },
+    negado: { tone: 'idle', label: 'Negado' },
+    inativo: { tone: 'idle', label: '—' },
+};
+
+/**
+ * Lê o estado real da campanha em promo_resumo.detalhe (somente leitura).
+ * Retorna null quando promo_resumo ainda não chegou, pra o chamador cair no fallback.
+ */
+function campaignStateFromResumo(
+    partner: EnrichedPerformanceRow,
+    id: CampaignTypeId,
+): { tone: CardTone; label: string } | null {
+    const resumo = partner.promo_resumo;
+    if (!resumo?.detalhe) return null;
+    const entry = resumo.detalhe.find(d => resolveCampaignTypeId(d.campanha) === id);
+    if (!entry) return { tone: 'idle', label: 'Não ofertada na cidade' };
+    return PROMO_STATUS_TONE[entry.status];
+}
+
+const OFERTAS_TONE: Record<OfertasDaCasaStatus, CardTone> = {
+    desconhecido: 'idle',
+    nao_ofertado: 'denied',
+    aguardando_retorno: 'pending',
+    participando: 'active',
+    nao_participando: 'idle',
+};
 
 const CRM_STATUS_OPTIONS: { value: PromoStatus; label: string; icon: string; badge: string; ring: string }[] = [
     { value: 'aguardando', label: 'Não ofertado', icon: 'campaign', badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300', ring: 'ring-red-500/30' },
@@ -73,6 +138,20 @@ export default function PartnerPromoCrmSection({
     const note = getNote(pid);
     const ofertasRecord = getRecord(pid);
 
+    const superPromosAtiva = !!partner.promo_campanhas?.includes('Super Promos!');
+    const dbActiveCampaigns = [
+        ...(partner.promo_campanhas ?? []),
+        ...(partner.cupom_status === 'ativo' ? ['Cupons de destaque'] : []),
+    ];
+
+    // Estado real do banco por campanha. Fallback = comportamento anterior
+    // (só promo_campanhas) enquanto promo_resumo não carregou.
+    const superPromosState = campaignStateFromResumo(partner, 'super_promos') ?? {
+        tone: superPromosAtiva ? ('active' as CardTone) : ('pending' as CardTone),
+        label: superPromosAtiva ? 'Ativa no painel' : 'Não configurada',
+    };
+    const cupomState = CUPOM_TONE[partner.cupom_status ?? 'inativo'] ?? CUPOM_TONE.inativo;
+
     const handlePromoStatusChange = (status: PromoStatus) => {
         setCrmPromoStatus(status);
         onStatusChange?.(pid, 'promo_status_override', status);
@@ -100,7 +179,7 @@ export default function PartnerPromoCrmSection({
     };
 
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-4">
+        <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5">
             <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
                 <button
                     type="button"
@@ -129,81 +208,84 @@ export default function PartnerPromoCrmSection({
             </div>
 
             {subTab === 'campanhas' && (
-                <div className="bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-8">
-                    <div className="flex items-center gap-3 mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
-                        <span className="material-symbols-outlined text-violet-500 text-3xl">local_offer</span>
+                <div className="space-y-5">
+                    {/* Cabeçalho da seção + resumo do banco */}
+                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Campanhas Promocionais</h2>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Estado real do banco (campanhas vigentes) + gestão do CS</p>
+                            <h2 className="text-[22px] font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
+                                Campanhas Promocionais
+                            </h2>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                                Estado real do banco (campanhas vigentes) + gestão do CS
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">
+                                Campanhas ativas no banco
+                            </span>
+                            {dbActiveCampaigns.length > 0 ? (
+                                dbActiveCampaigns.map(c => (
+                                    <span key={c} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/20">
+                                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                                        {c}
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-300/60 dark:bg-slate-700/40 dark:text-slate-400 dark:ring-slate-600/40">
+                                    <span className="size-1.5 rounded-full bg-slate-400" />
+                                    Nenhuma
+                                </span>
+                            )}
                         </div>
                     </div>
 
-                    {/* Campanhas ativas no banco (resumo) */}
-                    {(partner.promo_campanhas && partner.promo_campanhas.length > 0) || partner.cupom_status === 'ativo' ? (
-                        <div className="mb-8 pb-6 border-b border-slate-200 dark:border-slate-700">
-                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3">Status no banco</p>
-                            <div className="flex flex-wrap gap-2">
-                                {partner.promo_campanhas && partner.promo_campanhas.map(c => (
-                                    <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800/40">
-                                        <span className="material-symbols-outlined text-[13px]">verified</span>{c}
-                                    </span>
-                                ))}
-                                {partner.cupom_status === 'ativo' && (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800/40">
-                                        <span className="material-symbols-outlined text-[13px]">verified</span>Cupons de destaque
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ) : null}
-
-                    {/* Grid de campanhas — 3 colunas com cards uniformes */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {/* Ofertas da casa */}
+                    {/* Grid de campanhas — altura natural por card (sem buracos verticais) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
                         <CampaignCard
                             icons={getCampaignConfig('ofertas_da_casa').icons}
-                            accentColor="amber"
+                            accent="amber"
                             title={OFERTAS_DA_CASA_CAMPAIGN.name}
                             description={OFERTAS_DA_CASA_CAMPAIGN.description}
-                            status={ofertasMeta.label}
-                            statusBadge={ofertasMeta.badge}
-                            statusIcon={ofertasMeta.icon}
+                            tone={OFERTAS_TONE[ofertasStatus] ?? 'idle'}
+                            toneLabel={ofertasMeta.label}
+                            flag={isTopCity ? 'Top 5 GMV' : undefined}
                             itemCount={crmPartner?.campaigns.ofertas_da_casa.itemCount}
+                            itemCountLabel="na planilha"
+                            footnote={ofertasRecord?.source === 'auto' ? 'Atualizado automaticamente' : undefined}
+                            manual={{
+                                value: ofertasStatus,
+                                onChange: val => setStatus(pid, val as OfertasDaCasaStatus, 'manual'),
+                            }}
+                            onOpenCrm={openCrmEdit}
                             href={ofertasDaCasaUrl}
+                            cmsLabel="Abrir campanha no CMS"
                             localidadeId={localidadeId}
                             cityIdsLoading={cityIdsLoading}
-                            showManualToggle
-                            currentStatus={ofertasStatus}
-                            onStatusChange={(val) => setStatus(pid, val as OfertasDaCasaStatus, 'manual')}
-                            isTopCity={isTopCity}
-                            onOpenCrm={openCrmEdit}
                         />
 
-                        {/* Super Promos */}
                         <CampaignCard
                             icons={getCampaignConfig('super_promos').icons}
-                            accentColor="violet"
+                            accent="violet"
                             title="Super Promos"
                             description="Campanha de descontos em itens selecionados do cardápio."
-                            status={partner.promo_campanhas?.includes('Super Promos!') ? 'Ativo no Painel' : 'Aguardando Configuração'}
-                            statusBadge={partner.promo_campanhas?.includes('Super Promos!') ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}
-                            statusIcon={partner.promo_campanhas?.includes('Super Promos!') ? 'check_circle' : 'schedule'}
+                            tone={superPromosState.tone}
+                            toneLabel={superPromosState.label}
                             itemCount={crmPartner?.campaigns.super_promos.itemCount}
+                            itemCountLabel="na PROMO-ESPECIAL"
                             href={promoUrl}
                             localidadeId={localidadeId}
                             cityIdsLoading={cityIdsLoading}
                         />
 
-                        {/* Cupons de destaque */}
                         <CampaignCard
                             icons={getCampaignConfig('cupons_destaque').icons}
-                            accentColor="indigo"
+                            accent="indigo"
                             title="Cupons de destaque"
                             description="Cupons promocionais de destaque para conversão e retenção."
-                            status={partner.cupom_status === 'ativo' ? 'Ativo no Painel' : 'Aguardando Configuração'}
-                            statusBadge={partner.cupom_status === 'ativo' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}
-                            statusIcon={partner.cupom_status === 'ativo' ? 'check_circle' : 'schedule'}
+                            tone={cupomState.tone}
+                            toneLabel={cupomState.label}
                             itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
+                            itemCountLabel="na PROMO-ESPECIAL"
                             href={cupomUrl}
                             localidadeId={localidadeId}
                             cityIdsLoading={cityIdsLoading}
@@ -453,151 +535,163 @@ function CmsManageLink({
     localidadeId,
     cityIdsLoading,
     label = 'Gerenciar no CMS',
-    fullWidth,
+    emphasis = 'solid',
 }: {
     href: string;
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
     label?: string;
-    fullWidth?: boolean;
+    /** 'solid' = a campanha depende de uma ação; 'quiet' = já está no ar, só consulta */
+    emphasis?: 'solid' | 'quiet';
 }) {
+    // A trilha de estado do card já sinaliza urgência — o botão não repete o grito.
+    // A diferença aqui é só de contorno: pendente ganha moldura, no ar fica sem.
+    const outlined = emphasis === 'solid';
     return (
         <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex flex-col items-center justify-center gap-1 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-300 rounded-lg font-bold transition-colors min-w-[140px] ${
-                fullWidth ? 'w-full' : ''
+            className={`flex items-center justify-between gap-2 w-full rounded-xl px-3.5 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/40 ${
+                outlined
+                    ? 'text-slate-800 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-600'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
             }`}
-            title={localidadeId ? `Campanha cadastro/31 · localidade_id=${localidadeId}` : 'ID da cidade não mapeado — link genérico'}
+            title={localidadeId ? `Campanha no CMS · localidade_id=${localidadeId}` : 'ID da cidade não mapeado — link genérico'}
         >
-            <span className="flex items-center gap-2 text-sm">
-                <span className="material-symbols-outlined text-[18px]">launch</span>
-                {label}
+            <span className="flex flex-col min-w-0 text-left">
+                <span className="text-[13px] font-bold truncate">{label}</span>
+                {localidadeId ? (
+                    <span className="text-[10px] font-medium opacity-60 truncate">localidade_id={localidadeId}</span>
+                ) : cityIdsLoading ? (
+                    <span className="text-[10px] font-medium opacity-60 truncate">carregando cidade…</span>
+                ) : (
+                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 truncate">
+                        cidade não mapeada
+                    </span>
+                )}
             </span>
-            {localidadeId ? (
-                <span className="text-[10px] font-normal text-indigo-400 dark:text-indigo-500">
-                    localidade_id={localidadeId}
-                </span>
-            ) : cityIdsLoading ? (
-                <span className="text-[10px] font-normal text-indigo-300 animate-pulse">carregando cidade...</span>
-            ) : (
-                <span className="text-[10px] font-normal text-amber-500">cidade não mapeada</span>
-            )}
+            <span className="material-symbols-outlined text-[18px] shrink-0 opacity-60">arrow_outward</span>
         </a>
     );
 }
 
 function CampaignCard({
     icons,
-    accentColor = 'violet',
+    accent,
     title,
     description,
-    status,
-    statusBadge,
-    statusIcon,
+    tone,
+    toneLabel,
+    flag,
     itemCount,
+    itemCountLabel,
+    footnote,
+    manual,
+    onOpenCrm,
     href,
+    cmsLabel,
     localidadeId,
     cityIdsLoading,
-    showManualToggle,
-    currentStatus,
-    onStatusChange,
-    isTopCity,
-    onOpenCrm,
 }: {
     icons: readonly string[];
-    accentColor?: 'amber' | 'violet' | 'indigo';
+    accent: 'amber' | 'violet' | 'indigo';
     title: string;
     description: string;
-    status?: string;
-    statusBadge?: string;
-    statusIcon?: string;
+    tone: CardTone;
+    toneLabel: string;
+    flag?: string;
     itemCount?: number;
+    itemCountLabel?: string;
+    footnote?: string;
+    manual?: { value: OfertasDaCasaStatus; onChange: (val: string) => void };
+    onOpenCrm?: () => void;
     href: string;
+    cmsLabel?: string;
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
-    showManualToggle?: boolean;
-    currentStatus?: string;
-    onStatusChange?: (val: string) => void;
-    isTopCity?: boolean;
-    onOpenCrm?: () => void;
 }) {
-    const accentMap: Record<string, string> = {
-        amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-        violet: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
-        indigo: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
-    };
+    const { rail, stamp, dot } = TONE_STYLES[tone];
+    const hasCount = itemCount != null && itemCount > 0;
+    // Campanha no ar não pede ação: o CTA recua para link. Parada, vira botão sólido.
+    const needsAction = tone !== 'active';
 
     return (
-        <div className="flex flex-col rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all p-5 h-full">
-            {/* Icon + Title */}
-            <div className="flex items-start justify-between mb-4">
-                <div className={`size-14 rounded-lg flex items-center justify-center shrink-0 ${accentMap[accentColor]}`}>
-                    <CampaignIcons icons={icons} iconClassName="text-[28px]" />
+        <div className="relative flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-600">
+            {/* Trilha de estado — único lugar onde a cor de status aparece forte */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 ${rail}`} aria-hidden="true" />
+
+            <div className="flex flex-col flex-1 p-5 pl-6">
+                <div className={`size-10 rounded-lg flex items-center justify-center shrink-0 ${ACCENT_STYLES[accent]}`}>
+                    <CampaignIcons icons={icons} iconClassName="text-[20px]" />
                 </div>
-            </div>
 
-            {/* Title + Top City badge */}
-            <h4 className="text-base font-bold text-slate-900 dark:text-white mb-1 line-clamp-2">{title}</h4>
-            {isTopCity && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 mb-3">
-                    <span className="material-symbols-outlined text-[12px]">star</span>
-                    Top 5 GMV
-                </span>
-            )}
-
-            {/* Description */}
-            <p className="text-xs text-slate-600 dark:text-slate-400 mb-4 line-clamp-2 flex-grow">{description}</p>
-
-            {/* Status badge */}
-            {status && statusBadge && statusIcon && (
-                <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold mb-4 ${statusBadge}`}>
-                    <span className="material-symbols-outlined text-[14px]">{statusIcon}</span>
-                    {status}
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                    <h4 className="text-[15px] font-extrabold tracking-tight text-slate-900 dark:text-white leading-snug">
+                        {title}
+                    </h4>
+                    {flag && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                            {flag}
+                        </span>
+                    )}
                 </div>
-            )}
 
-            {/* Item count */}
-            {itemCount != null && itemCount > 0 && (
-                <p className="text-[10px] text-slate-400 mb-4">{itemCount} item(ns) adicionado(s)</p>
-            )}
+                {/* Estado como carimbo: caixa-alta + tracking largo, sem fundo */}
+                <p className={`mt-2 inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.09em] ${stamp}`}>
+                    <span className={`size-1.5 rounded-full shrink-0 ${dot}`} />
+                    {toneLabel}
+                </p>
 
-            {/* Manual toggle (só Ofertas da Casa) */}
-            {showManualToggle && currentStatus && onStatusChange && (
-                <div className="mb-4 space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Participação
-                    </label>
-                    <select
-                        value={currentStatus}
-                        onChange={e => onStatusChange(e.target.value)}
-                        className="w-full h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs px-2.5 text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-violet-500/20 outline-none transition-colors"
-                    >
-                        {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                    </select>
-                </div>
-            )}
+                <p className="mt-2.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
 
-            {/* Action buttons */}
-            <div className="flex flex-col gap-2 mt-auto pt-3 border-t border-slate-100 dark:border-slate-700">
-                <CmsManageLink
-                    href={href}
-                    localidadeId={localidadeId}
-                    cityIdsLoading={cityIdsLoading}
-                    fullWidth
-                />
-                {showManualToggle && onOpenCrm && (
-                    <button
-                        type="button"
-                        onClick={onOpenCrm}
-                        className="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 text-center py-2 transition-colors"
-                    >
-                        Anotar no CRM →
-                    </button>
+                {(hasCount || footnote) && (
+                    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                        {hasCount && (
+                            <span>
+                                <span className="font-bold tabular-nums text-slate-500 dark:text-slate-300">{itemCount}</span>
+                                {` ${itemCount === 1 ? 'item' : 'itens'} ${itemCountLabel}`}
+                            </span>
+                        )}
+                        {footnote && <span className="text-slate-400">{footnote}</span>}
+                    </p>
                 )}
+
+                {manual && (
+                    <div className="mt-4">
+                        <label className="block text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 mb-1.5">
+                            Participação
+                        </label>
+                        <select
+                            value={manual.value}
+                            onChange={e => manual.onChange(e.target.value)}
+                            className="w-full h-9 rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-violet-500/25 focus:border-violet-500 outline-none transition-colors"
+                        >
+                            {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                <div className="mt-5 pt-4 -mx-6 -mr-5 pl-6 pr-5 border-t border-slate-100 dark:border-slate-700/60 flex flex-col gap-2.5">
+                    <CmsManageLink
+                        href={href}
+                        label={cmsLabel}
+                        localidadeId={localidadeId}
+                        cityIdsLoading={cityIdsLoading}
+                        emphasis={needsAction ? 'solid' : 'quiet'}
+                    />
+                    {onOpenCrm && (
+                        <button
+                            type="button"
+                            onClick={onOpenCrm}
+                            className="self-start text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline"
+                        >
+                            Anotar no CRM
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
