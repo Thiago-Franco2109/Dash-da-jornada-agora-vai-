@@ -134,8 +134,33 @@ export default function PartnerPromoCrmSection({
                         <span className="material-symbols-outlined text-violet-500 text-3xl">local_offer</span>
                         <div>
                             <h2 className="text-xl font-bold text-slate-900 dark:text-white">Campanhas Promocionais</h2>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Ofertas da Casa, Super Promos e Cupons de destaque — conforme coluna CAMPANHA na planilha</p>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">Estado real do banco (campanhas vigentes) + gestão do CS</p>
                         </div>
+                    </div>
+
+                    {/* Campanhas ativas no banco (todas — inclui Super Bigou etc.) */}
+                    <div className="mb-6">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Campanhas ativas no banco</p>
+                        {partner.promo_campanhas && partner.promo_campanhas.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {partner.promo_campanhas.map(c => (
+                                    <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-200 dark:ring-violet-800/40">
+                                        <span className="material-symbols-outlined text-[13px]">campaign</span>{c}
+                                    </span>
+                                ))}
+                                {partner.cupom_status === 'ativo' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800/40">
+                                        <span className="material-symbols-outlined text-[13px]">confirmation_number</span>Cupons de destaque
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-400">
+                                {partner.cupom_status === 'ativo'
+                                    ? 'Só cupons de destaque ativos (nenhuma promoção).'
+                                    : 'Nenhuma campanha ativa no banco no momento.'}
+                            </p>
+                        )}
                     </div>
 
                     <div className="grid gap-6">
@@ -213,8 +238,8 @@ export default function PartnerPromoCrmSection({
                         <CampaignCard
                             icons={getCampaignConfig('super_promos').icons}
                             title="Super Promos"
-                            description="Campanha de descontos em itens selecionados do cardápio (col. CAMPANHA: Super Promos!)."
-                            status={crmPartner?.campaigns.super_promos.status ?? partner.promo_status}
+                            description="Campanha de descontos em itens selecionados do cardápio."
+                            status={partner.promo_campanhas?.includes('Super Promos!') ? 'ativo' : 'aguardando'}
                             itemCount={crmPartner?.campaigns.super_promos.itemCount}
                             href={promoUrl}
                             localidadeId={localidadeId}
@@ -226,7 +251,7 @@ export default function PartnerPromoCrmSection({
                             icons={getCampaignConfig('cupons_destaque').icons}
                             title="Cupons de destaque"
                             description="Cupons promocionais de destaque para conversão e retenção."
-                            status={crmPartner?.campaigns.cupons_destaque.status ?? partner.cupom_status}
+                            status={partner.cupom_status ?? 'aguardando'}
                             itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
                             href={cupomUrl}
                             localidadeId={localidadeId}
