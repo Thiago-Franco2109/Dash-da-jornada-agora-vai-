@@ -5,3 +5,7 @@ dist
 .netlify
 .venv-pdf
 
+# skills instaladas via `npx skills add`
+.agents/
+skills-lock.json
+
