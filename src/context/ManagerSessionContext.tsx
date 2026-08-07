@@ -6,20 +6,22 @@ import {
     useState,
     type ReactNode,
 } from 'react';
-import {
-    identifyManagerFromUser,
-    type Manager,
-} from '../config/managerMapping';
+import { identifyManagerFromUser } from '../config/managerMapping';
 import {
     clearManagerSession,
     loadManagerSession,
+    profileToManagerFilter,
     saveManagerSession,
     type ManagerFilter,
+    type SessionProfile,
 } from '../config/managerSession';
 import ManagerPickerModal from '../components/ManagerPickerModal';
 import { useAuth } from './AuthContext';
 
 interface ManagerSessionState {
+    /** Identidade escolhida na entrada; vale para a aba inteira. */
+    profile: SessionProfile | '';
+    /** Filtro de analista em vigor; ajustável pelo seletor das telas. */
     managerFilter: ManagerFilter;
     setManagerFilter: (manager: string) => void;
     needsPicker: boolean;
@@ -28,25 +30,32 @@ interface ManagerSessionState {
 const ManagerSessionContext = createContext<ManagerSessionState | null>(null);
 
 export function ManagerSessionProvider({ children }: { children: ReactNode }) {
-    const { user, isAuthenticated } = useAuth();
-    const [managerFilter, setManagerFilterState] = useState<ManagerFilter>(() => loadManagerSession());
+    const { user, isAuthenticated, logout } = useAuth();
+    const [profile, setProfile] = useState<SessionProfile | ''>(() => loadManagerSession());
+    const [managerFilter, setManagerFilterState] = useState<ManagerFilter>(
+        () => profileToManagerFilter(loadManagerSession())
+    );
     const [needsPicker, setNeedsPicker] = useState(false);
 
+    /**
+     * Ajuste pontual do seletor de analista das telas. Não altera quem está
+     * usando o painel, então também não mexe na sessão gravada.
+     */
     const setManagerFilter = useCallback((manager: string) => {
-        const normalized: ManagerFilter =
-            manager === 'THIAGO' || manager === 'LAÍS' ? manager : '';
-        setManagerFilterState(normalized);
-        saveManagerSession(normalized);
-        if (normalized) setNeedsPicker(false);
+        setManagerFilterState(manager === 'THIAGO' || manager === 'LAÍS' ? manager : '');
     }, []);
 
-    const confirmPicker = useCallback((manager: Manager) => {
-        setManagerFilter(manager);
-    }, [setManagerFilter]);
+    const confirmPicker = useCallback((chosen: SessionProfile) => {
+        setProfile(chosen);
+        saveManagerSession(chosen);
+        setManagerFilterState(profileToManagerFilter(chosen));
+        setNeedsPicker(false);
+    }, []);
 
     useEffect(() => {
         if (!isAuthenticated) {
             clearManagerSession();
+            setProfile('');
             setManagerFilterState('');
             setNeedsPicker(false);
             return;
@@ -54,7 +63,8 @@ export function ManagerSessionProvider({ children }: { children: ReactNode }) {
 
         const session = loadManagerSession();
         if (session) {
-            setManagerFilterState(session);
+            setProfile(session);
+            setManagerFilterState(profileToManagerFilter(session));
             setNeedsPicker(false);
             return;
         }
@@ -62,19 +72,23 @@ export function ManagerSessionProvider({ children }: { children: ReactNode }) {
         if (user) {
             const identified = identifyManagerFromUser(user);
             if (identified === 'THIAGO' || identified === 'LAÍS') {
-                setManagerFilter(identified);
+                confirmPicker(identified);
                 return;
             }
         }
 
         setNeedsPicker(true);
-    }, [isAuthenticated, user, setManagerFilter]);
+    }, [isAuthenticated, user, confirmPicker]);
 
     return (
-        <ManagerSessionContext.Provider value={{ managerFilter, setManagerFilter, needsPicker }}>
+        <ManagerSessionContext.Provider value={{ profile, managerFilter, setManagerFilter, needsPicker }}>
             {children}
             {isAuthenticated && needsPicker && (
-                <ManagerPickerModal onSelect={confirmPicker} />
+                <ManagerPickerModal
+                    onSelect={confirmPicker}
+                    onSignOut={logout}
+                    accountEmail={user?.email}
+                />
             )}
         </ManagerSessionContext.Provider>
     );
