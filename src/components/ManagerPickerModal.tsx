@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionProfile } from '../config/managerSession';
+import { PROFILES } from '../config/profiles';
 
 interface ManagerPickerModalProps {
+    /** Aplica o perfil. Dispara no clique, antes da animação de saída. */
     onSelect: (profile: SessionProfile) => void;
+    /** Avisa que a animação de saída terminou e a tela já pode ser desmontada. */
+    onExited: () => void;
     /** Sai da conta Google e volta para a tela de login. */
     onSignOut?: () => void;
     /** E-mail da conta conectada, exibido no rodapé. */
@@ -15,39 +19,12 @@ interface ManagerPickerModalProps {
  */
 const BACKDROP_SRC = '';
 
-interface ProfileOption {
-    id: SessionProfile;
-    label: string;
-    description: string;
-    /** Imagem do avatar em `public/`. Sem imagem, mostra o monograma. */
-    avatar?: string;
-    /** Cor do círculo: aparece atrás da foto e é o fundo do monograma. */
-    tint: [string, string];
-}
-
-const OPTIONS: ProfileOption[] = [
-    {
-        id: 'THIAGO',
-        label: 'Thiago',
-        description: 'Minhas cidades e parceiros',
-        avatar: '/avatars/thiago.png',
-        tint: ['#ffb238', '#f06a0c'],
-    },
-    {
-        id: 'LAÍS',
-        label: 'Laís',
-        description: 'Minhas cidades e parceiros',
-        avatar: '/avatars/lais.png',
-        tint: ['#ff8dc0', '#d92d8f'],
-    },
-    {
-        id: 'ULYSSES',
-        label: 'Ulysses',
-        description: 'Todas as cidades e parceiros',
-        avatar: '/avatars/ulysses.png',
-        tint: ['#7ad4ff', '#2b7fd4'],
-    },
-];
+/**
+ * Duração da saída. Precisa bater com a animação `mp-exit` do CSS: o perfil
+ * só é confirmado quando a tela já está invisível, para o painel atrás não
+ * mudar de conteúdo à vista de quem escolheu.
+ */
+const EXIT_MS = 620;
 
 /** Estrelinhas e confetes do fundo — puramente decorativos. */
 const SPARKS = [
@@ -66,12 +43,32 @@ const SPARKS = [
 const STAR_PATH =
     'M12 0c1 7.2 4.8 11 12 12-7.2 1-11 4.8-12 12-1-7.2-4.8-11-12-12 7.2-1 11-4.8 12-12z';
 
-export default function ManagerPickerModal({ onSelect, onSignOut, accountEmail }: ManagerPickerModalProps) {
+export default function ManagerPickerModal({ onSelect, onExited, onSignOut, accountEmail }: ManagerPickerModalProps) {
     const [hasBackdrop, setHasBackdrop] = useState(Boolean(BACKDROP_SRC));
+    const [leaving, setLeaving] = useState<SessionProfile | null>(null);
+    const exitTimer = useRef<number | undefined>(undefined);
+
+    useEffect(() => () => window.clearTimeout(exitTimer.current), []);
+
+    const choose = useCallback((id: SessionProfile) => {
+        if (leaving) return;
+
+        // Aplica antes de animar: enquanto a tela ainda está opaca, o painel
+        // atrás já troca para o perfil certo, sem nada piscando na revelação.
+        onSelect(id);
+
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            onExited();
+            return;
+        }
+
+        setLeaving(id);
+        exitTimer.current = window.setTimeout(onExited, EXIT_MS);
+    }, [leaving, onSelect, onExited]);
 
     return (
         <div
-            className="mp-root"
+            className={`mp-root${leaving ? ' mp-root--leaving' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="manager-picker-title"
@@ -138,13 +135,14 @@ export default function ManagerPickerModal({ onSelect, onSignOut, accountEmail }
                 </p>
 
                 <div className="mp-grid">
-                    {OPTIONS.map((option, i) => (
+                    {PROFILES.map((option, i) => (
                         <button
                             key={option.id}
                             type="button"
                             autoFocus={i === 0}
-                            onClick={() => onSelect(option.id)}
-                            className="mp-card"
+                            disabled={leaving !== null}
+                            onClick={() => choose(option.id)}
+                            className={`mp-card${leaving === option.id ? ' mp-card--chosen' : ''}`}
                             style={{ ['--d' as string]: `${0.26 + i * 0.08}s` }}
                         >
                             <span
@@ -492,5 +490,63 @@ const STYLES = `
   .mp-card__name { font-size: 1.4rem; }
   .mp-card__dash { margin-top: 10px; }
   .mp-alt { width: 100%; }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Saída: o card escolhido cresce e a tela se abre para o painel.
+   Os seletores descendem de .mp-root--leaving para vencerem as
+   animações de entrada declaradas acima.
+   ────────────────────────────────────────────────────────────── */
+.mp-card:disabled { cursor: default; }
+
+.mp-root--leaving {
+  pointer-events: none;
+  animation: mp-exit .62s cubic-bezier(.55, 0, .85, .2) forwards;
+}
+
+@keyframes mp-exit {
+  0%   { opacity: 1; transform: scale(1); }
+  45%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.14); }
+}
+
+/* Tudo que não é o card escolhido sai da frente primeiro. */
+.mp-root--leaving .mp-brand,
+.mp-root--leaving .mp-title,
+.mp-root--leaving .mp-sub,
+.mp-root--leaving .mp-alt,
+.mp-root--leaving .mp-foot,
+.mp-root--leaving .mp-card:not(.mp-card--chosen) {
+  animation: mp-recede .26s ease forwards;
+}
+
+@keyframes mp-recede {
+  to { opacity: 0; transform: translateY(6px) scale(.94); }
+}
+
+.mp-root--leaving .mp-card--chosen {
+  z-index: 2;
+  border-color: var(--gold);
+  animation: mp-chosen .62s cubic-bezier(.2, .75, .3, 1) forwards;
+}
+
+@keyframes mp-chosen {
+  0%   { transform: translateY(0) scale(1); box-shadow: 0 18px 40px rgba(0, 0, 0, .38); }
+  28%  { transform: translateY(-16px) scale(1.07); box-shadow: 0 30px 60px rgba(0, 0, 0, .45), 0 0 0 6px rgba(255, 210, 63, .55); }
+  100% { transform: translateY(-8px) scale(1.16); box-shadow: 0 34px 70px rgba(0, 0, 0, .5), 0 0 0 3px rgba(255, 210, 63, .2); }
+}
+
+.mp-root--leaving .mp-card--chosen .mp-avatar { animation: mp-avatar-pop .62s cubic-bezier(.2, .75, .3, 1) forwards; }
+
+@keyframes mp-avatar-pop {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.12); }
+  100% { transform: scale(1.06); }
+}
+
+.mp-root--leaving .mp-card--chosen .mp-card__dash { transform: scaleX(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mp-root--leaving { display: none; }
 }
 `;

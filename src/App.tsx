@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import Header from './components/Header';
 import NavigationSidebar from './components/NavigationSidebar';
+import HomeView from './components/HomeView';
 import FilterToolbar from './components/FilterToolbar';
 import PerformanceTable from './components/PerformanceTable';
 import type { SortConfig } from './components/PerformanceTable';
@@ -64,7 +65,7 @@ function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
   const { managerFilter, setManagerFilter } = useManagerSession();
-  const [currentView, setCurrentView] = useState<AppView>('dashboard');
+  const [currentView, setCurrentView] = useState<AppView>('home');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
   const [forceRender, setForceRender] = useState(0);
@@ -567,7 +568,9 @@ function App() {
           onNavigate={setCurrentView}
         />
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-all duration-300">
-          {currentView === 'cs_kpis' ? (
+          {currentView === 'home' ? (
+            <HomeView />
+        ) : currentView === 'cs_kpis' ? (
             <CsKpisView />
         ) : currentView === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">

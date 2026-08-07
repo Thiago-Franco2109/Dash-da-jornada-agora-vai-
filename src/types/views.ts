@@ -1,4 +1,5 @@
 export type AppView =
+    | 'home'
     | 'dashboard'
     | 'carteira'
     | 'pedido_mensal'

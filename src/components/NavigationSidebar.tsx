@@ -16,6 +16,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
     const sc = theme.sidebarClasses;
 
     const navItems: { id: AppView; icon: string; label: string }[] = [
+        { id: 'home', icon: 'home', label: 'Início' },
         { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
         ...(!isCD ? [
             { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },

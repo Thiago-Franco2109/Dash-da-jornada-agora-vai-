@@ -45,12 +45,16 @@ export function ManagerSessionProvider({ children }: { children: ReactNode }) {
         setManagerFilterState(manager === 'THIAGO' || manager === 'LAÍS' ? manager : '');
     }, []);
 
-    const confirmPicker = useCallback((chosen: SessionProfile) => {
+    const applyProfile = useCallback((chosen: SessionProfile) => {
         setProfile(chosen);
         saveManagerSession(chosen);
         setManagerFilterState(profileToManagerFilter(chosen));
-        setNeedsPicker(false);
     }, []);
+
+    const confirmPicker = useCallback((chosen: SessionProfile) => {
+        applyProfile(chosen);
+        setNeedsPicker(false);
+    }, [applyProfile]);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -85,7 +89,10 @@ export function ManagerSessionProvider({ children }: { children: ReactNode }) {
             {children}
             {isAuthenticated && needsPicker && (
                 <ManagerPickerModal
-                    onSelect={confirmPicker}
+                    // O perfil é aplicado no clique, para o painel atrás já estar
+                    // certo quando a tela abrir; o modal só sai de cena depois.
+                    onSelect={applyProfile}
+                    onExited={() => setNeedsPicker(false)}
                     onSignOut={logout}
                     accountEmail={user?.email}
                 />
