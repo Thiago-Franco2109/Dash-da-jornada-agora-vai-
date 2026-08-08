@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useAuth } from '../context/AuthContext';
 import { useManagerSession } from '../context/ManagerSessionContext';
 import { getProfileInfo, type ProfileInfo } from '../config/profiles';
+import type { EnrichedPerformanceRow } from '../utils/calculations';
+import type { AppView } from '../types/views';
+import AnalystHome from './home/AnalystHome';
+import CeoHome from './home/CeoHome';
 
 const BALOO = "'Baloo 2', 'Manrope', sans-serif";
 
@@ -18,21 +22,37 @@ function firstName(fullName?: string): string | undefined {
     return fullName?.trim().split(/\s+/)[0];
 }
 
-export default function HomeView() {
+interface HomeViewProps {
+    /** Parceiros em jornada já filtrados pela carteira de quem entrou. */
+    rows: EnrichedPerformanceRow[];
+    onPartnerClick: (row: EnrichedPerformanceRow) => void;
+    onNavigate: (view: AppView) => void;
+}
+
+export default function HomeView({ rows, onPartnerClick, onNavigate }: HomeViewProps) {
     const { user } = useAuth();
     const { profile } = useManagerSession();
+    const info = getProfileInfo(profile);
 
-    return <HomeGreeting info={getProfileInfo(profile)} fallbackName={firstName(user?.name)} />;
+    return (
+        <HomeGreeting info={info} fallbackName={firstName(user?.name)}>
+            {/* O CEO não tem carteira: pauta individual não faria sentido para ele. */}
+            {profile === 'ULYSSES'
+                ? <CeoHome onNavigate={onNavigate} />
+                : <AnalystHome rows={rows} onPartnerClick={onPartnerClick} onNavigate={onNavigate} />}
+        </HomeGreeting>
+    );
 }
 
 interface HomeGreetingProps {
     info?: ProfileInfo;
     /** Usado quando ainda não há perfil escolhido. */
     fallbackName?: string;
+    children?: ReactNode;
 }
 
-/** Parte visual, sem contexto — é o que a página de preview monta. */
-export function HomeGreeting({ info, fallbackName }: HomeGreetingProps) {
+/** Saudação e mostrador do dia; o miolo abaixo varia por perfil. */
+export function HomeGreeting({ info, fallbackName, children }: HomeGreetingProps) {
     // Mantém a saudação e a data corretas em abas que ficam abertas por horas.
     const [now, setNow] = useState(() => new Date());
     useEffect(() => {
@@ -45,10 +65,9 @@ export function HomeGreeting({ info, fallbackName }: HomeGreetingProps) {
 
     return (
         <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900">
-            {/* Centralizado na vertical para o espaço vazio parecer intencional. */}
-            <div className="min-h-full flex items-center justify-center max-w-5xl mx-auto p-6 sm:p-10">
+            <div className="max-w-7xl mx-auto p-6 sm:p-8 space-y-8">
                 <section
-                    className="relative w-full overflow-hidden rounded-3xl p-7 sm:p-10 shadow-xl"
+                    className="relative w-full overflow-hidden rounded-3xl p-7 sm:p-8 shadow-xl"
                     style={{ background: 'linear-gradient(135deg, #2a9e5c 0%, #0d5f2c 60%, #0a4a23 100%)' }}
                 >
                     {/* Brilho de fundo, puramente decorativo */}
@@ -111,6 +130,8 @@ export function HomeGreeting({ info, fallbackName }: HomeGreetingProps) {
                         </div>
                     </div>
                 </section>
+
+                {children}
             </div>
         </div>
     );

@@ -392,6 +392,15 @@ function App() {
   const uniqueCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
   const uniqueManagers = Array.from(new Set(enrichedData.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
+  /**
+   * A home mostra a carteira de quem entrou, sem os filtros das telas — ela é
+   * o ponto de partida do dia, não um recorte do dashboard.
+   */
+  const homeRows = useMemo(
+    () => (managerFilter ? enrichedData.filter(row => row.analista === managerFilter) : enrichedData),
+    [enrichedData, managerFilter]
+  );
+
   const dataBeforePromoCupomFilter = useMemo(() => {
     return enrichedData.filter((row: EnrichedPerformanceRow) => {
       if (cityFilter && row.cidade !== cityFilter) return false;
@@ -569,7 +578,7 @@ function App() {
         />
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-all duration-300">
           {currentView === 'home' ? (
-            <HomeView />
+            <HomeView rows={homeRows} onPartnerClick={handleRowClick} onNavigate={setCurrentView} />
         ) : currentView === 'cs_kpis' ? (
             <CsKpisView />
         ) : currentView === 'settings' ? (
