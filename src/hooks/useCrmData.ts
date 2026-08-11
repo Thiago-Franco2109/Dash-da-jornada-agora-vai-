@@ -11,6 +11,7 @@ import type { GatewaySheetTable } from '../types/gatewaySheet';
 import { parseCrmPartners, CRM_PARSER_VERSION } from '../utils/crmData';
 import { indicadorHasCampaignColumns } from '../utils/indicadorSheet';
 import { buildParceirosStatusMapFromDb, type ParceirosStatusEntry } from '../utils/parceirosSheet';
+import { fetchCrmTablesFromDb, type CrmDbTables } from '../utils/crmFromDb';
 import { agentDebugLog } from '../utils/agentDebugLog';
 import {
     fetchGatewaySheetTable,
@@ -178,7 +179,16 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
         try {
             setError(null);
 
-            const indicador = await fetchGatewaySheetTable(
+            // Fonte primária: banco (crm-base + crm-cupons + crm-gmv).
+            // Se qualquer uma falhar, cai inteiro para as abas da planilha.
+            let doBanco: CrmDbTables | null = null;
+            try {
+                doBanco = await fetchCrmTablesFromDb();
+            } catch (err) {
+                console.warn('[useCrmData] CRM do banco indisponível; usando as planilhas:', err);
+            }
+
+            const indicador = doBanco?.indicador ?? await fetchGatewaySheetTable(
                 INDICADOR_DATA_SOURCE.sheetId,
                 INDICADOR_DATA_SOURCE.range,
                 {
@@ -193,14 +203,14 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             );
             saveGatewaySheetCache(CACHE_KEYS.crm_indicador, { data: indicador, lastSyncTime: new Date() });
 
-            const [promoEspecial, cupomParceiro, parceiros, parceirosStatusMap, logoMap, statusOverrides, relevance] = await Promise.all([
-                fetchOptionalCrmSheet(
+            const [promoEspecialSheet, cupomParceiroSheet, parceiros, parceirosStatusMap, logoMap, statusOverrides, relevance] = await Promise.all([
+                doBanco ? Promise.resolve(EMPTY_TABLE) : fetchOptionalCrmSheet(
                     PROMO_ESPECIAL_DATA_SOURCE.sheetId,
                     PROMO_ESPECIAL_DATA_SOURCE.range,
                     ['PROMO-ESPECIAL', 'PROMO_ESPECIAL', 'PROMO ESPECIAL'],
                     CACHE_KEYS.crm_promo,
                 ),
-                fetchOptionalCrmSheet(
+                doBanco ? Promise.resolve(EMPTY_TABLE) : fetchOptionalCrmSheet(
                     CUPOM_PARCEIRO_DATA_SOURCE.sheetId,
                     CUPOM_PARCEIRO_DATA_SOURCE.range,
                     ['CUPOM-PARCEIRO', 'CUPOM_PARCEIRO', 'CUPOM PARCEIRO', 'CUPOM-PARC'],
@@ -220,8 +230,8 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
 
             const { partners: parsed, parseInfo: info } = parseCrmPartners(
                 indicador,
-                promoEspecial,
-                cupomParceiro,
+                doBanco?.promoEspecial ?? promoEspecialSheet,
+                doBanco?.cupomParceiro ?? cupomParceiroSheet,
                 parceiros,
                 { logoMap, statusOverrides, parceirosStatusMap: parceirosStatusMap ?? undefined },
             );
