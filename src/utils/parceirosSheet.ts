@@ -76,6 +76,32 @@ export function buildParceirosStatusMap(table: GatewaySheetTable): Map<string, P
     return map;
 }
 
+/**
+ * Mesmo mapa, montado a partir da Function `parceiros-status` (banco).
+ * Substitui a aba PARCEIROS: o banco já entrega 1 registro por parceiro,
+ * com o contrato mais recente, então não há desempate a fazer aqui.
+ */
+export function buildParceirosStatusMapFromDb(
+    porEstab: Record<string, { status: string; contratoId: number }>,
+): Map<string, ParceirosStatusEntry> {
+    const map = new Map<string, ParceirosStatusEntry>();
+
+    for (const [rawId, entry] of Object.entries(porEstab)) {
+        const estabId = normalizeEstabId(rawId);
+        if (!estabId) continue;
+
+        const status = normalizeParceiroContratoStatus(entry?.status ?? '');
+        if (!status) continue;
+
+        map.set(partnerLookupKey(estabId), {
+            status,
+            contratoId: Number(entry?.contratoId ?? 0) || 0,
+        });
+    }
+
+    return map;
+}
+
 export function resolveParceiroStatusFromMap(
     estabId: string,
     statusMap: Map<string, ParceirosStatusEntry>,

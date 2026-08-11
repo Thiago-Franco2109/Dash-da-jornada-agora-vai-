@@ -17,7 +17,7 @@ import {
     resolveSheetColumn,
 } from './sheetColumnMatch';
 import { normalizeEstabId, normalizeIndicadorGatewayPayload } from './indicadorSheet';
-import { buildParceirosStatusMap, resolveParceiroStatusFromMap } from './parceirosSheet';
+import { buildParceirosStatusMap, resolveParceiroStatusFromMap, type ParceirosStatusEntry } from './parceirosSheet';
 import { getManagerForPartner } from '../config/managerMapping';
 import { agentDebugLog } from './agentDebugLog';
 
@@ -363,6 +363,8 @@ export function parseCrmPartners(
     options?: {
         logoMap?: Record<string, string>;
         statusOverrides?: Record<string, { promo: string; cupom: string }>;
+        /** Status vindo do banco (Function `parceiros-status`); a aba PARCEIROS só entra se faltar. */
+        parceirosStatusMap?: Map<string, ParceirosStatusEntry>;
     },
 ): { partners: CrmPartner[]; parseInfo: CrmParseInfo } {
     const ordered = orderedHeadersOf(indicador);
@@ -373,7 +375,7 @@ export function parseCrmPartners(
 
     const promoCampaignMap = buildPromoEspecialCampaignMap(promoEspecial);
     const cupomMap = buildCupomParceiroMap(cupomParceiro);
-    const parceirosStatusMap = buildParceirosStatusMap(parceiros);
+    const parceirosStatusMap = options?.parceirosStatusMap ?? buildParceirosStatusMap(parceiros);
     const logoMap = options?.logoMap ?? {};
     const overrides = options?.statusOverrides ?? {};
 

@@ -10,6 +10,7 @@ import type { CrmPartner, CrmParseInfo } from '../types/crm';
 import type { GatewaySheetTable } from '../types/gatewaySheet';
 import { parseCrmPartners, CRM_PARSER_VERSION } from '../utils/crmData';
 import { indicadorHasCampaignColumns } from '../utils/indicadorSheet';
+import { buildParceirosStatusMapFromDb, type ParceirosStatusEntry } from '../utils/parceirosSheet';
 import { agentDebugLog } from '../utils/agentDebugLog';
 import {
     fetchGatewaySheetTable,
@@ -31,6 +32,29 @@ interface CrmCachePayload {
 }
 
 const EMPTY_TABLE: GatewaySheetTable = { headers: [], rows: [] };
+
+const PARCEIROS_STATUS_FN_URL = '/.netlify/functions/parceiros-status';
+
+/**
+ * Status do contrato direto do banco — substitui a aba PARCEIROS.
+ * Retorna null se a Function falhar, e aí o parser volta a ler a aba.
+ */
+async function fetchParceirosStatusMap(): Promise<Map<string, ParceirosStatusEntry> | null> {
+    try {
+        const res = await fetch(PARCEIROS_STATUS_FN_URL, {
+            credentials: 'include' as RequestCredentials,
+            cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json?.ok === false || !json?.porEstab) {
+            throw new Error(json?.error || `Erro ${res.status} ao carregar status de contrato.`);
+        }
+        return buildParceirosStatusMapFromDb(json.porEstab);
+    } catch (err) {
+        console.warn('[useCrmData] parceiros-status indisponível; usando a aba PARCEIROS:', err);
+        return null;
+    }
+}
 
 function reparseFromGatewayCaches(
     options?: { logoMap?: Record<string, string>; statusOverrides?: Record<string, { promo: string; cupom: string }> },
@@ -169,7 +193,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             );
             saveGatewaySheetCache(CACHE_KEYS.crm_indicador, { data: indicador, lastSyncTime: new Date() });
 
-            const [promoEspecial, cupomParceiro, parceiros, logoMap, statusOverrides, relevance] = await Promise.all([
+            const [promoEspecial, cupomParceiro, parceiros, parceirosStatusMap, logoMap, statusOverrides, relevance] = await Promise.all([
                 fetchOptionalCrmSheet(
                     PROMO_ESPECIAL_DATA_SOURCE.sheetId,
                     PROMO_ESPECIAL_DATA_SOURCE.range,
@@ -188,6 +212,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                     ['PARCEIROS', 'Parceiros'],
                     CACHE_KEYS.crm_parceiros,
                 ),
+                fetchParceirosStatusMap(),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch(() => ({} as Record<string, string>)),
                 fetchStatusOverridesMap().catch(() => ({})),
                 fetchRelevanceMap().catch(() => ({})),
@@ -198,7 +223,7 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                 promoEspecial,
                 cupomParceiro,
                 parceiros,
-                { logoMap, statusOverrides },
+                { logoMap, statusOverrides, parceirosStatusMap: parceirosStatusMap ?? undefined },
             );
 
             const mega = parsed.find(p => p.estabId === '26904');
