@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     HORARIOS_FUNCIONAMENTO_DATA_SOURCE,
     RECESSOS_ESTABELECIMENTO_DATA_SOURCE,
@@ -12,8 +12,12 @@ import {
 } from '../utils/dataSync';
 import {
     formatTurno,
+    normalizeSemana,
     parseHorariosForEstab,
     parseRecessosForEstab,
+    sortRecessos,
+    type HorarioDia,
+    type RecessoRecord,
 } from '../utils/partnerFuncionamento';
 
 interface UsePartnerFuncionamentoDataOptions {
@@ -23,6 +27,35 @@ interface UsePartnerFuncionamentoDataOptions {
 }
 
 const EMPTY_TABLE: GatewaySheetTable = { headers: [], rows: [] };
+
+/** De onde vieram os dados exibidos: banco (CMS, tempo real) ou planilha (sync diário). */
+export type FuncionamentoFonte = 'banco' | 'planilha';
+
+const FUNCIONAMENTO_FN_URL = '/.netlify/functions/funcionamento';
+
+interface FuncionamentoLive {
+    horarios: HorarioDia[];
+    recessos: RecessoRecord[];
+}
+
+/**
+ * Fonte primária: mesma base do CMS, sem o filtro de 90 dias do sync da planilha.
+ * Só parceiros com ESTAB_ID numérico — o restante continua caindo na planilha.
+ */
+async function fetchFuncionamentoLive(estabId: string): Promise<FuncionamentoLive> {
+    const res = await fetch(
+        `${FUNCIONAMENTO_FN_URL}?estabId=${encodeURIComponent(estabId)}`,
+        { credentials: 'include' as RequestCredentials, cache: 'no-store' },
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+        throw new Error(json?.error || `Erro ${res.status} ao carregar horários no banco.`);
+    }
+    return {
+        horarios: normalizeSemana(Array.isArray(json.horarios) ? json.horarios : []),
+        recessos: sortRecessos(Array.isArray(json.recessos) ? json.recessos : []),
+    };
+}
 
 function partnerHasHorarios(
     horarios: ReturnType<typeof parseHorariosForEstab>,
@@ -67,6 +100,7 @@ export function usePartnerFuncionamentoData({
 }: UsePartnerFuncionamentoDataOptions) {
     const [horariosTable, setHorariosTable] = useState<GatewaySheetTable>(EMPTY_TABLE);
     const [recessosTable, setRecessosTable] = useState<GatewaySheetTable>(EMPTY_TABLE);
+    const [liveData, setLiveData] = useState<FuncionamentoLive | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -74,8 +108,34 @@ export function usePartnerFuncionamentoData({
     const [isUsingCache, setIsUsingCache] = useState(false);
     const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
+    // Ref (e não state) para não recriar performSync e disparar o efeito em loop.
+    const jaTemDadosRef = useRef(false);
+
     const performSync = useCallback(async () => {
         if (!enabled) return;
+
+        const idNumerico = estabId.trim();
+        if (/^\d+$/.test(idNumerico)) {
+            if (jaTemDadosRef.current) setIsRefreshing(true);
+            else setIsLoading(true);
+
+            try {
+                const live = await fetchFuncionamentoLive(idNumerico);
+                setLiveData(live);
+                setLastSyncTime(new Date());
+                setIsUsingCache(false);
+                setError(null);
+                setHasFetchedOnce(true);
+                jaTemDadosRef.current = true;
+                return;
+            } catch (err) {
+                console.warn('[usePartnerFuncionamentoData] Banco indisponível; usando a planilha:', err);
+                setLiveData(null);
+            } finally {
+                setIsLoading(false);
+                setIsRefreshing(false);
+            }
+        }
 
         const cachedH = loadGatewaySheetCache(CACHE_KEYS.horarios_funcionamento);
         const cachedR = loadGatewaySheetCache(CACHE_KEYS.recessos_estabelecimento);
@@ -114,6 +174,7 @@ export function usePartnerFuncionamentoData({
             setLastSyncTime(syncTime);
             setIsUsingCache(horarios.fromCache || recessos.fromCache);
             setHasFetchedOnce(true);
+            jaTemDadosRef.current = true;
 
             const errors = [horarios.error, recessos.error].filter(Boolean);
             setError(errors.length ? errors.join(' · ') : null);
@@ -131,11 +192,18 @@ export function usePartnerFuncionamentoData({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [enabled]);
+    }, [enabled, estabId]);
 
     useEffect(() => {
         if (!enabled) {
             setIsLoading(false);
+            return;
+        }
+
+        // Com ESTAB_ID numérico a fonte é o banco; o cache da planilha só entra
+        // em cena se a Function falhar (fallback dentro do performSync).
+        if (/^\d+$/.test(estabId.trim())) {
+            performSync();
             return;
         }
 
@@ -151,21 +219,24 @@ export function usePartnerFuncionamentoData({
         }
 
         performSync();
-    }, [enabled, performSync]);
+    }, [enabled, estabId, performSync]);
 
     const horariosDoParceiro = useMemo(
-        () => parseHorariosForEstab(horariosTable, estabId, estabelecimento),
-        [horariosTable, estabId, estabelecimento],
+        () => liveData?.horarios ?? parseHorariosForEstab(horariosTable, estabId, estabelecimento),
+        [liveData, horariosTable, estabId, estabelecimento],
     );
 
     const recessosDoParceiro = useMemo(
-        () => parseRecessosForEstab(recessosTable, estabId, estabelecimento),
-        [recessosTable, estabId, estabelecimento],
+        () => liveData?.recessos ?? parseRecessosForEstab(recessosTable, estabId, estabelecimento),
+        [liveData, recessosTable, estabId, estabelecimento],
     );
+
+    const fonte: FuncionamentoFonte = liveData ? 'banco' : 'planilha';
 
     return {
         horarios: horariosDoParceiro,
         recessos: recessosDoParceiro,
+        fonte,
         sheetHorariosCount: horariosTable.rows.length,
         sheetRecessosCount: recessosTable.rows.length,
         hasPartnerHorarios: partnerHasHorarios(horariosDoParceiro),

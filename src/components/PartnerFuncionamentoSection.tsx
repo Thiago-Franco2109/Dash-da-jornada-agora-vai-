@@ -252,6 +252,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
     const {
         horarios,
         recessos,
+        fonte,
         sheetHorariosCount,
         sheetRecessosCount,
         hasPartnerHorarios,
@@ -269,7 +270,8 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
     });
 
     const recessoAtivo = hasActiveRecesso(recessos);
-    const sheetVazia = !isLoading && sheetHorariosCount === 0 && sheetRecessosCount === 0;
+    const doBanco = fonte === 'banco';
+    const sheetVazia = !isLoading && !doBanco && sheetHorariosCount === 0 && sheetRecessosCount === 0;
     const parceiroSemDados = !isLoading && !sheetVazia && !hasPartnerHorarios && recessos.length === 0;
     const resumo = buildResumoFuncionamento(horarios, recessos, RESUMO_DIAS);
     const mostrarResumo = hasFetchedOnce && !sheetVazia && (hasPartnerHorarios || recessos.length > 0);
@@ -310,7 +312,7 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                     </button>
                     {lastSyncTime && (
                         <span className="text-xs text-slate-400">
-                            {isUsingCache ? 'Cache · ' : ''}
+                            {doBanco ? 'Direto do CMS · ' : isUsingCache ? 'Cache · ' : 'Planilha · '}
                             {format(lastSyncTime, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                         </span>
                     )}
@@ -336,7 +338,9 @@ export default function PartnerFuncionamentoSection({ partner }: PartnerFunciona
                 <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-sm text-slate-600 dark:text-slate-300">
                     Nenhum horário ou recesso para este parceiro
                     {estabId ? ` (ESTAB_ID ${estabId})` : ''}.
-                    O sync filtra parceiros com contrato nos últimos 90 dias — lojas fora desse filtro não aparecem na planilha.
+                    {doBanco
+                        ? ' A loja não tem grade cadastrada no CMS (aba Horários).'
+                        : ' O sync filtra parceiros com contrato nos últimos 90 dias — lojas fora desse filtro não aparecem na planilha.'}
                 </div>
             )}
 

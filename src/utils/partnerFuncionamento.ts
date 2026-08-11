@@ -126,6 +126,22 @@ function estabMatches(rowEstabId: string, targetEstabId: string, targetEstabelec
     return estabMatchesRow(rowEstabId, rowEstabelecimento ?? '', targetEstabId, targetEstabelecimento);
 }
 
+/** Completa os dias faltantes (como "Fechado") e ordena segunda → domingo. */
+export function normalizeSemana(horarios: HorarioDia[]): HorarioDia[] {
+    const byDay = new Map<number, HorarioDia>();
+    for (const h of horarios) {
+        if (h.diaSemana >= 0 && h.diaSemana <= 6) byDay.set(h.diaSemana, h);
+    }
+    return DIA_SEMANA_DISPLAY_ORDER.map(dia => byDay.get(dia) ?? {
+        diaSemana: dia,
+        diaLabel: DIA_SEMANA_LABELS[dia],
+        turno1Inicio: '',
+        turno1Fim: '',
+        turno2Inicio: '',
+        turno2Fim: '',
+    });
+}
+
 export function parseHorariosForEstab(
     table: GatewaySheetTable,
     estabId: string,
@@ -231,14 +247,19 @@ export function parseRecessosForEstab(
         });
     }
 
-    const statusOrder: Record<RecessoStatus, number> = {
-        em_recesso: 0,
-        futuro: 1,
-        encerrado: 2,
-    };
+    return sortRecessos(recessos);
+}
 
-    return recessos.sort((a, b) => {
-        const byStatus = statusOrder[a.statusRecesso] - statusOrder[b.statusRecesso];
+const RECESSO_STATUS_ORDER: Record<RecessoStatus, number> = {
+    em_recesso: 0,
+    futuro: 1,
+    encerrado: 2,
+};
+
+/** Em recesso agora → futuros → encerrados; dentro de cada grupo, mais recente primeiro. */
+export function sortRecessos(recessos: RecessoRecord[]): RecessoRecord[] {
+    return [...recessos].sort((a, b) => {
+        const byStatus = RECESSO_STATUS_ORDER[a.statusRecesso] - RECESSO_STATUS_ORDER[b.statusRecesso];
         if (byStatus !== 0) return byStatus;
         return b.dataInicio.localeCompare(a.dataInicio);
     });
