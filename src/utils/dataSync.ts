@@ -910,10 +910,36 @@ export function buildPartnerLogoMapFromRows(rows: Record<string, unknown>[]): Re
     return out;
 }
 
+const LOGOS_FN_URL = '/.netlify/functions/logos';
+
+/**
+ * Logos direto do banco (`estabelecimento.plano3`) — substitui LOJAS_DELIVERY.
+ * Devolve as linhas no formato da planilha; quem monta as chaves continua
+ * sendo o buildPartnerLogoMapFromRows.
+ */
+async function fetchLogoRowsFromDb(): Promise<Record<string, unknown>[]> {
+    const res = await fetch(LOGOS_FN_URL, {
+        credentials: 'include' as RequestCredentials,
+        cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false || !Array.isArray(json?.lojas)) {
+        throw new Error(json?.error || `Erro ${res.status} ao carregar logos.`);
+    }
+    return json.lojas;
+}
+
 export async function fetchPartnerLogoMap(
     sheetId: string = LOGO_SHEET_SOURCE.sheetId,
     tabName: string = LOGO_SHEET_SOURCE.range,
 ): Promise<Record<string, string>> {
+    try {
+        const lojas = await fetchLogoRowsFromDb();
+        if (lojas.length > 0) return buildPartnerLogoMapFromRows(lojas);
+    } catch (err) {
+        console.warn('[fetchPartnerLogoMap] Banco indisponível; usando a planilha:', err);
+    }
+
     if (!sheetId?.trim() || !tabName?.trim()) return {};
 
     try {
