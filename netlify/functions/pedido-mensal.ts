@@ -31,7 +31,11 @@ import { checkOrigin } from './_shared/auth';
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
 
-const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+// Cache de 5 min no navegador: esta é a Function mais cara do app (~5,5s em
+// produção, perto do limite de 10s) e o dado é agregado por mês fechado, que
+// não muda durante a sessão. Os erros continuam sem cache.
+const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'private, max-age=300' };
+const erroHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 
 function mesIso(d: Date): string {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -44,12 +48,12 @@ const STATUS_CONTRATO: Record<number, string> = { 1: 'ativo', 2: 'cancelado', 4:
 
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'GET') {
-        return { statusCode: 405, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: 'Method Not Allowed' }) };
+        return { statusCode: 405, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'Method Not Allowed' }) };
     }
 
     const origin = checkOrigin(event);
     if (!origin.ok) {
-        return { statusCode: origin.status, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
+        return { statusCode: origin.status, headers: erroHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
     const q = event.queryStringParameters ?? {};
@@ -195,7 +199,7 @@ export const handler: Handler = async (event) => {
         const code = (err as { code?: string })?.code;
         return {
             statusCode: 502,
-            headers: jsonHeaders,
+            headers: erroHeaders,
             body: JSON.stringify({ ok: false, code: code ?? null, error: message, elapsedMs: Date.now() - started }),
         };
     } finally {
