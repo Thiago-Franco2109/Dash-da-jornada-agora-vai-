@@ -13,9 +13,12 @@ const FN_URL = '/.netlify/functions/ativacoes-campanhas';
 export interface AtivacoesCampanhas {
     windowDays: number;
     cupons: {
+        /** nº de cupons criados na janela — um parceiro com 5 cupons conta 5 */
         total: number;
+        /** parceiros DISTINTOS que criaram cupom — o mesmo parceiro conta 1 */
+        parceiros: number;
         porDia: { dia: string; n: number }[];
-        porCidade: { cidade: string; n: number }[];
+        porCidade: { cidade: string; n: number; parceiros: number }[];
     };
     promos: {
         campanhas: {
@@ -32,7 +35,7 @@ export interface AtivacoesCampanhas {
         parceirosDistintos: number;
         cs: number;
         parceiro: number;
-        porCidade: { cidade: string; n: number; cs: number; parceiro: number }[];
+        porCidade: { cidade: string; n: number; cs: number; parceiro: number; parceiros: number }[];
     };
     elapsedMs?: number;
 }

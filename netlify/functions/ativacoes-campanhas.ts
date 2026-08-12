@@ -65,8 +65,13 @@ export const handler: Handler = async (event) => {
              WHERE destaque = 1 AND ativo = 1 AND data >= NOW() - INTERVAL ${windowDays} DAY
              GROUP BY dia ORDER BY dia`,
         );
+        // `parceiros` (distinto) vem POR CIDADE de propósito: um estabelecimento
+        // pertence a uma única localidade, então somar os distintos por cidade dá
+        // o distinto global — e permite filtrar por gestor sem perder a contagem
+        // (COUNT(DISTINCT) global não seria somável a partir dos recortes).
         const [cupPorCidade] = await connection.query<RowDataPacket[]>(
-            `SELECT l.nome AS cidade, COUNT(*) AS n
+            `SELECT l.nome AS cidade, COUNT(*) AS n,
+                    COUNT(DISTINCT cd.estabelecimento_id) AS parceiros
              FROM cupom_desconto cd
              JOIN estabelecimento e ON e.id = cd.estabelecimento_id
              JOIN localidade l ON l.id = e.localidade_id
@@ -126,6 +131,9 @@ export const handler: Handler = async (event) => {
         const porCidadeMap = new Map<string, Split>();
         const allEstabIds = new Set<number>();
         const totalSplit = novoSplit();
+        // parceiros DISTINTOS por cidade: participação conta (campanha × parceiro),
+        // então um parceiro em 3 campanhas soma 3 ali mas 1 aqui.
+        const estabsPorCidade = new Map<string, Set<string>>();
 
         for (const r of parts) {
             const camp = Number(r.camp);
@@ -134,6 +142,7 @@ export const handler: Handler = async (event) => {
             const ehCs = csPorCampanha.get(camp)?.has(estab) ?? false;
 
             allEstabIds.add(Number(r.estab));
+            (estabsPorCidade.get(cidade) ?? estabsPorCidade.set(cidade, new Set()).get(cidade)!).add(estab);
             for (const alvo of [
                 porCampanhaId.get(camp) ?? porCampanhaId.set(camp, novoSplit()).get(camp)!,
                 porCidadeMap.get(cidade) ?? porCidadeMap.set(cidade, novoSplit()).get(cidade)!,
@@ -156,7 +165,13 @@ export const handler: Handler = async (event) => {
             .sort((a, b) => b.participantes - a.participantes);
 
         const promoPorCidade = [...porCidadeMap.entries()]
-            .map(([cidade, s]) => ({ cidade, n: s.participantes, cs: s.cs, parceiro: s.parceiro }))
+            .map(([cidade, s]) => ({
+                cidade,
+                n: s.participantes,
+                cs: s.cs,
+                parceiro: s.parceiro,
+                parceiros: estabsPorCidade.get(cidade)?.size ?? 0,
+            }))
             .sort((a, b) => b.n - a.n);
 
         return {
@@ -167,8 +182,14 @@ export const handler: Handler = async (event) => {
                 windowDays,
                 cupons: {
                     total: cupPorDia.reduce((s, r) => s + Number(r.n), 0),
+                    // somável a partir das cidades porque um parceiro está em uma só
+                    parceiros: cupPorCidade.reduce((s, r) => s + Number(r.parceiros), 0),
                     porDia: cupPorDia.map(r => ({ dia: String(r.dia), n: Number(r.n) })),
-                    porCidade: cupPorCidade.map(r => ({ cidade: String(r.cidade), n: Number(r.n) })),
+                    porCidade: cupPorCidade.map(r => ({
+                        cidade: String(r.cidade),
+                        n: Number(r.n),
+                        parceiros: Number(r.parceiros),
+                    })),
                 },
                 promos: {
                     campanhas,

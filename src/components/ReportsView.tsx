@@ -449,7 +449,7 @@ function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
 const WINDOW_OPTIONS = [7, 28, 90] as const;
 const MESES_OPTIONS = [6, 12, 24] as const;
 
-type AtivRow = { segmento: string; cupons: number; promo: number; cs: number; parceiro: number };
+type AtivRow = { segmento: string; cuponsParceiros: number; promo: number; cs: number; parceiro: number };
 
 export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
     const [windowDays, setWindowDays] = useState<number>(28);
@@ -468,24 +468,27 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
     const cuponsPorDia = data?.cupons.porDia ?? [];
 
     const totais = useMemo(() => {
-        if (!data) return { cupons: 0, promoParticipacoes: 0, promoDistintos: 0, cs: 0, parceiro: 0 };
+        if (!data) return { cupons: 0, cuponsParceiros: 0, promoParticipacoes: 0, promoDistintos: 0, cs: 0, parceiro: 0 };
         // sem filtro: usa os totais oficiais (mais precisos p/ 'todos')
         if (!managerFilter) {
             return {
                 cupons: data.cupons.total,
+                cuponsParceiros: data.cupons.parceiros,
                 promoParticipacoes: data.promos.totalParticipacoes,
                 promoDistintos: data.promos.parceirosDistintos,
                 cs: data.promos.cs,
                 parceiro: data.promos.parceiro,
             };
         }
+        // com filtro, somar os distintos POR CIDADE é correto: um parceiro
+        // pertence a uma única localidade, então não há dupla contagem
         const doGestor = data.promos.porCidade.filter(c => matchesManager(c.cidade));
-        const cupons = data.cupons.porCidade.filter(c => matchesManager(c.cidade)).reduce((s, c) => s + c.n, 0);
-        const promoParticipacoes = doGestor.reduce((s, c) => s + c.n, 0);
+        const cupomGestor = data.cupons.porCidade.filter(c => matchesManager(c.cidade));
         return {
-            cupons,
-            promoParticipacoes,
-            promoDistintos: promoParticipacoes,
+            cupons: cupomGestor.reduce((s, c) => s + c.n, 0),
+            cuponsParceiros: cupomGestor.reduce((s, c) => s + c.parceiros, 0),
+            promoParticipacoes: doGestor.reduce((s, c) => s + c.n, 0),
+            promoDistintos: doGestor.reduce((s, c) => s + c.parceiros, 0),
             cs: doGestor.reduce((s, c) => s + c.cs, 0),
             parceiro: doGestor.reduce((s, c) => s + c.parceiro, 0),
         };
@@ -499,7 +502,7 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
     const rows = useMemo<AtivRow[]>(() => {
         if (!data) return [];
         const cupMap = new Map<string, number>();
-        data.cupons.porCidade.forEach(c => cupMap.set(c.cidade, c.n));
+        data.cupons.porCidade.forEach(c => cupMap.set(c.cidade, c.parceiros));
         const promoMap = new Map<string, { n: number; cs: number; parceiro: number }>();
         data.promos.porCidade.forEach(c => promoMap.set(c.cidade, { n: c.n, cs: c.cs, parceiro: c.parceiro }));
         const cidades = new Set<string>([...cupMap.keys(), ...promoMap.keys()]);
@@ -508,27 +511,29 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
             .filter(c => matchesManager(c))
             .map(c => {
                 const p = promoMap.get(c);
-                return { cidade: c, cupons: cupMap.get(c) ?? 0, promo: p?.n ?? 0, cs: p?.cs ?? 0, parceiro: p?.parceiro ?? 0 };
+                return { cidade: c, cuponsParceiros: cupMap.get(c) ?? 0, promo: p?.n ?? 0, cs: p?.cs ?? 0, parceiro: p?.parceiro ?? 0 };
             });
+
+        const peso = (r: { cuponsParceiros: number; promo: number }) => r.cuponsParceiros + r.promo;
 
         if (segmento === 'cidade') {
             return base
-                .map(b => ({ segmento: b.cidade, cupons: b.cupons, promo: b.promo, cs: b.cs, parceiro: b.parceiro }))
-                .sort((a, b) => (b.cupons + b.promo) - (a.cupons + a.promo));
+                .map(b => ({ segmento: b.cidade, cuponsParceiros: b.cuponsParceiros, promo: b.promo, cs: b.cs, parceiro: b.parceiro }))
+                .sort((a, b) => peso(b) - peso(a));
         }
-        const byMgr = new Map<string, { cupons: number; promo: number; cs: number; parceiro: number }>();
+        const byMgr = new Map<string, { cuponsParceiros: number; promo: number; cs: number; parceiro: number }>();
         for (const b of base) {
             const m = getEffectiveManager(b.cidade, '') || 'Desconhecido';
-            const cur = byMgr.get(m) ?? { cupons: 0, promo: 0, cs: 0, parceiro: 0 };
-            cur.cupons += b.cupons;
+            const cur = byMgr.get(m) ?? { cuponsParceiros: 0, promo: 0, cs: 0, parceiro: 0 };
+            cur.cuponsParceiros += b.cuponsParceiros;
             cur.promo += b.promo;
             cur.cs += b.cs;
             cur.parceiro += b.parceiro;
             byMgr.set(m, cur);
         }
         return [...byMgr.entries()]
-            .map(([segmento, v]) => ({ segmento, cupons: v.cupons, promo: v.promo, cs: v.cs, parceiro: v.parceiro }))
-            .sort((a, b) => (b.cupons + b.promo) - (a.cupons + a.promo));
+            .map(([segmento, v]) => ({ segmento, ...v }))
+            .sort((a, b) => peso(b) - peso(a));
     }, [data, segmento, matchesManager]);
 
     const maxDia = Math.max(1, ...cuponsPorDia.map(d => d.n));
@@ -590,12 +595,12 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
                     {/* CARDS */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                         <KPICard
-                            title={`Cupons Ativados (${windowDays}d)`}
-                            value={intBR(totais.cupons)}
-                            subtitle="Cupons de destaque criados no período"
+                            title={`Parceiros com Cupom (${windowDays}d)`}
+                            value={intBR(totais.cuponsParceiros)}
+                            subtitle={`${intBR(totais.cupons)} cupons de destaque no período`}
                             icons={['confirmation_number']}
                             color="emerald"
-                            trend="Tem data de ativação"
+                            trend="Parceiros distintos, não cupons"
                         />
                         <KPICard
                             title="Promoções — Participações"
@@ -691,7 +696,7 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
                         <div className="flex items-center justify-between gap-4 flex-wrap p-6 pb-4 border-b border-slate-100 dark:border-slate-700/50">
                             <div>
                                 <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">Segmentação</h3>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{rows.length} {segmento === 'cidade' ? 'cidades' : 'gestores'} · cupons no período + participações em promoção</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{rows.length} {segmento === 'cidade' ? 'cidades' : 'gestores'} · parceiros com cupom no período + participações em promoção</p>
                             </div>
                             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/60 p-1 rounded-xl">
                                 {(['cidade', 'gestor'] as Segmento[]).map(s => (
@@ -712,7 +717,7 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
                                 <thead>
                                     <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-700/50">
                                         <th className="text-left font-black px-6 py-3">{segmento === 'cidade' ? 'Cidade' : 'Gestor'}</th>
-                                        <th className="text-right font-black px-4 py-3">Cupons ({windowDays}d)</th>
+                                        <th className="text-right font-black px-4 py-3">Parc. c/ cupom ({windowDays}d)</th>
                                         <th className="text-right font-black px-4 py-3">Promo (participações)</th>
                                         <th className="text-right font-black px-4 py-3">Parceiro</th>
                                         <th className="text-right font-black px-4 py-3">CS</th>
@@ -723,7 +728,7 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
                                     {rows.map(r => (
                                         <tr key={r.segmento} className="border-b border-slate-50 dark:border-slate-700/30 hover:bg-slate-50/60 dark:hover:bg-slate-900/30 transition-colors">
                                             <td className="px-6 py-3 font-bold text-slate-900 dark:text-white">{r.segmento}</td>
-                                            <td className="px-4 py-3 text-right font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{intBR(r.cupons)}</td>
+                                            <td className="px-4 py-3 text-right font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{intBR(r.cuponsParceiros)}</td>
                                             <td className="px-4 py-3 text-right font-semibold text-violet-600 dark:text-violet-400 tabular-nums">{intBR(r.promo)}</td>
                                             <td className="px-4 py-3 text-right font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{intBR(r.parceiro)}</td>
                                             <td className="px-4 py-3 text-right font-semibold text-blue-600 dark:text-blue-400 tabular-nums">{intBR(r.cs)}</td>
