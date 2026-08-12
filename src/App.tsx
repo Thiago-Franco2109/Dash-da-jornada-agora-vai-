@@ -24,6 +24,7 @@ import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
 import { fetchPedidoMensalTable, fetchParceiroMensalTable } from './utils/pedidoMensalFromDb';
+import { fetchJornadaRowsFromDb } from './utils/jornadaFromDb';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -90,6 +91,8 @@ function App() {
     sources: activeSources,
     cacheKey: activeCacheKey,
     enabled: isAuthenticated,
+    // Marketplace lê a jornada do banco; o modo CD segue nas abas de CD.
+    dbFetchRows: isCD ? undefined : fetchJornadaRowsFromDb,
   });
 
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"

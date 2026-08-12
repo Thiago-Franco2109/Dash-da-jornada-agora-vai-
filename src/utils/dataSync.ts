@@ -463,6 +463,11 @@ function buildLegacyCampaignStatuses(
 /**
  * Processas as rows retornadas pelo Gateway.
  */
+/** Exportado para a jornada do banco reusar exatamente este parser. */
+export function parseGatewayTableRows(rows: Record<string, any>[], headers?: string[]): PerformanceRow[] {
+    return parseGatewayRows(rows, headers);
+}
+
 function parseGatewayRows(rows: Record<string, any>[], headers?: string[]): PerformanceRow[] {
     const dataRows = rows.slice(SKIP_METADATA_ROWS);
 

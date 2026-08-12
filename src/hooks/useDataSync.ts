@@ -29,6 +29,11 @@ interface UseDataSyncOptions {
     skipSideData?: boolean;
     /** Perfil de leitura — evita passar callbacks instáveis que causam loop de render */
     syncProfile?: 'default' | 'cd_desempenho';
+    /**
+     * Fonte primária opcional (banco). Se resolver, as planilhas nem são
+     * chamadas; se falhar, o fluxo cai para as abas como sempre foi.
+     */
+    dbFetchRows?: () => Promise<PerformanceRow[]>;
     /** Atraso antes do primeiro fetch (evita 429 ao abrir abas em sequência) */
     fetchDelayMs?: number;
     autoRefreshIntervalMs?: number;
@@ -40,6 +45,7 @@ export function useDataSync({
     cacheKey,
     skipSideData = false,
     syncProfile = 'default',
+    dbFetchRows,
     fetchDelayMs = 0,
     autoRefreshIntervalMs = 3600000,
     enabled = true,
@@ -77,7 +83,16 @@ export function useDataSync({
 
             let flatFetchedData: PerformanceRow[];
 
-            if (syncProfile === 'cd_desempenho') {
+            const doBanco = dbFetchRows
+                ? await dbFetchRows().catch((err) => {
+                    console.warn('[useDataSync] Banco indisponível; usando as planilhas:', err);
+                    return null;
+                })
+                : null;
+
+            if (doBanco && doBanco.length > 0) {
+                flatFetchedData = doBanco;
+            } else if (syncProfile === 'cd_desempenho') {
                 const src = sources[0];
                 flatFetchedData = await fetchCDDesempenhoSheetData(
                     src.sheetId,
@@ -165,7 +180,7 @@ export function useDataSync({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [sources, cacheKey, enabled, skipSideData, syncProfile]);
+    }, [sources, cacheKey, enabled, skipSideData, syncProfile, dbFetchRows]);
 
     // Initial load — com delay opcional para evitar rajadas de requisição
     useEffect(() => {

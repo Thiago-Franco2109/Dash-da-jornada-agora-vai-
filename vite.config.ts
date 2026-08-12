@@ -131,7 +131,7 @@ function dbFunctionsDevPlugin(): Plugin {
   const FN_PREFIX = '/.netlify/functions/'
   const DB_FNS = new Set([
     'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'campanhas',
-    'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal',
+    'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada',
   ])
   return {
     name: 'db-functions-dev',
