@@ -25,6 +25,7 @@ import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
 import { fetchPedidoMensalTable, fetchParceiroMensalTable } from './utils/pedidoMensalFromDb';
 import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './utils/jornadaFromDb';
+import { useAtribuicaoCs } from './hooks/useAtribuicaoCs';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -174,6 +175,10 @@ function App() {
     isUsingCache: crmUsingCache,
     refreshData: refreshCrmData,
   } = useCrmData({ enabled: crmDataEnabled });
+
+  // Atribuição de CS (cidade e loja) do Supabase — publica no resolvedor
+  // síncrono usado por todas as telas.
+  const { atribuicoes: atribuicoesCs, salvarCidade: salvarCidadeCs, salvarParceiro: salvarParceiroCs } = useAtribuicaoCs();
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -596,7 +601,13 @@ function App() {
           <AboutView />
         ) : currentView === 'managers' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <ManagersView data={enrichedData} onMappingChange={() => setMappingVersion(v => v + 1)} />
+            <ManagersView
+              data={enrichedData}
+              onMappingChange={() => setMappingVersion(v => v + 1)}
+              atribuicoes={atribuicoesCs}
+              salvarCidade={salvarCidadeCs}
+              salvarParceiro={salvarParceiroCs}
+            />
           </div>
         ) : currentView === 'profile' ? (
           <ProfileView />

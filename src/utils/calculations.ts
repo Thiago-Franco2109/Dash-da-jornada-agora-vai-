@@ -239,7 +239,7 @@ export const enrichPartnerData = (
     const city_weight = getCityWeight(partner.cidade);
     const priority_stars = calculatePriorityStars(partner, dias_desde_lancamento, total_pedidos, indice_desempenho, city_weight);
 
-    const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode);
+    const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode, partner.estab_id);
     const state = getPartnerState(partner.estab_id || partner.estabelecimento);
     
     return {
@@ -277,7 +277,7 @@ export const enrichDesempenhoPartnerData = (
             ? Math.min(1, total_pedidos / (media_semanal * DESEMPENHO_WEEKS_COUNT))
             : 0;
 
-    const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode);
+    const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode, partner.estab_id);
     const state = getPartnerState(partner.estab_id || partner.estabelecimento);
     const contrato = findContractForPartner(partner.estabelecimento);
     const pedidos_por_dia = calcularPedidosPorDia(partner.week_1);

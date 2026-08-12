@@ -422,7 +422,7 @@ export function parseCrmPartners(
         ) as CrmPartner['campaignStatuses'];
 
         const gmvValue = parseBRL(parsed.gmvRaw);
-        const analista = getManagerForPartner(parsed.cidade, 'Desconhecido', undefined, 'marketplace');
+        const analista = getManagerForPartner(parsed.cidade, 'Desconhecido', undefined, 'marketplace', parsed.estabId);
         const statusParceiro = resolveParceiroStatusFromMap(parsed.estabId, parceirosStatusMap, parsed.contrato);
         if (parceirosStatusMap.has(lookupKey)) parceirosMatched++;
 

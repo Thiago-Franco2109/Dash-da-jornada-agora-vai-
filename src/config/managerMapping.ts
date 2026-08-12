@@ -2,6 +2,34 @@
 export type Manager = 'THIAGO' | 'LAÍS' | 'DESCONHECIDO';
 export type ProductModeKey = 'marketplace' | 'cardapio_digital';
 
+/**
+ * Atribuições vindas do Supabase (ver useAtribuicaoCs). Ficam num módulo
+ * porque as telas resolvem o analista de forma síncrona, no meio da
+ * renderização — o hook publica aqui assim que carrega.
+ *
+ * Ordem de decisão: loja > cidade (Supabase) > mapa semente abaixo.
+ */
+interface AtribuicoesPublicadas {
+    porCidade: Record<ProductModeKey, Record<string, Manager>>;
+    porParceiro: Record<ProductModeKey, Record<string, { analista: Manager }>>;
+}
+
+let atribuicoes: AtribuicoesPublicadas | null = null;
+
+export function setAtribuicoesCarregadas(dados: AtribuicoesPublicadas): void {
+    atribuicoes = dados;
+}
+
+/** True quando o Supabase já respondeu — a tela de Gestores usa para avisar. */
+export function temAtribuicoesCarregadas(): boolean {
+    return atribuicoes !== null;
+}
+
+/**
+ * Mapa que era a única fonte antes do Supabase. Continua aqui como semente
+ * (é o que popula a tabela na primeira execução do SQL) e como rede de
+ * segurança se o Supabase não responder.
+ */
 export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     // LAÍS
     'Barão de Cocais': 'LAÍS',
@@ -47,7 +75,6 @@ export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     'Natividade': 'THIAGO',
 };
 
-const OVERRIDES_KEY_PREFIX = 'city_manager_overrides';
 const NO_CITY_SPLIT_KEY_PREFIX = 'no_city_manager_split';
 
 export interface NoCityManagerSplit {
@@ -55,41 +82,8 @@ export interface NoCityManagerSplit {
     thiagoCount: number;
 }
 
-function overridesStorageKey(mode: ProductModeKey): string {
-    return `${OVERRIDES_KEY_PREFIX}_${mode}`;
-}
-
 function noCitySplitStorageKey(mode: ProductModeKey): string {
     return `${NO_CITY_SPLIT_KEY_PREFIX}_${mode}`;
-}
-
-export function getManagerOverrides(mode: ProductModeKey = 'marketplace'): Record<string, Manager> {
-    try {
-        const stored = localStorage.getItem(overridesStorageKey(mode));
-        if (stored) return JSON.parse(stored);
-
-        // Migra chave legada do marketplace
-        if (mode === 'marketplace') {
-            const legacy = localStorage.getItem('city_manager_overrides');
-            if (legacy) {
-                localStorage.setItem(overridesStorageKey(mode), legacy);
-                return JSON.parse(legacy);
-            }
-        }
-    } catch {
-        return {};
-    }
-    return {};
-}
-
-export function saveManagerOverride(city: string, manager: Manager, mode: ProductModeKey = 'marketplace') {
-    const overrides = getManagerOverrides(mode);
-    if (manager === 'DESCONHECIDO') {
-        delete overrides[city];
-    } else {
-        overrides[city] = manager;
-    }
-    localStorage.setItem(overridesStorageKey(mode), JSON.stringify(overrides));
 }
 
 export function getNoCityManagerSplit(mode: ProductModeKey = 'marketplace'): NoCityManagerSplit {
@@ -107,8 +101,8 @@ export function saveNoCityManagerSplit(split: NoCityManagerSplit, mode: ProductM
 }
 
 export function getEffectiveManager(city: string, originalManager: string, mode: ProductModeKey = 'marketplace'): string {
-    const overrides = getManagerOverrides(mode);
-    if (overrides[city]) return overrides[city];
+    const doBanco = atribuicoes?.porCidade[mode]?.[city];
+    if (doBanco) return doBanco;
 
     if (INITIAL_CITY_MANAGER_MAP[city]) return INITIAL_CITY_MANAGER_MAP[city];
 
@@ -119,15 +113,26 @@ export function getEffectiveManager(city: string, originalManager: string, mode:
 }
 
 /**
- * Resolve o gestor de um parceiro, incluindo distribuição configurável para parceiros sem cidade.
- * Padrão sem cidade: Laís (thiagoCount define quantos vão para Thiago, por ordem alfabética).
+ * Resolve o CS de um parceiro.
+ *
+ * A atribuição por LOJA vem primeiro: no Cardápio Digital, vendido para o
+ * país inteiro, a cidade quase nunca tem carteira e a escolha é manual, loja
+ * a loja. Só depois entra a cidade.
+ *
+ * `noCityIndex` é o resquício do rateio por contagem que existia antes da
+ * atribuição por loja: sem cidade e sem escolha registrada, ainda divide
+ * alfabeticamente para não deixar ninguém órfão na tela.
  */
 export function getManagerForPartner(
     city: string,
     originalManager: string,
     noCityIndex: number | undefined,
     mode: ProductModeKey = 'marketplace',
+    estabId?: string,
 ): string {
+    const porLoja = estabId ? atribuicoes?.porParceiro[mode]?.[String(estabId)] : undefined;
+    if (porLoja) return porLoja.analista;
+
     const trimmedCity = (city || '').trim();
     if (trimmedCity) {
         return getEffectiveManager(trimmedCity, originalManager, mode);
@@ -137,6 +142,14 @@ export function getManagerForPartner(
 
     const split = getNoCityManagerSplit(mode);
     return noCityIndex < split.thiagoCount ? 'THIAGO' : 'LAÍS';
+}
+
+/** Lojas atribuídas manualmente a um CS (usado no Cardápio Digital). */
+export function getLojasDoAnalista(analista: Manager, mode: ProductModeKey = 'cardapio_digital'): string[] {
+    const porParceiro = atribuicoes?.porParceiro[mode] ?? {};
+    return Object.entries(porParceiro)
+        .filter(([, v]) => v.analista === analista)
+        .map(([estabId]) => estabId);
 }
 
 /**
@@ -157,10 +170,9 @@ export function identifyManagerFromUser(user: { name?: string; email?: string })
 
 /** Cidades cuja gestão efetiva pertence ao gestor informado. */
 export function getCitiesForManager(manager: Manager, mode: ProductModeKey = 'marketplace'): string[] {
-    const overrides = getManagerOverrides(mode);
     const allCities = new Set([
         ...Object.keys(INITIAL_CITY_MANAGER_MAP),
-        ...Object.keys(overrides),
+        ...Object.keys(atribuicoes?.porCidade[mode] ?? {}),
     ]);
 
     return Array.from(allCities)
