@@ -7,6 +7,25 @@ import {
     loadCarteiraCache,
 } from '../utils/dataSync';
 
+const CARTEIRA_FN_URL = '/.netlify/functions/carteira';
+
+/**
+ * Carteira direto do banco — substitui a aba CIDADES_FORMATADO. DIVISÃO e
+ * GRUPO voltam vazios daqui: são classificação comercial, vêm do Supabase
+ * (ver useCarteiraClassificacao) e são preenchidos na tela.
+ */
+async function fetchCarteiraFromDb(): Promise<CarteiraRow[]> {
+    const res = await fetch(CARTEIRA_FN_URL, {
+        credentials: 'include' as RequestCredentials,
+        cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false || !Array.isArray(json?.linhas)) {
+        throw new Error(json?.error || `Erro ${res.status} ao carregar a carteira.`);
+    }
+    return json.linhas as CarteiraRow[];
+}
+
 interface UseCarteiraDataOptions {
     enabled?: boolean;
 }
@@ -37,10 +56,13 @@ export function useCarteiraData({ enabled = true }: UseCarteiraDataOptions = {})
 
         try {
             setError(null);
-            const data = await fetchCarteiraSheetData(
-                CARTEIRA_DATA_SOURCE.sheetId,
-                CARTEIRA_DATA_SOURCE.range,
-            );
+            const data = await fetchCarteiraFromDb().catch(async (err) => {
+                console.warn('[useCarteiraData] Banco indisponível; usando a planilha:', err);
+                return fetchCarteiraSheetData(
+                    CARTEIRA_DATA_SOURCE.sheetId,
+                    CARTEIRA_DATA_SOURCE.range,
+                );
+            });
             const syncTime = new Date();
             setRows(data);
             setLastSyncTime(syncTime);

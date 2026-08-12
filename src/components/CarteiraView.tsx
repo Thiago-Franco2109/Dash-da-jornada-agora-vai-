@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CarteiraRow } from '../types/carteira';
 import { cityBelongsToManager, type Manager } from '../config/managerMapping';
+import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 
 interface CarteiraViewProps {
     rows: CarteiraRow[];
@@ -39,6 +40,57 @@ const COLUMNS: { key: keyof CarteiraRow; label: string; align: 'left' | 'center'
     { key: 'semCupom', label: 'Sem cupom', align: 'center' },
 ];
 
+/**
+ * Célula de texto que vira input ao clicar. Salva ao sair do campo ou no
+ * Enter; Esc desfaz. Usada só em divisão e grupo, que são digitados à mão.
+ */
+function CelulaEditavel({
+    valor,
+    rotulo,
+    cidade,
+    onSalvar,
+}: {
+    valor: string;
+    rotulo: string;
+    cidade: string;
+    onSalvar: (valor: string) => void;
+}) {
+    const [editando, setEditando] = useState(false);
+    const [rascunho, setRascunho] = useState(valor);
+
+    if (!editando) {
+        return (
+            <button
+                type="button"
+                onClick={() => { setRascunho(valor); setEditando(true); }}
+                title={`Editar ${rotulo} de ${cidade}`}
+                className={`w-full text-left px-1 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                    valor ? 'text-slate-700 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600 italic'
+                }`}
+            >
+                {valor || 'definir'}
+            </button>
+        );
+    }
+
+    const confirmar = () => { setEditando(false); onSalvar(rascunho.trim()); };
+
+    return (
+        <input
+            autoFocus
+            value={rascunho}
+            onChange={e => setRascunho(e.target.value)}
+            onBlur={confirmar}
+            onKeyDown={e => {
+                if (e.key === 'Enter') confirmar();
+                if (e.key === 'Escape') { setRascunho(valor); setEditando(false); }
+            }}
+            aria-label={`${rotulo} de ${cidade}`}
+            className="w-28 px-1 py-0.5 rounded border border-emerald-400 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none"
+        />
+    );
+}
+
 export default function CarteiraView({
     rows,
     isLoading,
@@ -51,20 +103,45 @@ export default function CarteiraView({
 }: CarteiraViewProps) {
     const [grupoFilter, setGrupoFilter] = useState('');
     const [cidadeFilter, setCidadeFilter] = useState('');
+    const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+
+    // Divisão e grupo não existem no banco Bigou: são classificação comercial,
+    // guardada no Supabase e editada aqui mesmo (ver carteira_cidade.sql).
+    const { mapa: classificacao, salvar } = useCarteiraClassificacao();
+
+    const rowsClassificadas = useMemo(
+        () => rows.map(row => ({
+            ...row,
+            divisao: classificacao[row.cidade]?.divisao || row.divisao,
+            grupo: classificacao[row.cidade]?.grupo || row.grupo,
+        })),
+        [rows, classificacao],
+    );
+
+    const salvarClassificacao = async (cidade: string, campo: 'divisao' | 'grupo', valor: string) => {
+        const atual = classificacao[cidade] ?? { divisao: '', grupo: '' };
+        if ((atual[campo] ?? '') === valor) return;
+        try {
+            setErroSalvar(null);
+            await salvar(cidade, { ...atual, [campo]: valor });
+        } catch (err) {
+            setErroSalvar(err instanceof Error ? err.message : `Falha ao salvar ${campo} de ${cidade}`);
+        }
+    };
 
     const grupos = useMemo(
-        () => Array.from(new Set(rows.map(r => r.grupo).filter(Boolean))).sort(),
-        [rows],
+        () => Array.from(new Set(rowsClassificadas.map(r => r.grupo).filter(Boolean))).sort(),
+        [rowsClassificadas],
     );
 
     const filteredRows = useMemo(() => {
-        return rows.filter(row => {
+        return rowsClassificadas.filter(row => {
             if (managerFilter && !cityBelongsToManager(row.cidade, managerFilter as Manager)) return false;
             if (grupoFilter && row.grupo !== grupoFilter) return false;
             if (cidadeFilter && !row.cidade.toLowerCase().includes(cidadeFilter.toLowerCase())) return false;
             return true;
         });
-    }, [rows, grupoFilter, cidadeFilter, managerFilter]);
+    }, [rowsClassificadas, grupoFilter, cidadeFilter, managerFilter]);
 
     const totals = useMemo(() => {
         return filteredRows.reduce(
@@ -93,6 +170,20 @@ export default function CarteiraView({
 
     const renderCell = (row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean) => {
         const value = row[key];
+
+        if (key === 'divisao' || key === 'grupo') {
+            return (
+                <td key={key} className="px-2 py-2 text-sm text-left whitespace-nowrap">
+                    <CelulaEditavel
+                        valor={String(value ?? '')}
+                        rotulo={key === 'divisao' ? 'divisão' : 'grupo'}
+                        cidade={row.cidade}
+                        onSalvar={valor => salvarClassificacao(row.cidade, key, valor)}
+                    />
+                </td>
+            );
+        }
+
         if (isPct && typeof value === 'number') {
             return (
                 <td key={String(key)} className={`px-2 py-2 text-center text-sm ${pctCellClass(value)}`}>
@@ -104,7 +195,7 @@ export default function CarteiraView({
             <td
                 key={String(key)}
                 className={`px-2 py-2 text-sm text-slate-700 dark:text-slate-300 ${
-                    key === 'divisao' || key === 'cidade' || key === 'grupo' ? 'text-left whitespace-nowrap' : 'text-center'
+                    key === 'cidade' ? 'text-left whitespace-nowrap' : 'text-center'
                 }`}
             >
                 {typeof value === 'number' ? value.toLocaleString('pt-BR') : value}
@@ -121,7 +212,7 @@ export default function CarteiraView({
                             Carteira
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 text-base">
-                            Visão por cidade e grupo — aba <strong>CIDADES_FORMATADO</strong> via Bigou Gateway.
+                            Visão por cidade e grupo — contagens direto do banco Bigou.
                         </p>
                         {managerFilter && (
                             <p className="text-xs text-primary font-semibold mt-1">
@@ -129,7 +220,7 @@ export default function CarteiraView({
                             </p>
                         )}
                         <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">
-                            Na planilha, os cabeçalhos (DIVISÃO, CIDADE, GRUPO, TOTAL…) devem estar na <strong>linha 1</strong> da aba.
+                            <strong>Divisão</strong> e <strong>grupo</strong> são classificação de vocês: clique na célula para editar.
                         </p>
                     </div>
                     <div className="flex flex-col items-end shrink-0">
@@ -160,6 +251,12 @@ export default function CarteiraView({
                 {error && !isUsingCache && (
                     <div className="mt-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg text-sm text-red-700 dark:text-red-300">
                         {error}
+                    </div>
+                )}
+
+                {erroSalvar && (
+                    <div className="mt-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg text-sm text-red-700 dark:text-red-300">
+                        Não deu para salvar a classificação: {erroSalvar}
                     </div>
                 )}
             </div>
