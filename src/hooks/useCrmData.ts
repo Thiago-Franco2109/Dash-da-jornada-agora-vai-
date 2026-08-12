@@ -203,7 +203,12 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
             );
             saveGatewaySheetCache(CACHE_KEYS.crm_indicador, { data: indicador, lastSyncTime: new Date() });
 
-            const [promoEspecialSheet, cupomParceiroSheet, parceiros, parceirosStatusMap, logoMap, statusOverrides, relevance] = await Promise.all([
+            // Fora do Promise.all de propósito: se o banco responder, a aba
+            // PARCEIROS nem é pedida (era a última leitura de planilha que
+            // acontecia mesmo com tudo funcionando).
+            const parceirosStatusMap = await fetchParceirosStatusMap();
+
+            const [promoEspecialSheet, cupomParceiroSheet, parceiros, logoMap, statusOverrides, relevance] = await Promise.all([
                 doBanco ? Promise.resolve(EMPTY_TABLE) : fetchOptionalCrmSheet(
                     PROMO_ESPECIAL_DATA_SOURCE.sheetId,
                     PROMO_ESPECIAL_DATA_SOURCE.range,
@@ -216,13 +221,12 @@ export function useCrmData({ enabled = true }: UseCrmDataOptions = {}) {
                     ['CUPOM-PARCEIRO', 'CUPOM_PARCEIRO', 'CUPOM PARCEIRO', 'CUPOM-PARC'],
                     CACHE_KEYS.crm_cupom,
                 ),
-                fetchOptionalCrmSheet(
+                parceirosStatusMap ? Promise.resolve(EMPTY_TABLE) : fetchOptionalCrmSheet(
                     PARCEIROS_DATA_SOURCE.sheetId,
                     PARCEIROS_DATA_SOURCE.range,
                     ['PARCEIROS', 'Parceiros'],
                     CACHE_KEYS.crm_parceiros,
                 ),
-                fetchParceirosStatusMap(),
                 fetchPartnerLogoMap(LOGO_SHEET_SOURCE.sheetId, LOGO_SHEET_SOURCE.range).catch(() => ({} as Record<string, string>)),
                 fetchStatusOverridesMap().catch(() => ({})),
                 fetchRelevanceMap().catch(() => ({})),
