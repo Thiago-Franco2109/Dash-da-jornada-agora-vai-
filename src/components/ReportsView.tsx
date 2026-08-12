@@ -5,6 +5,8 @@ import { CAMPAIGN_TYPES, type CampaignTypeId } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
 import { useCsKpis, type CsCityKpis } from '../hooks/useCsKpis';
 import { useAtivacoesCampanhas } from '../hooks/useAtivacoesCampanhas';
+import { useAtivacoesMensal } from '../hooks/useAtivacoesMensal';
+import AtivacoesMensalChart from './reports/AtivacoesMensalChart';
 import { getEffectiveManager } from '../config/managerMapping';
 
 interface ReportsViewProps {
@@ -445,13 +447,16 @@ function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
 // ─────────────────────────────────────────────────────────────────────────
 
 const WINDOW_OPTIONS = [7, 28, 90] as const;
+const MESES_OPTIONS = [6, 12, 24] as const;
 
-type AtivRow = { segmento: string; cupons: number; promo: number };
+type AtivRow = { segmento: string; cupons: number; promo: number; cs: number; parceiro: number };
 
-function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
+export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
     const [windowDays, setWindowDays] = useState<number>(28);
+    const [mesesJanela, setMesesJanela] = useState<number>(12);
     const [segmento, setSegmento] = useState<Segmento>('cidade');
     const { data, loading, error, refetch } = useAtivacoesCampanhas(windowDays);
+    const { data: mensal, loading: mensalLoading, error: mensalError } = useAtivacoesMensal(mesesJanela);
 
     const matchesManager = useCallback(
         (cidade: string) => !managerFilter || getEffectiveManager(cidade, '').toUpperCase() === managerFilter.trim().toUpperCase(),
@@ -463,43 +468,66 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
     const cuponsPorDia = data?.cupons.porDia ?? [];
 
     const totais = useMemo(() => {
-        if (!data) return { cupons: 0, promoParticipacoes: 0, promoDistintos: 0 };
-        const cupons = data.cupons.porCidade.filter(c => matchesManager(c.cidade)).reduce((s, c) => s + c.n, 0);
-        const promoParticipacoes = data.promos.porCidade.filter(c => matchesManager(c.cidade)).reduce((s, c) => s + c.n, 0);
+        if (!data) return { cupons: 0, promoParticipacoes: 0, promoDistintos: 0, cs: 0, parceiro: 0 };
         // sem filtro: usa os totais oficiais (mais precisos p/ 'todos')
         if (!managerFilter) {
-            return { cupons: data.cupons.total, promoParticipacoes: data.promos.totalParticipacoes, promoDistintos: data.promos.parceirosDistintos };
+            return {
+                cupons: data.cupons.total,
+                promoParticipacoes: data.promos.totalParticipacoes,
+                promoDistintos: data.promos.parceirosDistintos,
+                cs: data.promos.cs,
+                parceiro: data.promos.parceiro,
+            };
         }
-        return { cupons, promoParticipacoes, promoDistintos: promoParticipacoes };
+        const doGestor = data.promos.porCidade.filter(c => matchesManager(c.cidade));
+        const cupons = data.cupons.porCidade.filter(c => matchesManager(c.cidade)).reduce((s, c) => s + c.n, 0);
+        const promoParticipacoes = doGestor.reduce((s, c) => s + c.n, 0);
+        return {
+            cupons,
+            promoParticipacoes,
+            promoDistintos: promoParticipacoes,
+            cs: doGestor.reduce((s, c) => s + c.cs, 0),
+            parceiro: doGestor.reduce((s, c) => s + c.parceiro, 0),
+        };
     }, [data, managerFilter, matchesManager]);
+
+    /** % das participações que o parceiro ativou sozinho (sem marca do CS) */
+    const pctParceiro = totais.promoParticipacoes > 0
+        ? Math.round((totais.parceiro / totais.promoParticipacoes) * 100)
+        : 0;
 
     const rows = useMemo<AtivRow[]>(() => {
         if (!data) return [];
         const cupMap = new Map<string, number>();
         data.cupons.porCidade.forEach(c => cupMap.set(c.cidade, c.n));
-        const promoMap = new Map<string, number>();
-        data.promos.porCidade.forEach(c => promoMap.set(c.cidade, c.n));
+        const promoMap = new Map<string, { n: number; cs: number; parceiro: number }>();
+        data.promos.porCidade.forEach(c => promoMap.set(c.cidade, { n: c.n, cs: c.cs, parceiro: c.parceiro }));
         const cidades = new Set<string>([...cupMap.keys(), ...promoMap.keys()]);
 
-        const base: { cidade: string; cupons: number; promo: number }[] = [...cidades]
+        const base = [...cidades]
             .filter(c => matchesManager(c))
-            .map(c => ({ cidade: c, cupons: cupMap.get(c) ?? 0, promo: promoMap.get(c) ?? 0 }));
+            .map(c => {
+                const p = promoMap.get(c);
+                return { cidade: c, cupons: cupMap.get(c) ?? 0, promo: p?.n ?? 0, cs: p?.cs ?? 0, parceiro: p?.parceiro ?? 0 };
+            });
 
         if (segmento === 'cidade') {
             return base
-                .map(b => ({ segmento: b.cidade, cupons: b.cupons, promo: b.promo }))
+                .map(b => ({ segmento: b.cidade, cupons: b.cupons, promo: b.promo, cs: b.cs, parceiro: b.parceiro }))
                 .sort((a, b) => (b.cupons + b.promo) - (a.cupons + a.promo));
         }
-        const byMgr = new Map<string, { cupons: number; promo: number }>();
+        const byMgr = new Map<string, { cupons: number; promo: number; cs: number; parceiro: number }>();
         for (const b of base) {
             const m = getEffectiveManager(b.cidade, '') || 'Desconhecido';
-            const cur = byMgr.get(m) ?? { cupons: 0, promo: 0 };
+            const cur = byMgr.get(m) ?? { cupons: 0, promo: 0, cs: 0, parceiro: 0 };
             cur.cupons += b.cupons;
             cur.promo += b.promo;
+            cur.cs += b.cs;
+            cur.parceiro += b.parceiro;
             byMgr.set(m, cur);
         }
         return [...byMgr.entries()]
-            .map(([segmento, v]) => ({ segmento, cupons: v.cupons, promo: v.promo }))
+            .map(([segmento, v]) => ({ segmento, cupons: v.cupons, promo: v.promo, cs: v.cs, parceiro: v.parceiro }))
             .sort((a, b) => (b.cupons + b.promo) - (a.cupons + a.promo));
     }, [data, segmento, matchesManager]);
 
@@ -540,11 +568,12 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
             <div className="flex items-start gap-3 rounded-2xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-900/10 p-4">
                 <span className="material-symbols-outlined text-amber-500 text-[20px] mt-0.5">construction</span>
                 <div className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-                    <p className="font-black uppercase tracking-wide">Em construção</p>
+                    <p className="font-black uppercase tracking-wide">Como ler estes números</p>
                     <p>
-                        O banco atual <strong>não registra o usuário</strong> que ativou cada campanha, nem a data por parceiro nas promoções.
-                        Cupons têm data de ativação (fluxo diário abaixo); promoções mostram o <strong>estado atual</strong> das campanhas ativas.
-                        O "quem ativou" será exibido assim que o backend Bigou passar a persistir o evento (a gravação começa a partir de agora).
+                        Em <strong>promoções</strong>, o corte CS vs parceiro vem do checkbox <strong>"Sucesso do Cliente"</strong> do painel:
+                        marcado = quem ativou foi o CS. É <strong>estado atual, sem data e sem histórico</strong> — se o CS desmarcar, o número muda
+                        retroativamente. A marca é por campanha/parceiro, não por item, então tende a puxar para o CS.
+                        Em <strong>cupons</strong> continua sem autor: só temos a data de ativação (fluxo diário abaixo).
                     </p>
                 </div>
             </div>
@@ -559,7 +588,7 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
             ) : (
                 <>
                     {/* CARDS */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                         <KPICard
                             title={`Cupons Ativados (${windowDays}d)`}
                             value={intBR(totais.cupons)}
@@ -574,7 +603,7 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
                             subtitle={`${data.promos.campanhas.length} campanhas ativas`}
                             icons={['local_offer']}
                             color="violet"
-                            trend="Estado atual (sem data por parceiro)"
+                            trend="Parceiro × campanha, item aprovado"
                         />
                         <KPICard
                             title="Promoções — Parceiros"
@@ -583,6 +612,14 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
                             icons={['groups']}
                             color="blue"
                             trend="Únicos em alguma campanha ativa"
+                        />
+                        <KPICard
+                            title="Ativação do Parceiro"
+                            value={`${pctParceiro}%`}
+                            subtitle={`${intBR(totais.parceiro)} parceiro · ${intBR(totais.cs)} CS`}
+                            icons={['storefront']}
+                            color="amber"
+                            trend="Sem marca de Sucesso do Cliente"
                         />
                     </div>
 
@@ -603,6 +640,50 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
                                 </div>
                             ))}
                         </div>
+                    </div>
+
+                    {/* EVOLUÇÃO MENSAL */}
+                    <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-lg shadow-slate-200/50 dark:shadow-none p-6">
+                        <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
+                            <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">Evolução mensal — quem ativou</h3>
+                            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/60 p-1 rounded-xl">
+                                {MESES_OPTIONS.map(m => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setMesesJanela(m)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                            mesesJanela === m ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        {m}m
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-6">
+                            Promoções aprovadas por mês · base global (não filtra por gestor)
+                        </p>
+                        {mensalLoading ? (
+                            <p className="text-sm text-slate-400 py-8">Montando a série mensal…</p>
+                        ) : mensalError || !mensal ? (
+                            <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10 p-4 text-red-600 dark:text-red-400 text-sm">
+                                Não foi possível carregar a série mensal{mensalError ? `: ${mensalError}` : '.'}
+                            </div>
+                        ) : (
+                            <>
+                                <AtivacoesMensalChart series={mensal.series} />
+                                <p className="mt-5 text-[11px] text-slate-400 leading-relaxed">
+                                    Mês <strong>congelado</strong> vem do snapshot: a foto foi tirada quando o mês fechou, então é o valor real.
+                                    Mês não congelado é lido ao vivo de <code>data_modificacao_status</code>, que guarda só a <strong>última</strong> mudança
+                                    de status — é um <strong>piso</strong>, e quanto mais antigo, mais já encolheu. Meses em branco não são meses sem
+                                    ativação: são meses cujas aprovações já foram sobrescritas.
+                                    {mensal.snapshot.mesesCongelados.length === 0 && (
+                                        <> <strong className="text-amber-600 dark:text-amber-400">Nenhum mês congelado ainda</strong> — toda a série
+                                        acima está sujeita a encolher.</>
+                                    )}
+                                </p>
+                            </>
+                        )}
                     </div>
 
                     {/* SEGMENTAÇÃO */}
@@ -632,7 +713,10 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
                                     <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-700/50">
                                         <th className="text-left font-black px-6 py-3">{segmento === 'cidade' ? 'Cidade' : 'Gestor'}</th>
                                         <th className="text-right font-black px-4 py-3">Cupons ({windowDays}d)</th>
-                                        <th className="text-right font-black px-6 py-3">Promo (participações)</th>
+                                        <th className="text-right font-black px-4 py-3">Promo (participações)</th>
+                                        <th className="text-right font-black px-4 py-3">Parceiro</th>
+                                        <th className="text-right font-black px-4 py-3">CS</th>
+                                        <th className="text-right font-black px-6 py-3">% Parceiro</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -640,11 +724,16 @@ function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string }) {
                                         <tr key={r.segmento} className="border-b border-slate-50 dark:border-slate-700/30 hover:bg-slate-50/60 dark:hover:bg-slate-900/30 transition-colors">
                                             <td className="px-6 py-3 font-bold text-slate-900 dark:text-white">{r.segmento}</td>
                                             <td className="px-4 py-3 text-right font-black text-emerald-600 dark:text-emerald-400 tabular-nums">{intBR(r.cupons)}</td>
-                                            <td className="px-6 py-3 text-right font-semibold text-violet-600 dark:text-violet-400 tabular-nums">{intBR(r.promo)}</td>
+                                            <td className="px-4 py-3 text-right font-semibold text-violet-600 dark:text-violet-400 tabular-nums">{intBR(r.promo)}</td>
+                                            <td className="px-4 py-3 text-right font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{intBR(r.parceiro)}</td>
+                                            <td className="px-4 py-3 text-right font-semibold text-blue-600 dark:text-blue-400 tabular-nums">{intBR(r.cs)}</td>
+                                            <td className="px-6 py-3 text-right font-black text-slate-700 dark:text-slate-200 tabular-nums">
+                                                {r.promo > 0 ? `${Math.round((r.parceiro / r.promo) * 100)}%` : '—'}
+                                            </td>
                                         </tr>
                                     ))}
                                     {rows.length === 0 && (
-                                        <tr><td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">Nenhuma ativação para este filtro.</td></tr>
+                                        <tr><td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">Nenhuma ativação para este filtro.</td></tr>
                                     )}
                                 </tbody>
                             </table>

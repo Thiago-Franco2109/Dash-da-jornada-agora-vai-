@@ -3,7 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 // ─────────────────────────────────────────────────────────────────────────
 // Relatório de ativação de campanhas — Netlify Function ativacoes-campanhas.
 // Cupons têm fluxo por dia (data = criação). Promoções = estado atual.
-// O "quem ativou" NÃO existe no dado hoje (ver HANDOFF).
+// Em promoção o "quem ativou" existe: é o checkbox "Sucesso do Cliente"
+// (campanha_promocao.metadata), marcado = CS. Sem data e sem histórico.
+// Em cupom continua sem autor (usuario_id nulo).
 // ─────────────────────────────────────────────────────────────────────────
 
 const FN_URL = '/.netlify/functions/ativacoes-campanhas';
@@ -16,10 +18,21 @@ export interface AtivacoesCampanhas {
         porCidade: { cidade: string; n: number }[];
     };
     promos: {
-        campanhas: { nome: string; data: string | null; participantes: number }[];
+        campanhas: {
+            nome: string;
+            data: string | null;
+            /** nº de cidades com regra no `config` — não é participação */
+            cidadesConfiguradas: number;
+            participantes: number;
+            /** parceiros marcados "Sucesso do Cliente" = ativados pelo CS */
+            cs: number;
+            parceiro: number;
+        }[];
         totalParticipacoes: number;
         parceirosDistintos: number;
-        porCidade: { cidade: string; n: number }[];
+        cs: number;
+        parceiro: number;
+        porCidade: { cidade: string; n: number; cs: number; parceiro: number }[];
     };
     elapsedMs?: number;
 }
