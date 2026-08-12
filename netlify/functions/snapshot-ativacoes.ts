@@ -1,4 +1,3 @@
-import { schedule } from '@netlify/functions';
 import type { Handler, HandlerEvent, HandlerResponse } from '@netlify/functions';
 import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
@@ -6,7 +5,14 @@ import { supabaseAdmin, SupabaseIndisponivel, podeGravar } from './_shared/supab
 import { agregarMensal, inicioDeNMesesAtras, mesFechadoAnterior } from './_shared/ativacoesMensal';
 
 /**
- * Congela o mês FECHADO no Supabase. Roda dia 1, 06:00 UTC (03:00 BRT).
+ * Congela o mês FECHADO no Supabase.
+ *
+ * O agendamento (dia 1, 06:00 UTC / 03:00 BRT) está declarado no `netlify.toml`,
+ * em `[functions."snapshot-ativacoes"]`. NÃO usar o helper `schedule()` aqui: a
+ * Netlify detecta esse helper por análise estática do fonte e o reconhecimento
+ * quebra com qualquer wrapper ou cast no `export const handler`, falhando o
+ * build inteiro com "the `schedule` helper was imported but we couldn't find
+ * any usages". O toml é declarativo e não depende de parsing.
  *
  * O banco Bigou reescreve o próprio passado: `data_modificacao_status` guarda
  * só a última mudança de status, e a marca `sucessoDoCliente` não é versionada.
@@ -177,8 +183,7 @@ function ehInvocacaoAgendada(event: HandlerEvent): boolean {
     }
 }
 
-export const handler = schedule('0 6 1 * *', async (event): Promise<HandlerResponse> =>
-    ehInvocacaoAgendada(event) ? agendado() : manual(event),
-) as Handler;
+export const handler: Handler = async (event): Promise<HandlerResponse> =>
+    ehInvocacaoAgendada(event) ? agendado() : manual(event);
 
 export { congelar, mesesFechados, inicioDeNMesesAtras };

@@ -5,6 +5,14 @@
 [functions]
   directory = "netlify/functions"
 
+# Snapshot mensal: dia 1, 06:00 UTC (03:00 BRT).
+# Declarado aqui, e não com o helper `schedule()` no código, porque a detecção
+# do helper é feita por análise estática do fonte e quebra com facilidade
+# (qualquer wrapper ou cast no `export const handler` some do radar dela).
+# Aqui o agendamento é declarativo — não depende de parsing.
+[functions."snapshot-ativacoes"]
+  schedule = "0 6 1 * *"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
