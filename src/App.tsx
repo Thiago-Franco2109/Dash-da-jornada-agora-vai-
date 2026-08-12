@@ -18,6 +18,7 @@ import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
 import CsKpisView from './components/CsKpisView';
 import CarteiraView from './components/CarteiraView';
+import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
 import PedidoMensalView from './components/PedidoMensalView';
 import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
@@ -99,7 +100,7 @@ function App() {
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"
   const desempenhoTabActive = isAuthenticated && isCD && (currentView === 'cd_desempenho' || currentView === 'churn' || partnerSearchOpen);
   const carteiraTabActive = isAuthenticated && !isCD && (
-    currentView === 'carteira' || currentView === 'pedido_mensal'
+    currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'pedido_mensal'
   );
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
@@ -277,7 +278,7 @@ function App() {
     setPromoCupomFilter('');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
@@ -619,6 +620,17 @@ function App() {
           <ReportsView data={enrichedData} managerFilter={managerFilter} />
         ) : currentView === 'carteira' ? (
           <CarteiraView
+            rows={carteiraRows}
+            isLoading={loadingCarteira}
+            isRefreshing={refreshingCarteira}
+            error={carteiraError}
+            isUsingCache={carteiraUsingCache}
+            lastSyncTime={carteiraLastSync}
+            onRefresh={refreshCarteiraData}
+            managerFilter={managerFilter}
+          />
+        ) : currentView === 'carteira_grupo' ? (
+          <CarteiraPorGrupoView
             rows={carteiraRows}
             isLoading={loadingCarteira}
             isRefreshing={refreshingCarteira}

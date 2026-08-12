@@ -2,6 +2,7 @@ export type AppView =
     | 'home'
     | 'dashboard'
     | 'carteira'
+    | 'carteira_grupo'
     | 'pedido_mensal'
     | 'crm'
     | 'cd_desempenho'
