@@ -23,6 +23,7 @@ import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
+import { fetchPedidoMensalTable, fetchParceiroMensalTable } from './utils/pedidoMensalFromDb';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -140,6 +141,7 @@ function App() {
     tab: PEDIDO_MENSAL_DATA_SOURCE.range,
     cacheKey: CACHE_KEYS.pedido_mensal,
     enabled: pedidoMensalTabActive,
+    dbFetch: fetchPedidoMensalTable,
   });
 
   const {
@@ -155,6 +157,7 @@ function App() {
     tab: PARCEIRO_MENSAL_DATA_SOURCE.range,
     cacheKey: CACHE_KEYS.parceiro_mensal,
     enabled: pedidoMensalTabActive,
+    dbFetch: fetchParceiroMensalTable,
   });
 
   const {

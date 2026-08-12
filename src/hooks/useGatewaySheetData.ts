@@ -15,6 +15,11 @@ interface UseGatewaySheetDataOptions {
     enabled?: boolean;
     allowEmpty?: boolean;
     tabVariants?: string[];
+    /**
+     * Fonte primária opcional (banco). Se resolver, a planilha nem é chamada;
+     * se falhar, cai para a aba como sempre foi.
+     */
+    dbFetch?: () => Promise<GatewaySheetTable>;
 }
 
 export function useGatewaySheetData({
@@ -24,6 +29,7 @@ export function useGatewaySheetData({
     enabled = true,
     allowEmpty = false,
     tabVariants,
+    dbFetch,
 }: UseGatewaySheetDataOptions) {
     const variants = tabVariants ?? EMPTY_TAB_VARIANTS;
     const variantsKey = variants.join('|');
@@ -52,7 +58,13 @@ export function useGatewaySheetData({
 
         try {
             setError(null);
-            const data = await fetchGatewaySheetTable(sheetId, tab, {
+            const doBanco = dbFetch
+                ? await dbFetch().catch((err) => {
+                    console.warn(`[useGatewaySheetData] Banco indisponível para "${tab}"; usando a planilha:`, err);
+                    return null;
+                })
+                : null;
+            const data = doBanco ?? await fetchGatewaySheetTable(sheetId, tab, {
                 allowEmpty,
                 tabVariants: variants,
             });
@@ -73,7 +85,7 @@ export function useGatewaySheetData({
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [enabled, sheetId, tab, cacheKey, allowEmpty, variantsKey]);
+    }, [enabled, sheetId, tab, cacheKey, allowEmpty, variantsKey, dbFetch]);
 
     useEffect(() => {
         if (!enabled) {
