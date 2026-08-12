@@ -11,7 +11,7 @@
  */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { fetchJornadaRowsFromDb } from './utils/jornadaFromDb';
+import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './utils/jornadaFromDb';
 import { enrichPartnerData } from './utils/calculations';
 import type { EnrichedPerformanceRow } from './utils/calculations';
 import { getManagerForPartner } from './config/managerMapping';
@@ -21,19 +21,26 @@ export function PreviewJornada() {
     const [linhas, setLinhas] = useState<EnrichedPerformanceRow[] | null>(null);
     const [erro, setErro] = useState<string | null>(null);
 
+    const fonte = new URLSearchParams(window.location.search).get('fonte') ?? 'marketplace';
+    const buscar = fonte === 'cd' ? fetchJornadaCd : fonte === 'cd-desempenho' ? fetchCdDesempenho : fetchJornadaMarketplace;
+
     useEffect(() => {
-        fetchJornadaRowsFromDb()
+        buscar()
             .then(rows => setLinhas(rows.map(r => enrichPartnerData(r))))
             .catch(e => setErro(String(e)));
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fonte]);
 
     if (erro) return <p className="p-8 text-red-600">{erro}</p>;
     if (!linhas) return <p className="p-8 text-slate-500">Carregando jornada do banco…</p>;
 
-    const naJornada = linhas.filter(l => l.dias_desde_lancamento <= 28);
+    const naJornada = fonte === 'cd-desempenho' ? linhas : linhas.filter(l => l.dias_desde_lancamento <= 28);
     return (
         <div className="p-8 space-y-4 text-slate-800 dark:text-slate-100">
-            <h1 className="text-xl font-bold">Jornada — {linhas.length} parceiros lançados em 90 dias · {naJornada.length} dentro dos 28 dias</h1>
+            <h1 className="text-xl font-bold">
+                {fonte} — {linhas.length} parceiros · exibindo {naJornada.length}
+                {' '}(soma das semanas: {linhas.reduce((a, l) => a + l.total_pedidos, 0).toLocaleString('pt-BR')} pedidos)
+            </h1>
             <table className="text-sm border-collapse">
                 <thead><tr className="text-left border-b">
                     <th className="pr-4 py-1">Parceiro</th><th className="pr-4">Cidade</th><th className="pr-4">Analista</th>
