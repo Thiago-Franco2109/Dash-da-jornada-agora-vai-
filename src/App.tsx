@@ -19,6 +19,7 @@ import AllPartnersView from './components/AllPartnersView';
 import CsKpisView from './components/CsKpisView';
 import CarteiraView from './components/CarteiraView';
 import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
+import AcoesPromocionaisView from './components/AcoesPromocionaisView';
 import PedidoMensalView from './components/PedidoMensalView';
 import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
@@ -61,6 +62,7 @@ import { CACHE_KEYS } from './utils/dataSync';
 import { type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
 import { useCarteiraData } from './hooks/useCarteiraData';
+import { useAcoesPromocionaisData } from './hooks/useAcoesPromocionaisData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
 import { useCrmData } from './hooks/useCrmData';
 import PartnerSearchPalette from './components/PartnerSearchPalette';
@@ -102,6 +104,7 @@ function App() {
   const carteiraTabActive = isAuthenticated && !isCD && (
     currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'pedido_mensal'
   );
+  const acoesPromocionaisTabActive = isAuthenticated && !isCD && currentView === 'acoes_promocionais';
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const crmDataEnabled = isAuthenticated && !isCD && (
@@ -133,6 +136,16 @@ function App() {
     isUsingCache: carteiraUsingCache,
     refreshData: refreshCarteiraData,
   } = useCarteiraData({ enabled: carteiraTabActive });
+
+  const {
+    cidades: acoesPromocionaisCidades,
+    totais: acoesPromocionaisTotais,
+    isLoading: loadingAcoesPromocionais,
+    isRefreshing: refreshingAcoesPromocionais,
+    error: acoesPromocionaisError,
+    lastSyncTime: acoesPromocionaisLastSync,
+    refresh: refreshAcoesPromocionais,
+  } = useAcoesPromocionaisData({ enabled: acoesPromocionaisTabActive });
 
   const {
     table: pedidoMensalTable,
@@ -278,7 +291,7 @@ function App() {
     setPromoCupomFilter('');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
@@ -639,6 +652,16 @@ function App() {
             lastSyncTime={carteiraLastSync}
             onRefresh={refreshCarteiraData}
             managerFilter={managerFilter}
+          />
+        ) : currentView === 'acoes_promocionais' ? (
+          <AcoesPromocionaisView
+            cidades={acoesPromocionaisCidades}
+            totais={acoesPromocionaisTotais}
+            isLoading={loadingAcoesPromocionais}
+            isRefreshing={refreshingAcoesPromocionais}
+            error={acoesPromocionaisError}
+            lastSyncTime={acoesPromocionaisLastSync}
+            onRefresh={refreshAcoesPromocionais}
           />
         ) : currentView === 'crm' ? (
           <CrmView

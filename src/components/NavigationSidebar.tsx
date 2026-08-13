@@ -21,6 +21,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         ...(!isCD ? [
             { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
             { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Carteira por Grupo' },
+            { id: 'acoes_promocionais' as AppView, icon: 'local_offer', label: 'Ações Promocionais' },
             { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
             { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
             { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
