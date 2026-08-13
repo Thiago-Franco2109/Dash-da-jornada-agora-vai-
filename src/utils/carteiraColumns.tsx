@@ -1,12 +1,13 @@
 import type { CarteiraRow } from '../types/carteira';
 
-/** Escala de cor vermelho→verde usada nas colunas de % da Carteira. */
+/** Escala de cor vermelho→verde usada nas colunas de % da Carteira — simétrica: valor baixo pesa tanto quanto valor alto. */
 export function pctCellClass(pct: number): string {
     if (pct >= 70) return 'bg-emerald-600 text-white font-semibold';
     if (pct >= 55) return 'bg-emerald-400 text-emerald-950 font-semibold';
     if (pct >= 45) return 'bg-lime-200 text-lime-950';
-    if (pct >= 30) return 'bg-amber-100 text-amber-900';
-    return 'bg-red-100 text-red-800';
+    if (pct >= 30) return 'bg-amber-200 text-amber-900';
+    if (pct >= 15) return 'bg-red-300 text-red-950 font-semibold';
+    return 'bg-red-600 text-white font-bold';
 }
 
 export const CARTEIRA_COLUMNS: { key: keyof CarteiraRow; label: string; align: 'left' | 'center'; isPct?: boolean }[] = [

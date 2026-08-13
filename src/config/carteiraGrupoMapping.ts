@@ -34,6 +34,36 @@ const RAW_CITY_GRUPO: Record<string, string> = {
 
     'Bicas': 'POTENCIAIS',
     'Ervália': 'POTENCIAIS',
+
+    // Carteira da Laís
+    'Barão de Cocais': 'POTENCIAIS',
+    'Jacutinga': 'POTENCIAIS',
+    'Monte Santo de Minas': 'POTENCIAIS',
+    'Abaeté': 'POTENCIAIS',
+    'Monte Azul Paulista': 'POTENCIAIS',
+    'Ouro Fino': 'POTENCIAIS',
+    'Piraúba': 'POTENCIAIS',
+
+    'Santa Bárbara': 'LANÇADAS_25',
+    'São José do Vale do Rio Preto': 'LANÇADAS_25',
+    'Porciúncula': 'LANÇADAS_25',
+    'Carmo': 'LANÇADAS_25',
+    'Divino': 'LANÇADAS_25',
+
+    'São João Nepomuceno': 'TOP_5',
+    'Rio Pomba': 'TOP_5',
+
+    'Pitangui': 'LANÇADAS_24',
+    'Bom Jardim': 'LANÇADAS_24',
+    'Raul Soares': 'LANÇADAS_24',
+    'Carangola': 'LANÇADAS_24',
+
+    'Conceição de Macabu': 'LANÇADAS_23',
+    'Tocantins': 'LANÇADAS_23',
+
+    'Ponte Nova': 'RELANÇADAS_25',
+
+    'Matias Barbosa': 'LANÇADAS_26',
 };
 
 const INITIAL_CITY_GRUPO_MAP: Record<string, string> = Object.fromEntries(

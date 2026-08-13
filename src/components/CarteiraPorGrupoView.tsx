@@ -20,12 +20,26 @@ interface CarteiraPorGrupoViewProps {
 
 const SEM_GRUPO = 'Sem grupo';
 
-function renderCell(row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean) {
+type SortDirection = 'asc' | 'desc';
+interface SortState {
+    key: keyof CarteiraRow;
+    direction: SortDirection;
+}
+
+function compareRows(a: CarteiraRow, b: CarteiraRow, key: keyof CarteiraRow): number {
+    const aVal = a[key];
+    const bVal = b[key];
+    if (typeof aVal === 'number' && typeof bVal === 'number') return aVal - bVal;
+    return String(aVal ?? '').localeCompare(String(bVal ?? ''), 'pt-BR');
+}
+
+function renderCell(row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean, isLastCol?: boolean) {
     const value = row[key];
+    const borderClass = isLastCol ? '' : 'border-r border-slate-100 dark:border-slate-800';
 
     if (isPct && typeof value === 'number') {
         return (
-            <td key={String(key)} className={`px-2 py-2 text-center text-sm ${pctCellClass(value)}`}>
+            <td key={String(key)} className={`px-2 py-1.5 text-center text-xs ${borderClass} ${pctCellClass(value)}`}>
                 {value}%
             </td>
         );
@@ -33,7 +47,7 @@ function renderCell(row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean) {
     return (
         <td
             key={String(key)}
-            className={`px-2 py-2 text-sm text-slate-700 dark:text-slate-300 ${
+            className={`px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 ${borderClass} ${
                 key === 'cidade' ? 'text-left whitespace-nowrap' : 'text-center'
             }`}
         >
@@ -52,7 +66,7 @@ export default function CarteiraPorGrupoView({
     onRefresh,
     managerFilter = '',
 }: CarteiraPorGrupoViewProps) {
-    const [cidadeFilter, setCidadeFilter] = useState('');
+    const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
 
     // Mesma classificação (Supabase) usada na Carteira — aqui é só leitura.
     const { mapa: classificacao } = useCarteiraClassificacao();
@@ -69,10 +83,15 @@ export default function CarteiraPorGrupoView({
     const filteredRows = useMemo(() => {
         return rowsClassificadas.filter(row => {
             if (managerFilter && !cityBelongsToManager(row.cidade, managerFilter as Manager)) return false;
-            if (cidadeFilter && !row.cidade.toLowerCase().includes(cidadeFilter.toLowerCase())) return false;
             return true;
         });
-    }, [rowsClassificadas, cidadeFilter, managerFilter]);
+    }, [rowsClassificadas, managerFilter]);
+
+    const requestSort = (key: keyof CarteiraRow) => {
+        setSort(prev => (prev.key === key && prev.direction === 'asc'
+            ? { key, direction: 'desc' }
+            : { key, direction: 'asc' }));
+    };
 
     const groups = useMemo(() => {
         const byGrupo = new Map<string, CarteiraRow[]>();
@@ -85,7 +104,10 @@ export default function CarteiraPorGrupoView({
             .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
             .map(([grupo, groupRows]) => ({
                 grupo,
-                rows: [...groupRows].sort((a, b) => a.cidade.localeCompare(b.cidade, 'pt-BR')),
+                rows: [...groupRows].sort((a, b) => {
+                    const cmp = compareRows(a, b, sort.key);
+                    return sort.direction === 'asc' ? cmp : -cmp;
+                }),
                 totals: groupRows.reduce(
                     (acc, row) => ({
                         total: acc.total + row.total,
@@ -96,7 +118,7 @@ export default function CarteiraPorGrupoView({
                     { total: 0, ativos: 0, suspenso: 0, pendente: 0 },
                 ),
             }));
-    }, [filteredRows]);
+    }, [filteredRows, sort]);
 
     const grandTotals = useMemo(() => {
         return filteredRows.reduce(
@@ -172,18 +194,8 @@ export default function CarteiraPorGrupoView({
                 )}
             </div>
 
-            <div className="shrink-0 px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center bg-slate-50/50 dark:bg-slate-900/50">
-                <label className="flex items-center gap-2 text-sm flex-1 min-w-[200px]">
-                    <span className="text-slate-500 font-medium">Cidade</span>
-                    <input
-                        type="search"
-                        value={cidadeFilter}
-                        onChange={e => setCidadeFilter(e.target.value)}
-                        placeholder="Filtrar cidade..."
-                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm"
-                    />
-                </label>
-                <span className="text-xs text-slate-400 ml-auto">
+            <div className="shrink-0 px-6 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-end bg-slate-50/50 dark:bg-slate-900/50">
+                <span className="text-xs text-slate-400">
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''} · {filteredRows.length} cidade{filteredRows.length !== 1 ? 's' : ''}
                 </span>
             </div>
@@ -195,63 +207,75 @@ export default function CarteiraPorGrupoView({
                         <p className="text-slate-500 text-sm">Carregando carteira...</p>
                     </div>
                 ) : (
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm min-w-max">
-                        <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                    <div className="border border-slate-300 dark:border-slate-700 overflow-hidden min-w-max">
+                        <table className="min-w-full border-collapse">
                             <thead className="bg-slate-100 dark:bg-slate-800">
                                 <tr>
-                                    {CARTEIRA_COLUMNS.map(col => (
-                                        <th
-                                            key={col.key}
-                                            scope="col"
-                                            className={`px-2 py-3 text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300 ${
-                                                col.align === 'left' ? 'text-left' : 'text-center'
-                                            }`}
-                                        >
-                                            {col.label}
-                                        </th>
-                                    ))}
+                                    {CARTEIRA_COLUMNS.map((col, i) => {
+                                        const active = sort.key === col.key;
+                                        return (
+                                            <th
+                                                key={col.key}
+                                                scope="col"
+                                                onClick={() => requestSort(col.key)}
+                                                className={`px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-600 border-b cursor-pointer select-none hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition-colors ${
+                                                    i < CARTEIRA_COLUMNS.length - 1 ? 'border-r' : ''
+                                                } ${col.align === 'left' ? 'text-left' : 'text-center'}`}
+                                            >
+                                                <span className="inline-flex items-center gap-0.5">
+                                                    {col.label}
+                                                    <span className={`material-symbols-outlined text-[13px] ${active ? 'opacity-100 text-primary' : 'opacity-30'}`}>
+                                                        {active && sort.direction === 'desc' ? 'arrow_downward' : 'arrow_upward'}
+                                                    </span>
+                                                </span>
+                                            </th>
+                                        );
+                                    })}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                            <tbody className="bg-white dark:bg-slate-900">
                                 {groups.map((group, groupIndex) => (
                                     <Fragment key={group.grupo}>
-                                        <tr className="bg-slate-50 dark:bg-slate-800/60">
-                                            <td colSpan={CARTEIRA_COLUMNS.length} className="px-2 py-2 text-left text-sm font-bold text-slate-700 dark:text-slate-200">
+                                        <tr className="bg-slate-50 dark:bg-slate-800/60 border-t border-b border-slate-300 dark:border-slate-600">
+                                            <td colSpan={CARTEIRA_COLUMNS.length} className="px-2 py-1.5 text-left text-xs font-bold text-slate-700 dark:text-slate-200">
                                                 {group.grupo}
-                                                <span className="ml-2 font-normal text-xs text-slate-400">
+                                                <span className="ml-2 font-normal text-[11px] text-slate-400">
                                                     {group.rows.length} cidade{group.rows.length !== 1 ? 's' : ''} · {group.totals.ativos.toLocaleString('pt-BR')}/{group.totals.total.toLocaleString('pt-BR')} ativos
                                                 </span>
                                             </td>
                                         </tr>
                                         {group.rows.map(row => (
-                                            <tr key={`${row.cidade}-${row.grupo}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                                {CARTEIRA_COLUMNS.map(col => renderCell(row, col.key, col.isPct))}
+                                            <tr
+                                                key={`${row.cidade}-${row.grupo}`}
+                                                className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800"
+                                            >
+                                                {CARTEIRA_COLUMNS.map((col, i) => renderCell(row, col.key, col.isPct, i === CARTEIRA_COLUMNS.length - 1))}
                                             </tr>
                                         ))}
                                         {groupIndex < groups.length - 1 && (
                                             <tr aria-hidden="true">
-                                                <td colSpan={CARTEIRA_COLUMNS.length} className="h-3 bg-transparent border-none p-0" />
+                                                <td colSpan={CARTEIRA_COLUMNS.length} className="h-2 bg-transparent border-none p-0" />
                                             </tr>
                                         )}
                                     </Fragment>
                                 ))}
                             </tbody>
                             {filteredRows.length > 0 && (
-                                <tfoot className="bg-slate-50 dark:bg-slate-800/80 border-t-2 border-slate-200 dark:border-slate-600">
-                                    <tr className="font-bold text-sm text-slate-800 dark:text-slate-200">
-                                        <td colSpan={3} className="px-2 py-3 text-left">
+                                <tfoot className="bg-slate-50 dark:bg-slate-800/80 border-t-2 border-slate-300 dark:border-slate-600">
+                                    <tr className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                                        <td colSpan={3} className="px-2 py-2 text-left border-r border-slate-200 dark:border-slate-700">
                                             Total ({filteredRows.length} cidades)
                                         </td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.total.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.ativos.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.suspenso.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.pendente.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center text-slate-400">—</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.promoAprovada.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.semPromo.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center text-slate-400">—</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.cupomAprovado.toLocaleString('pt-BR')}</td>
-                                        <td className="px-2 py-3 text-center">{grandTotals.semCupom.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.total.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.ativos.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.suspenso.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.pendente.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center text-slate-400 border-r border-slate-200 dark:border-slate-700">—</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.promoAprovada.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.semPromo.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center text-slate-400 border-r border-slate-200 dark:border-slate-700">—</td>
+                                        <td className="px-2 py-2 text-center border-r border-slate-200 dark:border-slate-700">{grandTotals.cupomAprovado.toLocaleString('pt-BR')}</td>
+                                        <td className="px-2 py-2 text-center">{grandTotals.semCupom.toLocaleString('pt-BR')}</td>
                                     </tr>
                                 </tfoot>
                             )}
