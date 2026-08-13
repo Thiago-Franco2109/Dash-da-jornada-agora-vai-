@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CarteiraRow } from '../types/carteira';
 import { cityBelongsToManager, type Manager } from '../config/managerMapping';
+import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import { pctCellClass, CARTEIRA_COLUMNS as COLUMNS } from '../utils/carteiraColumns';
 
@@ -90,7 +91,7 @@ export default function CarteiraView({
         () => rows.map(row => ({
             ...row,
             divisao: classificacao[row.cidade]?.divisao || row.divisao,
-            grupo: classificacao[row.cidade]?.grupo || row.grupo,
+            grupo: classificacao[row.cidade]?.grupo || row.grupo || getInitialGrupo(row.cidade),
         })),
         [rows, classificacao],
     );
