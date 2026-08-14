@@ -99,6 +99,23 @@ function App() {
     dbFetchRows: isCD ? fetchJornadaCd : fetchJornadaMarketplace,
   });
 
+  // Logo do parceiro por nome normalizado — reaproveita o merge da Carteira (dataSync.ts)
+  // pro botão "Gerar Arte" de Ações Promocionais, sem precisar de nova busca.
+  const logoByNome = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const row of rawRows) {
+      if (row.logo_url && row.estabelecimento) {
+        const key = row.estabelecimento
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .trim();
+        map[key] = row.logo_url;
+      }
+    }
+    return map;
+  }, [rawRows]);
+
   // CD Desempenho — mesma API do dashboard, só dispara ao abrir "Todas as Lojas"
   const desempenhoTabActive = isAuthenticated && isCD && (currentView === 'cd_desempenho' || currentView === 'churn' || partnerSearchOpen);
   const carteiraTabActive = isAuthenticated && !isCD && (
@@ -662,6 +679,7 @@ function App() {
             error={acoesPromocionaisError}
             lastSyncTime={acoesPromocionaisLastSync}
             onRefresh={refreshAcoesPromocionais}
+            logoByNome={logoByNome}
           />
         ) : currentView === 'crm' ? (
           <CrmView

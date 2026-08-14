@@ -13,6 +13,8 @@ interface AcoesPromocionaisViewProps {
     error: string | null;
     lastSyncTime: Date | null;
     onRefresh: () => void;
+    /** Logo do parceiro (Carteira/CRM) por nome normalizado — usado pelo botão "Gerar Arte". */
+    logoByNome?: Record<string, string>;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -55,6 +57,7 @@ export default function AcoesPromocionaisView({
     error,
     lastSyncTime,
     onRefresh,
+    logoByNome,
 }: AcoesPromocionaisViewProps) {
     const [cidadeFilter, setCidadeFilter] = useState('');
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
@@ -266,6 +269,7 @@ export default function AcoesPromocionaisView({
                     metrica={drillDown.metrica}
                     metricaLabel={drillDown.label}
                     onClose={() => setDrillDown(null)}
+                    logoByNome={logoByNome}
                 />
             )}
         </div>

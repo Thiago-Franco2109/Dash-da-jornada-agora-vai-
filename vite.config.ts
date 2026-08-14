@@ -132,6 +132,7 @@ function dbFunctionsDevPlugin(): Plugin {
   const DB_FNS = new Set([
     'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'campanhas',
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada',
+    'acoes-promocionais', 'promo-status', 'promo-item-arte',
   ])
   return {
     name: 'db-functions-dev',

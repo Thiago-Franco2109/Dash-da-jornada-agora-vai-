@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AcaoPromocionalMetrica } from '../types/acoesPromocionais';
 import { fetchAcaoPromocionalDrillDown } from '../hooks/useAcoesPromocionaisData';
+import GerarArteModal from './GerarArteModal';
 
 interface AcaoPromocionalDrillDownModalProps {
     cidade: string;
     metrica: AcaoPromocionalMetrica;
     metricaLabel: string;
     onClose: () => void;
+    /** Logo do parceiro (Carteira/CRM) por nome normalizado — usado pelo botão "Gerar Arte". */
+    logoByNome?: Record<string, string>;
 }
 
 function normalizeSearch(text: string): string {
@@ -18,11 +21,13 @@ export default function AcaoPromocionalDrillDownModal({
     metrica,
     metricaLabel,
     onClose,
+    logoByNome,
 }: AcaoPromocionalDrillDownModalProps) {
     const [estabelecimentos, setEstabelecimentos] = useState<{ id: number; nome: string }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [query, setQuery] = useState('');
+    const [gerarArteFor, setGerarArteFor] = useState<{ id: number; nome: string } | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -106,15 +111,25 @@ export default function AcaoPromocionalDrillDownModal({
                                         <span className="text-xs text-slate-400 tabular-nums">{e.id}</span>
                                         <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{e.nome}</p>
                                     </div>
-                                    <a
-                                        href={`https://admin.bigou.com.br/estabelecimento/cadastro/${e.id}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        title={`ID CMS: ${e.id}`}
-                                        className="shrink-0 text-slate-400 hover:text-primary transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-[20px]">launch</span>
-                                    </a>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setGerarArteFor(e)}
+                                            title="Gerar arte deste parceiro"
+                                            className="text-slate-400 hover:text-primary transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+                                        </button>
+                                        <a
+                                            href={`https://admin.bigou.com.br/estabelecimento/cadastro/${e.id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`ID CMS: ${e.id}`}
+                                            className="text-slate-400 hover:text-primary transition-colors"
+                                        >
+                                            <span className="material-symbols-outlined text-[20px]">launch</span>
+                                        </a>
+                                    </div>
                                 </li>
                             ))}
                         </ul>
@@ -131,6 +146,15 @@ export default function AcaoPromocionalDrillDownModal({
                     </button>
                 </div>
             </div>
+
+            {gerarArteFor && (
+                <GerarArteModal
+                    estabelecimentoId={gerarArteFor.id}
+                    partnerName={gerarArteFor.nome}
+                    logoUrl={logoByNome?.[normalizeSearch(gerarArteFor.nome)]}
+                    onClose={() => setGerarArteFor(null)}
+                />
+            )}
         </div>
     );
 }

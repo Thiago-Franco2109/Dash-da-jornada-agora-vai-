@@ -17,6 +17,7 @@ import CampaignIcons from './CampaignIcons';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { formatBRL } from '../utils/crmData';
+import GerarArteModal from './GerarArteModal';
 
 type CardTone = 'active' | 'pending' | 'denied' | 'idle';
 
@@ -124,8 +125,12 @@ export default function PartnerPromoCrmSection({
     const [editNotes, setEditNotes] = useState('');
     const [editFollowUp, setEditFollowUp] = useState('');
     const [ofertasNotes, setOfertasNotes] = useState('');
+    const [gerarArteOpen, setGerarArteOpen] = useState(false);
     const crmSectionRef = useRef<HTMLDivElement>(null);
     const notesRef = useRef<HTMLTextAreaElement>(null);
+
+    const estabelecimentoId = partner.estab_id ? Number(partner.estab_id) : null;
+    const canGerarArte = estabelecimentoId != null && !Number.isNaN(estabelecimentoId);
 
     const pid = crmPartner?.partnerId ?? partnerKey(partner);
     const { getStatus, setStatus, getRecord, setNotes: setOfertasNotesRecord } = useOfertasDaCasa();
@@ -239,6 +244,7 @@ export default function PartnerPromoCrmSection({
                     cmsLabel="Abrir campanha no CMS"
                     localidadeId={localidadeId}
                     cityIdsLoading={cityIdsLoading}
+                    onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
                 />
 
                 <CampaignRow
@@ -253,6 +259,7 @@ export default function PartnerPromoCrmSection({
                     href={promoUrl}
                     localidadeId={localidadeId}
                     cityIdsLoading={cityIdsLoading}
+                    onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
                 />
 
                 <CampaignRow
@@ -442,6 +449,15 @@ export default function PartnerPromoCrmSection({
                     </div>
                 </div>
             </div>
+
+            {gerarArteOpen && canGerarArte && (
+                <GerarArteModal
+                    estabelecimentoId={estabelecimentoId!}
+                    partnerName={partner.estabelecimento}
+                    logoUrl={partner.logo_url}
+                    onClose={() => setGerarArteOpen(false)}
+                />
+            )}
         </div>
     );
 }
@@ -543,6 +559,7 @@ function CampaignRow({
     localidadeId,
     cityIdsLoading,
     isLast,
+    onGerarArte,
 }: {
     icons: readonly string[];
     accent: 'amber' | 'violet' | 'indigo';
@@ -561,6 +578,7 @@ function CampaignRow({
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
     isLast?: boolean;
+    onGerarArte?: () => void;
 }) {
     const { rail, stamp, dot } = TONE_STYLES[tone];
     const hasCount = itemCount != null && itemCount > 0;
@@ -643,6 +661,16 @@ function CampaignRow({
                     cityIdsLoading={cityIdsLoading}
                     emphasis={needsAction ? 'solid' : 'quiet'}
                 />
+                {onGerarArte && (
+                    <button
+                        type="button"
+                        onClick={onGerarArte}
+                        className="flex items-center justify-center gap-1.5 w-full rounded-xl px-3.5 py-2 text-[13px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                        Gerar Arte
+                    </button>
+                )}
                 {onOpenCrm && (
                     <button
                         type="button"
