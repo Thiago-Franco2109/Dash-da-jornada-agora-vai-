@@ -32,6 +32,8 @@ interface EditableFields {
     daysText: string;
 }
 
+const BLANK_FIELDS: EditableFields = { itemName: '', priceOrig: '', pricePromo: '', daysText: 'Todos os dias' };
+
 const GERADOR_URL = '/gerador-artes/index.html';
 
 export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl, onClose }: GerarArteModalProps) {
@@ -49,6 +51,12 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     // mas o usuário pode ajustar antes de gerar (ex.: nome do item mal cadastrado).
     const [fields, setFields] = useState<EditableFields | null>(null);
     const [fieldsForItemId, setFieldsForItemId] = useState<number | null>(null);
+
+    // Preenchimento manual: cobre o caso de uma promoção recém-ativada que ainda
+    // não chegou na réplica do banco (sincroniza ~1x por dia) — o usuário digita
+    // os dados que já sabe (acabou de cadastrar no CMS) e gera a arte mesmo assim.
+    const [manualMode, setManualMode] = useState(false);
+    const [manualImageUrl, setManualImageUrl] = useState('');
 
     useEffect(() => { load(estabelecimentoId); }, [estabelecimentoId, load]);
 
@@ -85,8 +93,10 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
         [itens, effectiveSelectedItemId],
     );
 
-    // Reseta os campos editáveis quando o item selecionado muda (troca de item ou primeira carga).
-    if (selectedItem && fieldsForItemId !== selectedItem.id) {
+    // Reseta os campos editáveis quando o item selecionado muda (troca de item ou
+    // primeira carga) — só fora do modo manual, pra não sobrescrever o que o
+    // usuário está digitando à mão.
+    if (!manualMode && selectedItem && fieldsForItemId !== selectedItem.id) {
         setFieldsForItemId(selectedItem.id);
         setFields({
             itemName: selectedItem.nome,
@@ -96,15 +106,31 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
         });
     }
 
+    function enterManualMode() {
+        setManualMode(true);
+        setFields({ ...BLANK_FIELDS });
+    }
+
+    function exitManualMode() {
+        setManualMode(false);
+        setManualImageUrl('');
+        setFieldsForItemId(null); // força repopular a partir do item selecionado
+    }
+
     function handleIframeLoad() {
         iframeRef.current?.contentWindow?.postMessage({ type: 'bigou:list-templates' }, window.location.origin);
     }
 
+    const canProceed = !!fields && (manualMode || !!selectedItem);
+
     function handleGerar() {
-        if (!selectedItem || !fields || !selectedTemplateId) return;
+        if (!fields || !selectedTemplateId || !canProceed) return;
         setGenError(null);
         setResult(null);
         setIsGenerating(true);
+        const itemImage = manualMode
+            ? (manualImageUrl.trim() || null)
+            : resolveImagemItem(selectedItem!.imagem);
         iframeRef.current?.contentWindow?.postMessage(
             {
                 type: 'bigou:generate',
@@ -115,13 +141,15 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                     priceOrig: fields.priceOrig,
                     pricePromo: fields.pricePromo,
                     daysText: fields.daysText,
-                    itemImage: resolveImagemItem(selectedItem.imagem),
+                    itemImage,
                     logoImage: logoUrl || null,
                 },
             },
             window.location.origin,
         );
     }
+
+    const showGeneratorControls = manualMode || itens.length > 0;
 
     return (
         <div
@@ -148,124 +176,149 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                         </div>
                     ) : error ? (
                         <div className="py-6 text-center text-sm text-red-600 dark:text-red-400">{error}</div>
-                    ) : itens.length === 0 ? (
-                        <div className="py-6 text-center text-slate-500 dark:text-slate-400">
-                            <span className="material-symbols-outlined text-[32px] mb-2 opacity-50">inventory_2</span>
-                            <p className="text-sm font-medium">Nenhum item promocional ativo encontrado para este estabelecimento.</p>
-                        </div>
                     ) : (
                         <>
-                            {itens.length > 1 && (
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Item</label>
-                                    <select
-                                        value={effectiveSelectedItemId ?? ''}
-                                        onChange={e => setSelectedItemId(Number(e.target.value))}
-                                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-white"
-                                    >
-                                        {itens.map(i => (
-                                            <option key={i.id} value={i.id}>{i.nome}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {selectedItem && fields && (
-                                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Nome do item</label>
-                                        <input
-                                            type="text"
-                                            value={fields.itemName}
-                                            onChange={e => setFields({ ...fields, itemName: e.target.value })}
-                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço original</label>
-                                            <input
-                                                type="text"
-                                                value={fields.priceOrig}
-                                                onChange={e => setFields({ ...fields, priceOrig: e.target.value })}
-                                                className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço promocional</label>
-                                            <input
-                                                type="text"
-                                                value={fields.pricePromo}
-                                                onChange={e => setFields({ ...fields, pricePromo: e.target.value })}
-                                                className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 font-semibold"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Dias ativos</label>
-                                        <input
-                                            type="text"
-                                            value={fields.daysText}
-                                            onChange={e => setFields({ ...fields, daysText: e.target.value })}
-                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Template</label>
-                                <select
-                                    value={selectedTemplateId}
-                                    onChange={e => setSelectedTemplateId(e.target.value)}
-                                    disabled={!iframeReady}
-                                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-white disabled:opacity-50"
-                                >
-                                    <option value="">{iframeReady ? 'Selecione um template...' : 'Carregando templates...'}</option>
-                                    {templates.map(t => (
-                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                    ))}
-                                </select>
-                                {iframeReady && templates.length === 0 && (
-                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                        Nenhum template salvo. Crie um na aba Templates do gerador antes de continuar.
+                            {!manualMode && itens.length === 0 && (
+                                <div className="py-6 text-center text-slate-500 dark:text-slate-400">
+                                    <span className="material-symbols-outlined text-[32px] mb-2 opacity-50">inventory_2</span>
+                                    <p className="text-sm font-medium">Nenhum item promocional encontrado para este estabelecimento.</p>
+                                    <p className="text-xs mt-1.5 max-w-sm mx-auto">
+                                        O banco sincroniza cerca de 1x por dia — se você ativou a promoção hoje, ela pode ainda não ter chegado aqui.
                                     </p>
-                                )}
-                            </div>
-
-                            {genError && <p className="text-sm text-red-600 dark:text-red-400">{genError}</p>}
-
-                            <button
-                                type="button"
-                                onClick={handleGerar}
-                                disabled={!selectedItem || !fields || !selectedTemplateId || isGenerating}
-                                className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg transition-colors"
-                            >
-                                {isGenerating ? 'Gerando...' : 'Gerar Artes'}
-                            </button>
-
-                            {result?.alert && (
-                                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2">
-                                    <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
-                                    {result.alert}
-                                </p>
+                                    <button
+                                        type="button"
+                                        onClick={enterManualMode}
+                                        className="mt-3 px-4 py-2 text-sm font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
+                                    >
+                                        Preencher manualmente
+                                    </button>
+                                </div>
                             )}
 
-                            {result && (
-                                <div className="grid grid-cols-2 gap-3 pt-2">
-                                    <div className="space-y-1.5">
-                                        <img src={result.feedDataUrl} alt="Feed" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
-                                        <a href={result.feedDataUrl} download={`feed_${partnerName}.png`} className="block text-center text-xs font-semibold text-primary hover:underline">
-                                            Baixar Feed
-                                        </a>
+                            {!manualMode && itens.length > 0 && (
+                                <>
+                                    {itens.length > 1 && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Item</label>
+                                            <select
+                                                value={effectiveSelectedItemId ?? ''}
+                                                onChange={e => setSelectedItemId(Number(e.target.value))}
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-white"
+                                            >
+                                                {itens.map(i => (
+                                                    <option key={i.id} value={i.id}>{i.nome}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    {selectedItem && fields && (
+                                        <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
+                                            {selectedItem.status === 1 && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                                    <span className="material-symbols-outlined text-[12px]">hourglass_top</span>
+                                                    Pendente — aguardando aprovação do parceiro
+                                                </span>
+                                            )}
+                                            <EditableFieldsForm fields={fields} onChange={setFields} />
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={enterManualMode}
+                                        className="text-[11px] font-semibold text-primary hover:underline"
+                                    >
+                                        Ou preencher manualmente
+                                    </button>
+                                </>
+                            )}
+
+                            {manualMode && fields && (
+                                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Preenchimento manual</span>
+                                        {itens.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={exitManualMode}
+                                                className="text-[11px] font-semibold text-primary hover:underline"
+                                            >
+                                                Usar item encontrado
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <img src={result.storyDataUrl} alt="Story" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
-                                        <a href={result.storyDataUrl} download={`story_${partnerName}.png`} className="block text-center text-xs font-semibold text-primary hover:underline">
-                                            Baixar Story
-                                        </a>
+                                    <EditableFieldsForm fields={fields} onChange={setFields} />
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">URL da imagem do item (opcional)</label>
+                                        <input
+                                            type="text"
+                                            value={manualImageUrl}
+                                            onChange={e => setManualImageUrl(e.target.value)}
+                                            placeholder="https://..."
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                                        />
                                     </div>
                                 </div>
+                            )}
+
+                            {showGeneratorControls && (
+                                <>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Template</label>
+                                        <select
+                                            value={selectedTemplateId}
+                                            onChange={e => setSelectedTemplateId(e.target.value)}
+                                            disabled={!iframeReady}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-white disabled:opacity-50"
+                                        >
+                                            <option value="">{iframeReady ? 'Selecione um template...' : 'Carregando templates...'}</option>
+                                            {templates.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                        {iframeReady && templates.length === 0 && (
+                                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                                Nenhum template salvo. Crie um na aba Templates do gerador antes de continuar.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {genError && <p className="text-sm text-red-600 dark:text-red-400">{genError}</p>}
+
+                                    <button
+                                        type="button"
+                                        onClick={handleGerar}
+                                        disabled={!canProceed || !selectedTemplateId || isGenerating}
+                                        className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg transition-colors"
+                                    >
+                                        {isGenerating ? 'Gerando...' : 'Gerar Artes'}
+                                    </button>
+
+                                    {result?.alert && (
+                                        <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2">
+                                            <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
+                                            {result.alert}
+                                        </p>
+                                    )}
+
+                                    {result && (
+                                        <div className="grid grid-cols-2 gap-3 pt-2">
+                                            <div className="space-y-1.5">
+                                                <img src={result.feedDataUrl} alt="Feed" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
+                                                <a href={result.feedDataUrl} download={`feed_${partnerName}.png`} className="block text-center text-xs font-semibold text-primary hover:underline">
+                                                    Baixar Feed
+                                                </a>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <img src={result.storyDataUrl} alt="Story" className="w-full rounded-lg border border-slate-200 dark:border-slate-700" />
+                                                <a href={result.storyDataUrl} download={`story_${partnerName}.png`} className="block text-center text-xs font-semibold text-primary hover:underline">
+                                                    Baixar Story
+                                                </a>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </>
                     )}
@@ -292,5 +345,50 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                 />
             </div>
         </div>
+    );
+}
+
+function EditableFieldsForm({ fields, onChange }: { fields: EditableFields; onChange: (fields: EditableFields) => void }) {
+    return (
+        <>
+            <div>
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Nome do item</label>
+                <input
+                    type="text"
+                    value={fields.itemName}
+                    onChange={e => onChange({ ...fields, itemName: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço original</label>
+                    <input
+                        type="text"
+                        value={fields.priceOrig}
+                        onChange={e => onChange({ ...fields, priceOrig: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                    />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço promocional</label>
+                    <input
+                        type="text"
+                        value={fields.pricePromo}
+                        onChange={e => onChange({ ...fields, pricePromo: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 font-semibold"
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Dias ativos</label>
+                <input
+                    type="text"
+                    value={fields.daysText}
+                    onChange={e => onChange({ ...fields, daysText: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                />
+            </div>
+        </>
     );
 }

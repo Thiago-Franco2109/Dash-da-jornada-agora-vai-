@@ -36,6 +36,8 @@ export interface PromoItemArte {
     imagem: string | null;
     disponibilidadeDiaria: string | null;
     campanha: string | null;
+    /** 1=pendente (aguardando aprovação do parceiro) 2=aprovado. */
+    status: number;
 }
 
 interface PromoItemArteResponse {

@@ -4,12 +4,17 @@ import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
 
 /**
- * Item promocional vigente de um estabelecimento — alimenta o gerador de
- * artes (Geração Avulsa automática) com nome/preços/imagem/dias do item.
+ * Item promocional vigente (ou pendente) de um estabelecimento — alimenta o
+ * gerador de artes (Geração Avulsa automática) com nome/preços/imagem/dias.
  *
- * Mesma regra de "promoção vigente" de `acoes-promocionais.ts` (item
- * promocional=1, status=2, ativo=1, arquivado=0, campanha ativa e dentro do
- * período de vigência).
+ * Regra de "promoção vigente" de `acoes-promocionais.ts` (item promocional=1,
+ * ativo=1, arquivado=0, campanha ativa e dentro do período de vigência), mas
+ * aceitando status 1 (pendente — já criado no CMS, aguardando o parceiro
+ * aprovar no painel dele) além de 2 (aprovado). Sem isso, CS não conseguia
+ * gerar a arte de uma promoção recém-criada até o parceiro aprovar — e ainda
+ * ficava sujeito à réplica diária do banco (ver netlify/functions/_shared/db.ts).
+ * status: 0=rascunho 1=pendente 2=aprovado 3=cancelado (mesmo enum de
+ * `promo-status.ts`) — 0 e 3 ficam de fora de propósito.
  */
 
 const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
@@ -22,6 +27,7 @@ interface PromoItemRow extends RowDataPacket {
     imagem: string | null;
     disponibilidade_diaria: string | null;
     campanha: string | null;
+    status: number;
 }
 
 export const handler: Handler = async (event) => {
@@ -46,11 +52,11 @@ export const handler: Handler = async (event) => {
         connection = await getConnection();
 
         const [rows] = await connection.query<PromoItemRow[]>(
-            `SELECT ic.id, ic.nome, ic.preco, ic.preco_promocional, ic.imagem, ic.disponibilidade_diaria, cp.nome AS campanha
+            `SELECT ic.id, ic.nome, ic.preco, ic.preco_promocional, ic.imagem, ic.disponibilidade_diaria, cp.nome AS campanha, ic.status
              FROM item_catalogo ic
              JOIN catalogo c           ON c.id = ic.catalogo_id
              JOIN campanha_promocao cp ON cp.id = ic.campanha_promocao_id
-             WHERE ic.promocional = 1 AND ic.status = 2 AND ic.ativo = 1 AND ic.arquivado = 0
+             WHERE ic.promocional = 1 AND ic.status IN (1, 2) AND ic.ativo = 1 AND ic.arquivado = 0
                AND cp.ativo = 1
                AND (cp.data_inicio IS NULL OR cp.data_inicio <= NOW())
                AND (cp.data_fim IS NULL OR cp.data_fim >= NOW())
@@ -66,6 +72,7 @@ export const handler: Handler = async (event) => {
             imagem: r.imagem || null,
             disponibilidadeDiaria: r.disponibilidade_diaria || null,
             campanha: r.campanha || null,
+            status: Number(r.status),
         }));
 
         return {
