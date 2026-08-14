@@ -20,12 +20,22 @@ interface JornadaOpcoes {
     produto?: 'marketplace' | 'cd';
     /** 'desempenho' = 12 semanas corridas de todos; padrão = jornada dos novos */
     modo?: 'jornada' | 'desempenho';
+    /** Janela de lançamento em dias — só vale no modo jornada (ver função abaixo) */
+    dias?: number;
 }
+
+/**
+ * Painel principal da jornada = só quem lançou nos últimos 28 dias (a
+ * duração real da jornada de onboarding, Week_1..Week_4). 30 = 28 + 2 dias de
+ * folga para não sumir um parceiro no meio do dia por fuso/hora de corte.
+ */
+const JANELA_JORNADA_DIAS = 30;
 
 export async function fetchJornadaRowsFromDb(opcoes: JornadaOpcoes = {}): Promise<PerformanceRow[]> {
     const params = new URLSearchParams();
     if (opcoes.produto === 'cd') params.set('produto', 'cd');
     if (opcoes.modo === 'desempenho') params.set('modo', 'desempenho');
+    else params.set('dias', String(opcoes.dias ?? JANELA_JORNADA_DIAS));
 
     const url = params.toString() ? `${JORNADA_FN_URL}?${params}` : JORNADA_FN_URL;
     const res = await fetch(url, { credentials: 'include' as RequestCredentials, cache: 'no-store' });

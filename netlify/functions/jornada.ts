@@ -24,7 +24,15 @@ import { checkOrigin } from './_shared/auth';
  * verdade — a separação em duas planilhas era só o reflexo disso.
  *
  * Regras assumidas:
- *  - LANÇAMENTO = `venda.data_lancamento` do contrato mais recente
+ *  - LANÇAMENTO = MIN(`venda.data_lancamento`) do estabelecimento — o
+ *    PRIMEIRO contrato, não o mais recente. Um parceiro pode ter vários
+ *    registros em venda_estabelecimento (renovação anual, por exemplo); usar
+ *    MAX pegava a renovação mais nova e fazia parceiro de 2020 aparecer como
+ *    "lançado hoje" (conferido: estab 21817, 1º lançamento 2020-04-09 batendo
+ *    com o 1º pedido 2020-04-11; a renovação mais recente é de 2026-08-10).
+ *  - só entra quem JÁ lançou de verdade: delivery IN (1,2,4,5). Pendente
+ *    (delivery=0, contrato assinado mas ainda não ativado) fica de fora —
+ *    tem aba própria (`onboarding-pendentes.ts`).
  *  - semana 1 = dias 1 a 7 a partir da largada (lançamento ou início da janela)
  *  - pedido ACEITO = status IN (1,2) — mesma régua do resto do app
  *  - DESEMPENHO sai vazio: o app calcula o índice por conta (calculations.ts)
@@ -86,25 +94,29 @@ export const handler: Handler = async (event) => {
         connection = await getConnection();
 
         // ── quem entra na lista ───────────────────────────────────────────
-        const [lancamentosRows] = await connection.query<RowDataPacket[]>(
-            modoDesempenho
-                ? `SELECT ve.estabelecimento_id AS estab,
-                          DATE_FORMAT(MAX(v.data_lancamento), '%Y-%m-%d') AS lancamento
-                   FROM venda v
-                   JOIN venda_estabelecimento ve ON ve.venda_id = v.id
-                   JOIN estabelecimento e ON e.id = ve.estabelecimento_id
-                   WHERE e.delivery IN (1, 2, 4, 5)${filtroCd}
-                   GROUP BY ve.estabelecimento_id`
-                : `SELECT ve.estabelecimento_id AS estab,
-                          DATE_FORMAT(MAX(v.data_lancamento), '%Y-%m-%d') AS lancamento
-                   FROM venda v
-                   JOIN venda_estabelecimento ve ON ve.venda_id = v.id
-                   JOIN estabelecimento e ON e.id = ve.estabelecimento_id
-                   WHERE v.data_lancamento >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-                     AND v.data_lancamento <= CURDATE()${filtroCd}
-                   GROUP BY ve.estabelecimento_id`,
+        // MIN, não MAX: o 1º contrato de cada estabelecimento é o verdadeiro
+        // lançamento. Um parceiro com renovação anual tem várias linhas em
+        // venda_estabelecimento; pegar a mais recente faz parceiro de anos
+        // atrás aparecer como "lançado hoje" — e nunca sair da tela, porque a
+        // cada renovação o "lançamento" se atualiza de novo.
+        //
+        // delivery IN (1,2,4,5) nos dois modos: só quem JÁ lançou de verdade.
+        // Pendente (delivery=0) fica de fora — vai para a aba de onboarding.
+        const [primeirosLancamentos] = await connection.query<RowDataPacket[]>(
+            `SELECT estab, primeiro_lancamento
+             FROM (
+                 SELECT ve.estabelecimento_id AS estab,
+                        DATE_FORMAT(MIN(v.data_lancamento), '%Y-%m-%d') AS primeiro_lancamento
+                 FROM venda v
+                 JOIN venda_estabelecimento ve ON ve.venda_id = v.id
+                 JOIN estabelecimento e ON e.id = ve.estabelecimento_id
+                 WHERE e.delivery IN (1, 2, 4, 5)${filtroCd}
+                 GROUP BY ve.estabelecimento_id
+             ) t
+             WHERE ${modoDesempenho ? '1 = 1' : 'primeiro_lancamento >= DATE_SUB(CURDATE(), INTERVAL ? DAY) AND primeiro_lancamento <= CURDATE()'}`,
             modoDesempenho ? [] : [dias],
         );
+        const lancamentosRows = primeirosLancamentos.map(r => ({ estab: r.estab, lancamento: r.primeiro_lancamento }));
 
         const headers = cabecalho(semanas);
 

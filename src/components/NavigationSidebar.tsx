@@ -20,14 +20,16 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
         ...(!isCD ? [
             { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
-            { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Carteira por Grupo' },
+            { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' },
             { id: 'acoes_promocionais' as AppView, icon: 'local_offer', label: 'Ações Promocionais' },
             { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
+            { id: 'onboarding' as AppView, icon: 'pending_actions', label: 'Acompanhar Onboarding' },
             { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
             { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
             { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
         ] : [
             { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' },
+            { id: 'onboarding' as AppView, icon: 'pending_actions', label: 'Acompanhar Onboarding' },
             { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
         ]),
         { id: 'cs_kpis', icon: 'monitoring', label: 'KPIs CS' },

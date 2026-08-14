@@ -5,6 +5,7 @@ export type AppView =
     | 'carteira_grupo'
     | 'acoes_promocionais'
     | 'pedido_mensal'
+    | 'onboarding'
     | 'crm'
     | 'cd_desempenho'
     | 'churn'

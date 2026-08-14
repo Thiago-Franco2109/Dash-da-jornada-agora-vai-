@@ -21,6 +21,7 @@ import CarteiraView from './components/CarteiraView';
 import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
 import AcoesPromocionaisView from './components/AcoesPromocionaisView';
 import PedidoMensalView from './components/PedidoMensalView';
+import OnboardingView from './components/OnboardingView';
 import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
@@ -28,6 +29,7 @@ import { computeTopCitiesByGmv } from './config/crmCampaigns';
 import { fetchPedidoMensalTable, fetchParceiroMensalTable } from './utils/pedidoMensalFromDb';
 import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './utils/jornadaFromDb';
 import { useAtribuicaoCs } from './hooks/useAtribuicaoCs';
+import { useOnboardingPendente } from './hooks/useOnboardingPendente';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -123,6 +125,7 @@ function App() {
   );
   const acoesPromocionaisTabActive = isAuthenticated && !isCD && currentView === 'acoes_promocionais';
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
+  const onboardingTabActive = isAuthenticated && currentView === 'onboarding';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const crmDataEnabled = isAuthenticated && !isCD && (
     crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null || partnerSearchOpen
@@ -215,6 +218,17 @@ function App() {
     salvarCidade: salvarCidadeCs,
     salvarParceiro: salvarParceiroCs,
   } = useAtribuicaoCs();
+
+  // Parceiros pendentes de ativação (assinaram, ainda não lançaram) — aba
+  // "Acompanhar Onboarding". Não entram na Jornada (ver netlify/functions/jornada.ts).
+  const {
+    pendentes: onboardingPendentes,
+    isLoading: loadingOnboarding,
+    isRefreshing: refreshingOnboarding,
+    error: onboardingError,
+    lastSyncTime: onboardingLastSync,
+    refreshData: refreshOnboarding,
+  } = useOnboardingPendente({ enabled: onboardingTabActive, produto: isCD ? 'cd' : undefined });
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -475,8 +489,16 @@ function App() {
   }, [dataBeforePromoCupomFilter]);
 
   // Filter Data
+  //
+  // 'all' == a jornada inteira (união dos 4 buckets, 1-28 dias), não "sem
+  // limite". Antes disso nunca precisou de um `days > 28` explícito porque a
+  // planilha antiga só tinha ~28-33 dias de dados; lendo direto do banco (ver
+  // netlify/functions/jornada.ts) a janela de busca é mais larga que isso (tem
+  // uma folga de dias pra não sumir um parceiro no fuso horário errado), e sem
+  // este corte esses dias de sobra apareciam na tela mesmo já formados.
   let filteredTableData = baseFilteredData.filter((row: EnrichedPerformanceRow) => {
     const days = row.dias_desde_lancamento;
+    if (ageGroupFilter === 'all' && days > 28) return false;
     if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) return false;
     if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) return false;
     if (ageGroupFilter === '15-21' && (days < 15 || days > 21)) return false;
@@ -675,6 +697,7 @@ function App() {
             lastSyncTime={carteiraLastSync}
             onRefresh={refreshCarteiraData}
             managerFilter={managerFilter}
+            onNavigateToPartner={estab => navigateToPartner({ estabelecimento: estab.nome, estab_id: String(estab.id) } as EnrichedPerformanceRow)}
           />
         ) : currentView === 'acoes_promocionais' ? (
           <AcoesPromocionaisView
@@ -686,6 +709,7 @@ function App() {
             lastSyncTime={acoesPromocionaisLastSync}
             onRefresh={refreshAcoesPromocionais}
             logoByNome={logoByNome}
+            managerFilter={managerFilter}
           />
         ) : currentView === 'crm' ? (
           <CrmView
@@ -723,6 +747,17 @@ function App() {
             }}
             managerFilter={managerFilter}
             carteiraRows={carteiraRows}
+          />
+        ) : currentView === 'onboarding' ? (
+          <OnboardingView
+            pendentes={onboardingPendentes}
+            isLoading={loadingOnboarding}
+            isRefreshing={refreshingOnboarding}
+            error={onboardingError}
+            lastSyncTime={onboardingLastSync}
+            onRefresh={refreshOnboarding}
+            managerFilter={managerFilter}
+            mode={mode}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (
