@@ -58,6 +58,10 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     const [manualMode, setManualMode] = useState(false);
     const [manualImageUrl, setManualImageUrl] = useState('');
 
+    // A logo do parceiro (vinda da planilha) às vezes é uma URL quebrada/bloqueada
+    // — dá pra colar um link alternativo aqui em vez de travar sem logo na arte.
+    const [logoUrlOverride, setLogoUrlOverride] = useState(logoUrl || '');
+
     useEffect(() => { load(estabelecimentoId); }, [estabelecimentoId, load]);
 
     useEffect(() => {
@@ -142,7 +146,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                     pricePromo: fields.pricePromo,
                     daysText: fields.daysText,
                     itemImage,
-                    logoImage: logoUrl || null,
+                    logoImage: logoUrlOverride.trim() || null,
                 },
             },
             window.location.origin,
@@ -273,6 +277,18 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
 
                             {showGeneratorControls && (
                                 <>
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Logo do parceiro (URL)</label>
+                                        <input
+                                            type="text"
+                                            value={logoUrlOverride}
+                                            onChange={e => setLogoUrlOverride(e.target.value)}
+                                            placeholder="https://..."
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                                        />
+                                        <p className="text-[11px] text-slate-400 mt-0.5">Se a logo não carregar na arte, cole aqui o link direto de outra imagem.</p>
+                                    </div>
+
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Template</label>
                                         <select
