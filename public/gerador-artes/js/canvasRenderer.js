@@ -1,5 +1,6 @@
 const CanvasRenderer = {
     imageCache: new Map(),
+    pendingFetches: new Map(),
 
     // fabric.Image.fromURL não dispara onerror de forma confiável: numa falha de carregamento
     // (404, bloqueio de CORS/rede, etc.) ele resolve com uma imagem "fantasma" de width/height 0
@@ -7,13 +8,40 @@ const CanvasRenderer = {
     // desaparecia da arte silenciosamente, sem nenhum alerta na Conferência.
     loadFabricImage(src, options) {
         return new Promise((resolve, reject) => {
-            fabric.Image.fromURL(src, (img) => {
-                if (!img || !img.width || !img.height) {
-                    reject(new Error('Imagem carregada vazia ou corrompida'));
-                    return;
-                }
-                resolve(img);
-            }, options);
+            // O callback do fabric.Image.fromURL roda fora do corpo síncrono desta Promise
+            // (é disparado depois, quando a imagem carrega/falha) — uma exceção aqui dentro
+            // NÃO se torna uma rejeição automática, fica descoberta e a Promise nunca resolve
+            // nem rejeita. Daí o try/catch: converte qualquer erro (ex.: acessar `img.width`
+            // numa imagem quebrada) numa rejeição de verdade.
+            try {
+                fabric.Image.fromURL(src, (img) => {
+                    try {
+                        if (!img || !img.width || !img.height) {
+                            reject(new Error('Imagem carregada vazia ou corrompida'));
+                            return;
+                        }
+                        resolve(img);
+                    } catch (err) {
+                        reject(err);
+                    }
+                }, options);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    },
+
+    // `fetch`/`fabric.Image.fromURL` não têm timeout embutido: uma URL ruim (host fora do ar,
+    // bloqueado, etc.) trava até o navegador desistir por conta própria, o que pode levar bem
+    // mais de um minuto — e isso multiplicado pelos 4 fallbacks em sequência. `withTimeout`
+    // corta cada tentativa em `ms`, sem cancelar a requisição de verdade (só para de esperar).
+    withTimeout(promise, ms) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`Timeout (${ms}ms)`)), ms);
+            promise.then(
+                v => { clearTimeout(timer); resolve(v); },
+                e => { clearTimeout(timer); reject(e); },
+            );
         });
     },
 
@@ -23,14 +51,30 @@ const CanvasRenderer = {
             const cachedSrc = this.imageCache.get(url);
             return this.loadFabricImage(cachedSrc, { crossOrigin: 'anonymous' }).catch(() => null);
         }
+        // Feed e Story pedem a mesma logo/foto quase ao mesmo tempo — sem isso, os dois
+        // disparariam a cascata inteira de fallbacks em paralelo, duplicando o trabalho.
+        if (this.pendingFetches.has(url)) {
+            return this.pendingFetches.get(url);
+        }
 
+        const promise = this._fetchImageAsBlobUncached(url);
+        this.pendingFetches.set(url, promise);
+        try {
+            return await promise;
+        } finally {
+            this.pendingFetches.delete(url);
+        }
+    },
+
+    async _fetchImageAsBlobUncached(url) {
         if (url.startsWith('data:')) {
             this.imageCache.set(url, url);
             return this.loadFabricImage(url).catch(() => null);
         }
 
+        const ATTEMPT_TIMEOUT_MS = 4000;
         const tryFetch = async (targetUrl) => {
-            const response = await fetch(targetUrl);
+            const response = await this.withTimeout(fetch(targetUrl), ATTEMPT_TIMEOUT_MS);
             if (!response.ok) throw new Error('Network response was not ok');
             const blob = await response.blob();
             const objectUrl = URL.createObjectURL(blob);
@@ -57,7 +101,10 @@ const CanvasRenderer = {
                     console.warn("All proxies failed, trying direct img src load...", err);
                     try {
                         this.imageCache.set(url, url);
-                        return await this.loadFabricImage(url, { crossOrigin: 'anonymous' });
+                        return await this.withTimeout(
+                            this.loadFabricImage(url, { crossOrigin: 'anonymous' }),
+                            ATTEMPT_TIMEOUT_MS,
+                        );
                     } catch (finalErr) {
                         console.warn("Direct img src load also failed:", finalErr);
                         this.imageCache.delete(url);
@@ -127,12 +174,29 @@ const CanvasRenderer = {
 
             canvas.backgroundColor = '#ffffff';
 
-            this.loadObjects(canvas, templateConfigFormat.objects, dataRow, scaleMultiplier, 
+            // Watchdog: mesmo com os timeouts de imagem, garante que a arte nunca fica
+            // pendurada indefinidamente por algum caso não previsto — a UI sempre recebe
+            // uma resposta (sucesso ou erro) em no máximo 25s.
+            let settled = false;
+            const watchdog = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                canvas.dispose();
+                reject(new Error('Tempo limite ao gerar a arte (25s) — verifique as imagens do item/logo.'));
+            }, 25000);
+
+            this.loadObjects(canvas, templateConfigFormat.objects, dataRow, scaleMultiplier,
                 (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(watchdog);
                     canvas.dispose(); // Clean up memory by disposing canvas
                     resolve(result);
-                }, 
+                },
                 (err) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(watchdog);
                     canvas.dispose(); // Clean up memory by disposing canvas
                     reject(err);
                 }
@@ -141,7 +205,11 @@ const CanvasRenderer = {
     },
 
     async loadObjects(canvas, objectsJson, dataRow, scaleM, resolve, reject) {
+        // Sem este try/catch, um erro síncrono ou numa promise dentro deste callback nunca
+        // chega a `resolve`/`reject` — a `generateImage` de fora fica pendente pra sempre
+        // (o "Gerando..." trava indefinidamente na UI, sem nenhum erro visível).
         fabric.util.enlivenObjects(objectsJson, async (objs) => {
+          try {
             const promises = [];
 
             for (let obj of objs) {
@@ -248,10 +316,14 @@ const CanvasRenderer = {
 
             await Promise.all(promises);
             canvas.renderAll();
-            
+
             const fullDataUrl = canvas.toDataURL({ format: 'png', quality: 1 });
             const thumbDataUrl = canvas.toDataURL({ format: 'jpeg', quality: 0.6, multiplier: 0.2 });
             resolve({ full: fullDataUrl, thumb: thumbDataUrl });
+          } catch (err) {
+            console.error('[CanvasRenderer] Falha ao montar a arte:', err);
+            reject(err);
+          }
         });
     },
 

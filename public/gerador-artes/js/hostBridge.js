@@ -75,6 +75,13 @@
         return { feed: template.feed, story: template.story };
     }
 
+    async function generateFeedAndStory(row, feed, story) {
+        return Promise.all([
+            window.CanvasRenderer.generateImage(row, feed, true),
+            window.CanvasRenderer.generateImage(row, story, false),
+        ]);
+    }
+
     async function handleGenerate(templateId, rawRow, reply) {
         const templates = await getAllTemplates();
         const template = templates.find(t => t.id === templateId);
@@ -87,10 +94,18 @@
         const { feed, story } = pickTemplateFormat(template, row);
 
         try {
-            const [feedResult, storyResult] = await Promise.all([
-                window.CanvasRenderer.generateImage(row, feed, true),
-                window.CanvasRenderer.generateImage(row, story, false),
-            ]);
+            let feedResult, storyResult;
+            try {
+                [feedResult, storyResult] = await generateFeedAndStory(row, feed, story);
+            } catch (err) {
+                // fabric.js às vezes lança um erro intermitente ao processar imagens que
+                // falharam de carregar (mais comum quando alguma URL de imagem está ruim) —
+                // uma segunda tentativa quase sempre resolve, então tenta de novo antes de
+                // desistir e mostrar erro pro usuário.
+                console.warn('[hostBridge] Falha ao gerar, tentando novamente...', err);
+                delete row.alert;
+                [feedResult, storyResult] = await generateFeedAndStory(row, feed, story);
+            }
             reply({
                 type: 'bigou:result',
                 feedDataUrl: feedResult.full,

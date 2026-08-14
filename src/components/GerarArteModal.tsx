@@ -22,6 +22,14 @@ interface GeneratorTemplate {
 interface GenerateResult {
     feedDataUrl: string;
     storyDataUrl: string;
+    alert: string | null;
+}
+
+interface EditableFields {
+    itemName: string;
+    priceOrig: string;
+    pricePromo: string;
+    daysText: string;
 }
 
 const GERADOR_URL = '/gerador-artes/index.html';
@@ -37,6 +45,11 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     const [result, setResult] = useState<GenerateResult | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    // Cópia editável dos campos de texto — inicializada a partir do item buscado,
+    // mas o usuário pode ajustar antes de gerar (ex.: nome do item mal cadastrado).
+    const [fields, setFields] = useState<EditableFields | null>(null);
+    const [fieldsForItemId, setFieldsForItemId] = useState<number | null>(null);
+
     useEffect(() => { load(estabelecimentoId); }, [estabelecimentoId, load]);
 
     useEffect(() => {
@@ -49,7 +62,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                 setTemplates(data.templates ?? []);
                 setIframeReady(true);
             } else if (data.type === 'bigou:result') {
-                setResult({ feedDataUrl: data.feedDataUrl, storyDataUrl: data.storyDataUrl });
+                setResult({ feedDataUrl: data.feedDataUrl, storyDataUrl: data.storyDataUrl, alert: data.alert ?? null });
                 setIsGenerating(false);
             } else if (data.type === 'bigou:error') {
                 setGenError(data.message || 'Erro desconhecido ao gerar a arte.');
@@ -72,12 +85,23 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
         [itens, effectiveSelectedItemId],
     );
 
+    // Reseta os campos editáveis quando o item selecionado muda (troca de item ou primeira carga).
+    if (selectedItem && fieldsForItemId !== selectedItem.id) {
+        setFieldsForItemId(selectedItem.id);
+        setFields({
+            itemName: selectedItem.nome,
+            priceOrig: formatPrecoArte(selectedItem.precoOriginal),
+            pricePromo: formatPrecoArte(selectedItem.precoPromocional),
+            daysText: formatDiasAtivos(selectedItem.disponibilidadeDiaria) || 'Todos os dias',
+        });
+    }
+
     function handleIframeLoad() {
         iframeRef.current?.contentWindow?.postMessage({ type: 'bigou:list-templates' }, window.location.origin);
     }
 
     function handleGerar() {
-        if (!selectedItem || !selectedTemplateId) return;
+        if (!selectedItem || !fields || !selectedTemplateId) return;
         setGenError(null);
         setResult(null);
         setIsGenerating(true);
@@ -87,10 +111,10 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                 templateId: selectedTemplateId,
                 row: {
                     partnerName,
-                    itemName: selectedItem.nome,
-                    priceOrig: formatPrecoArte(selectedItem.precoOriginal),
-                    pricePromo: formatPrecoArte(selectedItem.precoPromocional),
-                    daysText: formatDiasAtivos(selectedItem.disponibilidadeDiaria),
+                    itemName: fields.itemName,
+                    priceOrig: fields.priceOrig,
+                    pricePromo: fields.pricePromo,
+                    daysText: fields.daysText,
                     itemImage: resolveImagemItem(selectedItem.imagem),
                     logoImage: logoUrl || null,
                 },
@@ -146,18 +170,46 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                                 </div>
                             )}
 
-                            {selectedItem && (
-                                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 text-sm space-y-1">
-                                    <p className="font-semibold text-slate-900 dark:text-white">{selectedItem.nome}</p>
-                                    <p className="text-slate-500 dark:text-slate-400">
-                                        {formatPrecoArte(selectedItem.precoOriginal)}
-                                        {selectedItem.precoPromocional != null && (
-                                            <> → <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatPrecoArte(selectedItem.precoPromocional)}</span></>
-                                        )}
-                                    </p>
-                                    <p className="text-slate-400 dark:text-slate-500 text-xs">
-                                        {formatDiasAtivos(selectedItem.disponibilidadeDiaria) || 'Todos os dias'}
-                                    </p>
+                            {selectedItem && fields && (
+                                <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Nome do item</label>
+                                        <input
+                                            type="text"
+                                            value={fields.itemName}
+                                            onChange={e => setFields({ ...fields, itemName: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço original</label>
+                                            <input
+                                                type="text"
+                                                value={fields.priceOrig}
+                                                onChange={e => setFields({ ...fields, priceOrig: e.target.value })}
+                                                className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço promocional</label>
+                                            <input
+                                                type="text"
+                                                value={fields.pricePromo}
+                                                onChange={e => setFields({ ...fields, pricePromo: e.target.value })}
+                                                className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 font-semibold"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Dias ativos</label>
+                                        <input
+                                            type="text"
+                                            value={fields.daysText}
+                                            onChange={e => setFields({ ...fields, daysText: e.target.value })}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -186,11 +238,18 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                             <button
                                 type="button"
                                 onClick={handleGerar}
-                                disabled={!selectedItem || !selectedTemplateId || isGenerating}
+                                disabled={!selectedItem || !fields || !selectedTemplateId || isGenerating}
                                 className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg transition-colors"
                             >
                                 {isGenerating ? 'Gerando...' : 'Gerar Artes'}
                             </button>
+
+                            {result?.alert && (
+                                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2">
+                                    <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
+                                    {result.alert}
+                                </p>
+                            )}
 
                             {result && (
                                 <div className="grid grid-cols-2 gap-3 pt-2">
