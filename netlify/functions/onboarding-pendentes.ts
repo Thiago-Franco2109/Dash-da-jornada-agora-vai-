@@ -18,6 +18,14 @@ import { checkOrigin } from './_shared/auth';
  * segurança pega o contrato mais RECENTE (MAX venda_id), caso haja mais de
  * uma tentativa de fechamento.
  *
+ * Só entra quem assinou nos últimos 30 dias (parâmetro `dias`). Sem esse
+ * corte a lista incluía desistência disfarçada de pendente: parceiro que
+ * nunca vai ativar, mas cujo `delivery` nunca foi atualizado pra 2/5 — fica
+ * com status 0 pra sempre. Confirmado pelo Thiago: "tem muitos parceiro que
+ * desistiu e ficou pra trás sem cancelar o status". Sem o corte, 243 dos 262
+ * pendentes (93%) já esperavam há mais de 14 dias — não é onboarding em
+ * andamento, é lixo acumulado.
+ *
  * ?produto=cd filtra só assinantes do Cardápio Digital, mesma convenção da
  * `jornada.ts`. Sem o parâmetro, mostra pendente de qualquer produto.
  *
@@ -37,8 +45,10 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: erroHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
-    const soCd = (event.queryStringParameters ?? {}).produto === 'cd';
+    const q = event.queryStringParameters ?? {};
+    const soCd = q.produto === 'cd';
     const filtroCd = soCd ? ' AND e.cardapio_digital = 1' : '';
+    const dias = Math.min(Math.max(Number(q.dias) || 30, 1), 365);
 
     let connection;
     const started = Date.now();
@@ -61,7 +71,9 @@ export const handler: Handler = async (event) => {
              )
              WHERE e.delivery = 0
                AND e.id IN (SELECT estabelecimento_id FROM venda_estabelecimento)${filtroCd}
+               AND v.data_adesao >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
              ORDER BY v.data_adesao DESC`,
+            [dias],
         );
 
         const pendentes = rows.map(r => ({
