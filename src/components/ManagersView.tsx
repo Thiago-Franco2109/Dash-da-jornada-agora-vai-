@@ -13,6 +13,8 @@ interface ManagersViewProps {
     data: EnrichedPerformanceRow[];
     onMappingChange: () => void;
     atribuicoes: AtribuicoesCs;
+    /** Erro ao carregar atribuições do Supabase — se vier preenchido, a tela está mostrando dados desatualizados/padrão, não o que está salvo. */
+    atribuicoesError?: string | null;
     salvarCidade: (cidade: string, analista: Manager, mode: ProductModeKey) => Promise<unknown>;
     salvarParceiro: (
         estabId: string,
@@ -22,7 +24,7 @@ interface ManagersViewProps {
     ) => Promise<void>;
 }
 
-export default function ManagersView({ data, onMappingChange, atribuicoes, salvarCidade, salvarParceiro }: ManagersViewProps) {
+export default function ManagersView({ data, onMappingChange, atribuicoes, atribuicoesError, salvarCidade, salvarParceiro }: ManagersViewProps) {
     const { mode, theme } = useProductMode();
     const [searchTerm, setSearchTerm] = useState('');
     const [buscaLoja, setBuscaLoja] = useState('');
@@ -128,6 +130,12 @@ export default function ManagersView({ data, onMappingChange, atribuicoes, salva
                     </div>
                 </div>
             </header>
+
+            {atribuicoesError && (
+                <div className="mb-6 p-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-500/10 text-sm text-red-700 dark:text-red-300">
+                    Não deu para carregar as atribuições salvas — a tela abaixo está mostrando só a definição padrão, nada que você mudar vai persistir até isso ser corrigido. Erro: {atribuicoesError}
+                </div>
+            )}
 
             {erro && (
                 <div className="mb-6 p-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-500/10 text-sm text-red-700 dark:text-red-300">

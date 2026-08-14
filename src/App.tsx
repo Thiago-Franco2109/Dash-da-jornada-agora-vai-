@@ -209,7 +209,12 @@ function App() {
 
   // Atribuição de CS (cidade e loja) do Supabase — publica no resolvedor
   // síncrono usado por todas as telas.
-  const { atribuicoes: atribuicoesCs, salvarCidade: salvarCidadeCs, salvarParceiro: salvarParceiroCs } = useAtribuicaoCs();
+  const {
+    atribuicoes: atribuicoesCs,
+    error: atribuicoesCsError,
+    salvarCidade: salvarCidadeCs,
+    salvarParceiro: salvarParceiroCs,
+  } = useAtribuicaoCs();
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -636,6 +641,7 @@ function App() {
               data={enrichedData}
               onMappingChange={() => setMappingVersion(v => v + 1)}
               atribuicoes={atribuicoesCs}
+              atribuicoesError={atribuicoesCsError}
               salvarCidade={salvarCidadeCs}
               salvarParceiro={salvarParceiroCs}
             />

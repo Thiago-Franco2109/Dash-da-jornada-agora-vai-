@@ -68,6 +68,9 @@ create policy "escrita app" on public.cs_parceiro for all using (true) with chec
 -- O mapa que estava fixo no código (INITIAL_CITY_MANAGER_MAP), para a tabela
 -- já nascer com a carteira atual. Rodar de novo não duplica nem sobrescreve
 -- o que o time tiver mudado depois.
+-- Nomes compostos (ex: "Cordeiro / Cantagalo") são como o banco Bigou
+-- registra essas regiões — usar os nomes separados faz a cidade nunca bater
+-- com o gestor atribuído (era assim antes e por isso nada persistia).
 insert into public.cs_cidade (cidade, produto, analista) values
     ('Barão de Cocais', 'marketplace', 'LAÍS'),
     ('Jacutinga', 'marketplace', 'LAÍS'),
@@ -90,10 +93,10 @@ insert into public.cs_cidade (cidade, produto, analista) values
     ('Divino', 'marketplace', 'LAÍS'),
     ('Ponte Nova', 'marketplace', 'LAÍS'),
     ('Rio Pomba', 'marketplace', 'LAÍS'),
-    ('Cordeiro', 'marketplace', 'THIAGO'),
-    ('Cantagalo', 'marketplace', 'THIAGO'),
+    ('Matias Barbosa', 'marketplace', 'LAÍS'),
+    ('Cordeiro / Cantagalo', 'marketplace', 'THIAGO'),
     ('Barroso', 'marketplace', 'THIAGO'),
-    ('Bom Jesus do Itabapoana', 'marketplace', 'THIAGO'),
+    ('Bom Jesus do Itabapoana - RJ / Bom Jesus do Norte - ES', 'marketplace', 'THIAGO'),
     ('Cláudio', 'marketplace', 'THIAGO'),
     ('Silva Jardim', 'marketplace', 'THIAGO'),
     ('Santos Dumont', 'marketplace', 'THIAGO'),
@@ -101,11 +104,11 @@ insert into public.cs_cidade (cidade, produto, analista) values
     ('Ubá', 'marketplace', 'THIAGO'),
     ('Bicas', 'marketplace', 'THIAGO'),
     ('Ervália', 'marketplace', 'THIAGO'),
-    ('Paraopeba', 'marketplace', 'THIAGO'),
-    ('Caetanópolis', 'marketplace', 'THIAGO'),
+    ('Paraopeba / Caetanópolis', 'marketplace', 'THIAGO'),
     ('Carandaí', 'marketplace', 'THIAGO'),
     ('Espera Feliz', 'marketplace', 'THIAGO'),
     ('Além Paraíba', 'marketplace', 'THIAGO'),
     ('Muriaé', 'marketplace', 'THIAGO'),
-    ('Natividade', 'marketplace', 'THIAGO')
+    ('Natividade', 'marketplace', 'THIAGO'),
+    ('Miraí', 'marketplace', 'THIAGO')
 on conflict (cidade, produto) do nothing;

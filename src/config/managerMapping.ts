@@ -53,12 +53,15 @@ export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     'Divino': 'LAÍS',
     'Ponte Nova': 'LAÍS',
     'Rio Pomba': 'LAÍS',
+    'Matias Barbosa': 'LAÍS',
 
     // THIAGO
-    'Cordeiro': 'THIAGO',
-    'Cantagalo': 'THIAGO',
+    // Nomes compostos abaixo (ex: "Cordeiro / Cantagalo") são como o banco
+    // Bigou registra essas regiões — usar os nomes separados aqui faz a
+    // cidade nunca bater com o gestor atribuído.
+    'Cordeiro / Cantagalo': 'THIAGO',
     'Barroso': 'THIAGO',
-    'Bom Jesus do Itabapoana': 'THIAGO',
+    'Bom Jesus do Itabapoana - RJ / Bom Jesus do Norte - ES': 'THIAGO',
     'Cláudio': 'THIAGO',
     'Silva Jardim': 'THIAGO',
     'Santos Dumont': 'THIAGO',
@@ -66,13 +69,13 @@ export const INITIAL_CITY_MANAGER_MAP: Record<string, Manager> = {
     'Ubá': 'THIAGO',
     'Bicas': 'THIAGO',
     'Ervália': 'THIAGO',
-    'Paraopeba': 'THIAGO',
-    'Caetanópolis': 'THIAGO',
+    'Paraopeba / Caetanópolis': 'THIAGO',
     'Carandaí': 'THIAGO',
     'Espera Feliz': 'THIAGO',
     'Além Paraíba': 'THIAGO',
     'Muriaé': 'THIAGO',
     'Natividade': 'THIAGO',
+    'Miraí': 'THIAGO',
 };
 
 const NO_CITY_SPLIT_KEY_PREFIX = 'no_city_manager_split';
