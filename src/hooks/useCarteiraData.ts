@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CARTEIRA_DATA_SOURCE } from '../config/dataSource';
-import type { CarteiraRow } from '../types/carteira';
+import type { CarteiraDrillDown, CarteiraMetrica, CarteiraRow } from '../types/carteira';
 import {
     fetchCarteiraSheetData,
     saveCarteiraCache,
@@ -8,6 +8,20 @@ import {
 } from '../utils/dataSync';
 
 const CARTEIRA_FN_URL = '/.netlify/functions/carteira';
+
+/** Busca lazy da lista de estabelecimentos de uma cidade+métrica (drill-down). */
+export async function fetchCarteiraDrillDown(cidade: string, metrica: CarteiraMetrica): Promise<CarteiraDrillDown> {
+    const params = new URLSearchParams({ cidade, metrica });
+    const res = await fetch(`${CARTEIRA_FN_URL}?${params.toString()}`, {
+        credentials: 'include' as RequestCredentials,
+        cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok !== true) {
+        throw new Error(json?.error || `Erro ${res.status} ao consultar estabelecimentos.`);
+    }
+    return json as CarteiraDrillDown;
+}
 
 /**
  * Carteira direto do banco — substitui a aba CIDADES_FORMATADO. DIVISÃO e

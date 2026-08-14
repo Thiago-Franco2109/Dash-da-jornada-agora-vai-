@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { AcaoPromocionalCidade, AcaoPromocionalMetrica, AcoesPromocionaisTotais } from '../types/acoesPromocionais';
 import { ACOES_PROMOCIONAIS_COLUMNS, metricCellClass } from '../utils/acoesPromocionaisColumns';
+import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import AcaoPromocionalDrillDownModal from './AcaoPromocionalDrillDownModal';
 
 interface AcoesPromocionaisViewProps {
@@ -15,6 +16,7 @@ interface AcoesPromocionaisViewProps {
     onRefresh: () => void;
     /** Logo do parceiro (Carteira/CRM) por nome normalizado — usado pelo botão "Gerar Arte". */
     logoByNome?: Record<string, string>;
+    managerFilter?: string;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -51,26 +53,47 @@ function KpiCard({ label, value, subtitle, icon, accent }: { label: string; valu
 
 export default function AcoesPromocionaisView({
     cidades,
-    totais,
     isLoading,
     isRefreshing = false,
     error,
     lastSyncTime,
     onRefresh,
     logoByNome,
+    managerFilter = '',
 }: AcoesPromocionaisViewProps) {
     const [cidadeFilter, setCidadeFilter] = useState('');
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
     const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: AcaoPromocionalMetrica; label: string } | null>(null);
 
+    // Escopo do gestor logado — mesma regra da Carteira/Cidades. As cidades
+    // fora da carteira dele (Laís, standby etc.) nem entram no cálculo dos KPIs.
+    const cidadesEscopo = useMemo(() => {
+        if (!managerFilter) return cidades;
+        return cidades.filter(c => cityBelongsToManager(c.cidade, managerFilter as Manager));
+    }, [cidades, managerFilter]);
+
     const filteredCidades = useMemo(() => {
         const q = normalizeSearch(cidadeFilter);
-        const rows = q ? cidades.filter(c => normalizeSearch(c.cidade).includes(q)) : cidades;
+        const rows = q ? cidadesEscopo.filter(c => normalizeSearch(c.cidade).includes(q)) : cidadesEscopo;
         return [...rows].sort((a, b) => {
             const cmp = compareRows(a, b, sort.key);
             return sort.direction === 'asc' ? cmp : -cmp;
         });
-    }, [cidades, cidadeFilter, sort]);
+    }, [cidadesEscopo, cidadeFilter, sort]);
+
+    const totais = useMemo(() => cidadesEscopo.reduce(
+        (acc, c) => ({
+            cidadesComAcoes: acc.cidadesComAcoes + (c.semAcao < c.lojasAtivas ? 1 : 0),
+            totalCidades: acc.totalCidades + 1,
+            lojasAtivas: acc.lojasAtivas + c.lojasAtivas,
+            comPromocao: acc.comPromocao + c.comPromocao,
+            comCupom: acc.comCupom + c.comCupom,
+            cupomDestaque: acc.cupomDestaque + c.cupomDestaque,
+            cupomRegular: acc.cupomRegular + c.cupomRegular,
+            semAcao: acc.semAcao + c.semAcao,
+        }),
+        { cidadesComAcoes: 0, totalCidades: 0, lojasAtivas: 0, comPromocao: 0, comCupom: 0, cupomDestaque: 0, cupomRegular: 0, semAcao: 0 },
+    ), [cidadesEscopo]);
 
     const requestSort = (key: keyof AcaoPromocionalCidade) => {
         setSort(prev => (prev.key === key && prev.direction === 'asc'
@@ -78,7 +101,7 @@ export default function AcoesPromocionaisView({
             : { key, direction: 'asc' }));
     };
 
-    const pctCidadesComAcoes = totais && totais.totalCidades > 0
+    const pctCidadesComAcoes = totais.totalCidades > 0
         ? Math.round((totais.cidadesComAcoes / totais.totalCidades) * 1000) / 10
         : 0;
     const pct = (parte: number, base: number) => (base > 0 ? Math.round((parte / base) * 1000) / 10 : 0);
@@ -94,6 +117,11 @@ export default function AcoesPromocionaisView({
                         <p className="text-slate-500 dark:text-slate-400 text-base">
                             Cobertura de promoções e cupons por localidade.
                         </p>
+                        {managerFilter && (
+                            <p className="text-xs text-primary font-semibold mt-1">
+                                Filtrando carteira de {managerFilter}
+                            </p>
+                        )}
                     </div>
                     <div className="flex flex-col items-end shrink-0">
                         <button
@@ -121,7 +149,7 @@ export default function AcoesPromocionaisView({
                     </div>
                 )}
 
-                {totais && (
+                {!isLoading && cidadesEscopo.length > 0 && (
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
                         <KpiCard
                             label="Cidades c/ Ações"

@@ -1,4 +1,4 @@
-import type { CarteiraRow } from '../types/carteira';
+import type { CarteiraMetrica, CarteiraRow } from '../types/carteira';
 
 /** Escala de cor vermelho→verde usada nas colunas de % da Carteira — simétrica: valor baixo pesa tanto quanto valor alto. */
 export function pctCellClass(pct: number): string {
@@ -10,18 +10,18 @@ export function pctCellClass(pct: number): string {
     return 'bg-red-600 text-white font-bold';
 }
 
-export const CARTEIRA_COLUMNS: { key: keyof CarteiraRow; label: string; align: 'left' | 'center'; isPct?: boolean }[] = [
+export const CARTEIRA_COLUMNS: { key: keyof CarteiraRow; label: string; align: 'left' | 'center'; isPct?: boolean; metrica?: CarteiraMetrica }[] = [
     { key: 'divisao', label: 'Divisão', align: 'left' },
     { key: 'cidade', label: 'Cidade', align: 'left' },
     { key: 'grupo', label: 'Grupo', align: 'left' },
-    { key: 'total', label: 'Total', align: 'center' },
-    { key: 'ativos', label: 'Ativos', align: 'center' },
-    { key: 'suspenso', label: 'Suspenso', align: 'center' },
-    { key: 'pendente', label: 'Pendente', align: 'center' },
+    { key: 'total', label: 'Total', align: 'center', metrica: 'total' },
+    { key: 'ativos', label: 'Ativos', align: 'center', metrica: 'ativos' },
+    { key: 'suspenso', label: 'Suspenso', align: 'center', metrica: 'suspenso' },
+    { key: 'pendente', label: 'Pendente', align: 'center', metrica: 'pendente' },
     { key: 'pctComPromo', label: '% com promo', align: 'center', isPct: true },
-    { key: 'promoAprovada', label: 'Promo aprovada', align: 'center' },
-    { key: 'semPromo', label: 'Sem promo', align: 'center' },
+    { key: 'promoAprovada', label: 'Promo aprovada', align: 'center', metrica: 'promoAprovada' },
+    { key: 'semPromo', label: 'Sem promo', align: 'center', metrica: 'semPromo' },
     { key: 'pctComCupom', label: '% com cupom', align: 'center', isPct: true },
-    { key: 'cupomAprovado', label: 'Cupom aprovado', align: 'center' },
-    { key: 'semCupom', label: 'Sem cupom', align: 'center' },
+    { key: 'cupomAprovado', label: 'Cupom aprovado', align: 'center', metrica: 'cupomAprovado' },
+    { key: 'semCupom', label: 'Sem cupom', align: 'center', metrica: 'semCupom' },
 ];

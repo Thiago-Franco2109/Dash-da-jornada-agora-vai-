@@ -40,6 +40,81 @@ function pct(parte: number, base: number): number {
     return Math.round((parte / base) * 1000) / 10;
 }
 
+/**
+ * Modo drill-down: lista de estabelecimentos de uma cidade+métrica (mesma
+ * base populacional e regras de promo/cupom do modo agregado acima). Mesmo
+ * padrão de `acoes-promocionais.ts`'s `listarEstabelecimentos`.
+ */
+async function listarEstabelecimentos(
+    connection: Awaited<ReturnType<typeof getConnection>>,
+    cidade: string,
+    metrica: string,
+) {
+    const [parceiros] = await connection.query<RowDataPacket[]>(
+        `SELECT e.id AS estab, e.nome AS nome, e.delivery AS delivery
+         FROM estabelecimento e
+         LEFT JOIN localidade l ON l.id = e.localidade_id
+         WHERE IFNULL(l.nome, '') = ?
+           AND (e.delivery IN (1, 4)
+                OR (e.delivery = 0
+                    AND e.id IN (SELECT estabelecimento_id FROM venda_estabelecimento)))`,
+        [cidade],
+    );
+    const nomePorEstab = new Map(parceiros.map(p => [String(p.estab), String(p.nome)]));
+    const idsTodos = new Set(parceiros.map(p => String(p.estab)));
+    const idsAtivos = new Set(parceiros.filter(p => Number(p.delivery) === 1).map(p => String(p.estab)));
+
+    let idsAlvo = new Set<string>();
+
+    if (metrica === 'total') {
+        idsAlvo = idsTodos;
+    } else if (metrica === 'ativos') {
+        idsAlvo = idsAtivos;
+    } else if (metrica === 'suspenso') {
+        idsAlvo = new Set(parceiros.filter(p => Number(p.delivery) === 4).map(p => String(p.estab)));
+    } else if (metrica === 'pendente') {
+        idsAlvo = new Set(parceiros.filter(p => Number(p.delivery) === 0).map(p => String(p.estab)));
+    } else if (metrica === 'promoAprovada' || metrica === 'semPromo') {
+        const [rows] = await connection.query<RowDataPacket[]>(
+            `SELECT DISTINCT c.estabelecimento_id AS estab
+             FROM item_catalogo ic
+             JOIN catalogo c           ON c.id = ic.catalogo_id
+             JOIN campanha_promocao cp ON cp.id = ic.campanha_promocao_id
+             WHERE ic.promocional = 1
+               AND ic.status = 2
+               AND ic.ativo = 1
+               AND ic.arquivado = 0
+               AND cp.ativo = 1
+               AND (cp.data_inicio IS NULL OR cp.data_inicio <= NOW())
+               AND (cp.data_fim IS NULL OR cp.data_fim >= NOW())
+               AND c.estabelecimento_id IN (${[...idsAtivos].map(() => '?').join(',') || 'NULL'})`,
+            [...idsAtivos],
+        );
+        const promoSet = new Set(rows.map(r => String(r.estab)));
+        idsAlvo = metrica === 'promoAprovada'
+            ? promoSet
+            : new Set([...idsAtivos].filter(id => !promoSet.has(id)));
+    } else if (metrica === 'cupomAprovado' || metrica === 'semCupom') {
+        const [rows] = await connection.query<RowDataPacket[]>(
+            `SELECT DISTINCT estabelecimento_id AS estab
+             FROM cupom_desconto
+             WHERE ativo = 1 AND destaque = 1
+               AND estabelecimento_id IN (${[...idsAtivos].map(() => '?').join(',') || 'NULL'})`,
+            [...idsAtivos],
+        );
+        const cupomSet = new Set(rows.map(r => String(r.estab)));
+        idsAlvo = metrica === 'cupomAprovado'
+            ? cupomSet
+            : new Set([...idsAtivos].filter(id => !cupomSet.has(id)));
+    }
+
+    const estabelecimentos = [...idsAlvo]
+        .map(id => ({ id: Number(id), nome: nomePorEstab.get(id) ?? '' }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+    return { total: estabelecimentos.length, estabelecimentos };
+}
+
 export const handler: Handler = async (event) => {
     if (event.httpMethod !== 'GET') {
         return { statusCode: 405, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: 'Method Not Allowed' }) };
@@ -50,10 +125,23 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
+    const q = event.queryStringParameters ?? {};
+    const cidade = q.cidade?.trim() || null;
+    const metrica = q.metrica?.trim() || null;
+
     let connection;
     const started = Date.now();
     try {
         connection = await getConnection();
+
+        if (cidade && metrica) {
+            const resultado = await listarEstabelecimentos(connection, cidade, metrica);
+            return {
+                statusCode: 200,
+                headers: jsonHeaders,
+                body: JSON.stringify({ ok: true, cidade, metrica, ...resultado, elapsedMs: Date.now() - started }),
+            };
+        }
 
         // Pendente = delivery 0 com contrato: acabou de fechar e ainda não
         // entrou no ar (tem caso lançado hoje). Note que delivery = -1 NÃO

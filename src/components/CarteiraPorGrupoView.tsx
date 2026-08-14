@@ -1,11 +1,13 @@
 import { Fragment, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
-import type { CarteiraRow } from '../types/carteira';
+import type { CarteiraEstabelecimento, CarteiraMetrica, CarteiraRow } from '../types/carteira';
 import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
+import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
 import { pctCellClass, CARTEIRA_COLUMNS } from '../utils/carteiraColumns';
+import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
 
 interface CarteiraPorGrupoViewProps {
     rows: CarteiraRow[];
@@ -16,6 +18,8 @@ interface CarteiraPorGrupoViewProps {
     lastSyncTime: Date | null;
     onRefresh: () => void;
     managerFilter?: string;
+    /** Abre a tela interna do parceiro (mesma navegação da busca Cmd+K). */
+    onNavigateToPartner?: (estabelecimento: CarteiraEstabelecimento) => void;
 }
 
 const SEM_GRUPO = 'Sem grupo';
@@ -33,7 +37,13 @@ function compareRows(a: CarteiraRow, b: CarteiraRow, key: keyof CarteiraRow): nu
     return String(aVal ?? '').localeCompare(String(bVal ?? ''), 'pt-BR');
 }
 
-function renderCell(row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean, isLastCol?: boolean) {
+function renderCell(
+    row: CarteiraRow,
+    col: (typeof CARTEIRA_COLUMNS)[number],
+    isLastCol: boolean,
+    onDrillDown: (cidade: string, metrica: CarteiraMetrica, label: string) => void,
+) {
+    const { key, isPct, metrica, label } = col;
     const value = row[key];
     const borderClass = isLastCol ? '' : 'border-r border-slate-100 dark:border-slate-800';
 
@@ -44,6 +54,22 @@ function renderCell(row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean, i
             </td>
         );
     }
+
+    if (metrica && typeof value === 'number') {
+        return (
+            <td key={String(key)} className={`px-2 py-1.5 text-center ${borderClass}`}>
+                <button
+                    type="button"
+                    onClick={() => onDrillDown(row.cidade, metrica, label)}
+                    disabled={value === 0}
+                    className="text-xs font-semibold text-slate-700 dark:text-slate-300 tabular-nums px-1.5 py-0.5 rounded hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:cursor-default transition-colors"
+                >
+                    {value.toLocaleString('pt-BR')}
+                </button>
+            </td>
+        );
+    }
+
     return (
         <td
             key={String(key)}
@@ -65,8 +91,10 @@ export default function CarteiraPorGrupoView({
     lastSyncTime,
     onRefresh,
     managerFilter = '',
+    onNavigateToPartner,
 }: CarteiraPorGrupoViewProps) {
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
+    const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: CarteiraMetrica; label: string } | null>(null);
 
     // Mesma classificação (Supabase) usada na Carteira — aqui é só leitura.
     const { mapa: classificacao } = useCarteiraClassificacao();
@@ -151,7 +179,7 @@ export default function CarteiraPorGrupoView({
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
                         <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight mb-2">
-                            Carteira por Grupo
+                            Cidades
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 text-base">
                             Níveis de ativação da carteira, agrupados por grupo comercial.
@@ -249,7 +277,12 @@ export default function CarteiraPorGrupoView({
                                                 key={`${row.cidade}-${row.grupo}`}
                                                 className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800"
                                             >
-                                                {CARTEIRA_COLUMNS.map((col, i) => renderCell(row, col.key, col.isPct, i === CARTEIRA_COLUMNS.length - 1))}
+                                                {CARTEIRA_COLUMNS.map((col, i) => renderCell(
+                                                    row,
+                                                    col,
+                                                    i === CARTEIRA_COLUMNS.length - 1,
+                                                    (cidade, metrica, label) => setDrillDown({ cidade, metrica, label }),
+                                                ))}
                                             </tr>
                                         ))}
                                         {groupIndex < groups.length - 1 && (
@@ -286,6 +319,15 @@ export default function CarteiraPorGrupoView({
                     </div>
                 )}
             </div>
+
+            {drillDown && (
+                <EstablishmentDrillDownModal
+                    title={`${drillDown.label} - ${drillDown.cidade}`}
+                    fetchList={() => fetchCarteiraDrillDown(drillDown.cidade, drillDown.metrica)}
+                    onNavigateToPartner={onNavigateToPartner}
+                    onClose={() => setDrillDown(null)}
+                />
+            )}
         </div>
     );
 }

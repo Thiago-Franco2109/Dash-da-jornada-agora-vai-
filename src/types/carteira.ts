@@ -13,3 +13,25 @@ export interface CarteiraRow {
     cupomAprovado: number;
     semCupom: number;
 }
+
+export type CarteiraMetrica =
+    | 'total'
+    | 'ativos'
+    | 'suspenso'
+    | 'pendente'
+    | 'promoAprovada'
+    | 'semPromo'
+    | 'cupomAprovado'
+    | 'semCupom';
+
+export interface CarteiraEstabelecimento {
+    id: number;
+    nome: string;
+}
+
+export interface CarteiraDrillDown {
+    cidade: string;
+    metrica: CarteiraMetrica;
+    total: number;
+    estabelecimentos: CarteiraEstabelecimento[];
+}
