@@ -4,6 +4,7 @@ import {
     formatDiasAtivos,
     formatPrecoArte,
     resolveImagemItem,
+    resolveLogoUrl,
     type PromoItemArte,
 } from '../hooks/usePromoItemArte';
 
@@ -60,7 +61,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
 
     // A logo do parceiro (vinda da planilha) às vezes é uma URL quebrada/bloqueada
     // — dá pra colar um link alternativo aqui em vez de travar sem logo na arte.
-    const [logoUrlOverride, setLogoUrlOverride] = useState(logoUrl || '');
+    const [logoUrlOverride, setLogoUrlOverride] = useState(() => resolveLogoUrl(logoUrl) || '');
 
     useEffect(() => { load(estabelecimentoId); }, [estabelecimentoId, load]);
 
@@ -146,7 +147,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                     pricePromo: fields.pricePromo,
                     daysText: fields.daysText,
                     itemImage,
-                    logoImage: logoUrlOverride.trim() || null,
+                    logoImage: resolveLogoUrl(logoUrlOverride.trim()) || null,
                 },
             },
             window.location.origin,

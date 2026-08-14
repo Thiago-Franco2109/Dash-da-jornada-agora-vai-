@@ -89,6 +89,23 @@ export function resolveImagemItem(imagem: string | null): string | null {
     return `https://labcinco.nyc3.cdn.digitaloceanspaces.com/bigou/item/${imagem.replace(/^\/+/, '')}`;
 }
 
+/**
+ * `partner.logo_url` (planilha LOJAS_DELIVERY / `netlify/functions/logos.ts`)
+ * costuma vir como `https://api-aws.bigou.com.br/uploads/logomarca/<arquivo>`
+ * — essa URL faz um 301 pro CDN, mas o próprio redirect NÃO tem cabeçalho CORS
+ * (confirmado via HEAD request), então o navegador bloqueia o fetch antes de
+ * chegar no CDN, mesmo o CDN tendo `access-control-allow-origin: *`. Resolve
+ * direto pra URL final do CDN, pulando o redirect problemático.
+ */
+export function resolveLogoUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    const match = url.match(/^https?:\/\/api-aws\.bigou\.com\.br\/uploads\/logomarca\/(.+)$/i);
+    if (match) {
+        return `https://labcinco.nyc3.cdn.digitaloceanspaces.com/bigou/logomarca/${match[1]}`;
+    }
+    return url;
+}
+
 interface UsePromoItemArteResult {
     itens: PromoItemArte[];
     isLoading: boolean;
