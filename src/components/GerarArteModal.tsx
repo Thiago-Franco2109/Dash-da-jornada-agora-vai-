@@ -206,7 +206,9 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                                                 className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-white"
                                             >
                                                 {itens.map(i => (
-                                                    <option key={i.id} value={i.id}>{i.nome}</option>
+                                                    <option key={i.id} value={i.id}>
+                                                        {i.nome}{i.campanha ? ` — ${i.campanha}` : ''}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>
@@ -214,12 +216,19 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
 
                                     {selectedItem && fields && (
                                         <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
-                                            {selectedItem.status === 1 && (
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                                                    <span className="material-symbols-outlined text-[12px]">hourglass_top</span>
-                                                    Pendente — aguardando aprovação do parceiro
-                                                </span>
-                                            )}
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                {selectedItem.campanha && (
+                                                    <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 px-1.5 py-0.5 rounded">
+                                                        {selectedItem.campanha}
+                                                    </span>
+                                                )}
+                                                {selectedItem.status === 1 && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                                        <span className="material-symbols-outlined text-[12px]">hourglass_top</span>
+                                                        Pendente — aguardando aprovação do parceiro
+                                                    </span>
+                                                )}
+                                            </div>
                                             <EditableFieldsForm fields={fields} onChange={setFields} />
                                         </div>
                                     )}
