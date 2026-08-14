@@ -35,15 +35,19 @@
         }
     }
 
-    /** Templates prontos (bundled, sempre disponíveis) + os salvos pelo usuário no editor. */
+    /**
+     * Templates prontos (bundled, sempre disponíveis) + os salvos pelo usuário no editor.
+     * Em caso de colisão de id, o bundled sempre ganha — ele é a versão mantida junto do
+     * app; qualquer cópia local com o mesmo id só existiria por acidente/estado antigo.
+     */
     async function getAllTemplates() {
         await ensureStorageReady();
         const [bundled, saved] = await Promise.all([
             loadBundledTemplates(),
             window.StorageManager.getTemplates(),
         ]);
-        const savedIds = new Set(saved.map(t => t.id));
-        return [...bundled.filter(t => !savedIds.has(t.id)), ...saved];
+        const bundledIds = new Set(bundled.map(t => t.id));
+        return [...bundled, ...saved.filter(t => !bundledIds.has(t.id))];
     }
 
     function buildRow(row) {
