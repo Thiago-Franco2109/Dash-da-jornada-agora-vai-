@@ -37,7 +37,7 @@ const THEMES: Record<ProductMode, ProductModeTheme> = {
             activeItem: 'bg-white text-emerald-700',
             pinBorder: 'border-emerald-700/50',
         },
-        headerTitle: 'Jornada de novos parceiros',
+        headerTitle: 'Central Sucesso do Cliente Bigou',
         label: 'Marketplace',
     },
     cardapio_digital: {
