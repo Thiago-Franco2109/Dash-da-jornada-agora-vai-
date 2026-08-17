@@ -9,7 +9,7 @@ import PerformanceTable, { getRowCampaignStatus } from './components/Performance
 import type { SortConfig } from './components/PerformanceTable';
 import PartnerDetailsView from './components/PartnerDetailsView';
 import SettingsView from './components/SettingsView';
-import ReportsView, { KPICard } from './components/ReportsView';
+import ReportsView from './components/ReportsView';
 import AboutView from './components/AboutView';
 import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
@@ -923,6 +923,32 @@ function App() {
                       <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight mb-2">{theme.headerTitle}</h1>
                       <p className="text-slate-500 dark:text-slate-400 text-base font-normal">Acompanhe as métricas de desempenho e o status de saúde dos parceiros nos primeiros 28 dias críticos de ativação.</p>
                     </div>
+
+                    {!isCD && (
+                      <div className="flex items-center gap-4 md:gap-6 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shrink-0">
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
+                            {((jornadaKpiPedidosCount / jornadaKpiTotal) * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Ativação de Pedidos</p>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-violet-600 dark:text-violet-400 leading-none tabular-nums">
+                            {((jornadaKpiPromocaoCount / jornadaKpiTotal) * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Captação de Promoção</p>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-amber-600 dark:text-amber-400 leading-none tabular-nums">
+                            {((jornadaKpiCupomCount / jornadaKpiTotal) * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Captação de Cupons</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col items-end shrink-0">
                       <button
                         onClick={() => { refreshData(); refreshAccessData(); }}
@@ -963,37 +989,6 @@ function App() {
                     </div>
                   )}
                 </div>
-
-                {!isCD && (
-                  <div className="shrink-0 px-6 pt-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <KPICard
-                        title="Ativação de Pedidos"
-                        value={`${((jornadaKpiPedidosCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
-                        subtitle={`${jornadaKpiPedidosCount} de ${filteredTableData.length} parceiros`}
-                        icons={['shopping_cart']}
-                        color="emerald"
-                        trend="Receberam pelo menos 1 pedido"
-                      />
-                      <KPICard
-                        title="Captação de Promoção"
-                        value={`${((jornadaKpiPromocaoCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
-                        subtitle={`${jornadaKpiPromocaoCount} de ${filteredTableData.length} parceiros`}
-                        icons={['local_offer']}
-                        color="violet"
-                        trend="Ofertas da Casa ou Super Promos ativas"
-                      />
-                      <KPICard
-                        title="Captação de Cupons"
-                        value={`${((jornadaKpiCupomCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
-                        subtitle={`${jornadaKpiCupomCount} de ${filteredTableData.length} parceiros`}
-                        icons={['confirmation_number']}
-                        color="amber"
-                        trend="Cupom de destaque ativo"
-                      />
-                    </div>
-                  </div>
-                )}
 
                 <div className="shrink-0">
                 <FilterToolbar
