@@ -754,7 +754,7 @@ export function AtivacaoCampanhasTab({ managerFilter }: { managerFilter: string 
     );
 }
 
-function KPICard({ title, value, subtitle, icons, color, trend }: { title: string; value: string; subtitle: string; icons: readonly string[]; color: 'emerald' | 'blue' | 'violet' | 'amber'; trend: string }) {
+export function KPICard({ title, value, subtitle, icons, color, trend }: { title: string; value: string; subtitle: string; icons: readonly string[]; color: 'emerald' | 'blue' | 'violet' | 'amber'; trend: string }) {
     const colors = {
         emerald: 'bg-emerald-500 shadow-emerald-500/20 text-emerald-500',
         blue: 'bg-blue-500 shadow-blue-500/20 text-blue-500',

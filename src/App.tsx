@@ -5,11 +5,11 @@ import Header from './components/Header';
 import NavigationSidebar from './components/NavigationSidebar';
 import HomeView from './components/HomeView';
 import FilterToolbar from './components/FilterToolbar';
-import PerformanceTable from './components/PerformanceTable';
+import PerformanceTable, { getRowCampaignStatus } from './components/PerformanceTable';
 import type { SortConfig } from './components/PerformanceTable';
 import PartnerDetailsView from './components/PartnerDetailsView';
 import SettingsView from './components/SettingsView';
-import ReportsView from './components/ReportsView';
+import ReportsView, { KPICard } from './components/ReportsView';
 import AboutView from './components/AboutView';
 import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
@@ -541,6 +541,15 @@ function App() {
     setSortConfig({ key, direction });
   };
 
+  // KPIs do topo da Jornada: refletem exatamente os parceiros da tabela abaixo
+  // (mesmos filtros + período selecionado).
+  const jornadaKpiTotal = filteredTableData.length || 1;
+  const jornadaKpiPedidosCount = filteredTableData.filter(row => row.total_pedidos > 0).length;
+  const jornadaKpiPromocaoCount = filteredTableData.filter(row =>
+    getRowCampaignStatus(row, 'ofertas_da_casa') === 'ativo' || getRowCampaignStatus(row, 'super_promos') === 'ativo'
+  ).length;
+  const jornadaKpiCupomCount = filteredTableData.filter(row => getRowCampaignStatus(row, 'cupons_destaque') === 'ativo').length;
+
   const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros'
     ? (isCD ? enrichedDesempenhoData : indicadorEnrichedData)
     : currentView === 'cd_desempenho'
@@ -954,6 +963,37 @@ function App() {
                     </div>
                   )}
                 </div>
+
+                {!isCD && (
+                  <div className="shrink-0 px-6 pt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <KPICard
+                        title="Ativação de Pedidos"
+                        value={`${((jornadaKpiPedidosCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
+                        subtitle={`${jornadaKpiPedidosCount} de ${filteredTableData.length} parceiros`}
+                        icons={['shopping_cart']}
+                        color="emerald"
+                        trend="Receberam pelo menos 1 pedido"
+                      />
+                      <KPICard
+                        title="Captação de Promoção"
+                        value={`${((jornadaKpiPromocaoCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
+                        subtitle={`${jornadaKpiPromocaoCount} de ${filteredTableData.length} parceiros`}
+                        icons={['local_offer']}
+                        color="violet"
+                        trend="Ofertas da Casa ou Super Promos ativas"
+                      />
+                      <KPICard
+                        title="Captação de Cupons"
+                        value={`${((jornadaKpiCupomCount / jornadaKpiTotal) * 100).toFixed(1)}%`}
+                        subtitle={`${jornadaKpiCupomCount} de ${filteredTableData.length} parceiros`}
+                        icons={['confirmation_number']}
+                        color="amber"
+                        trend="Cupom de destaque ativo"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="shrink-0">
                 <FilterToolbar

@@ -80,7 +80,7 @@ const PROMO_SLOTS = [
     { key: 'semItem', icon: 'block', tone: 'text-red-500 dark:text-red-400', hint: 'na cidade, sem item pro parceiro' },
 ] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe'>; icon: string; tone: string; hint: string }[];
 
-function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
+export function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
     const fromMap = getCampaignStatus(row.campaign_statuses, campaignId);
     if (fromMap) return fromMap;
     if (campaignId === 'super_promos' && row.promo_status) return row.promo_status;
