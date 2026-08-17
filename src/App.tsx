@@ -543,11 +543,15 @@ function App() {
 
   // KPIs do topo da Jornada: refletem exatamente os parceiros da tabela abaixo
   // (mesmos filtros + período selecionado).
+  //
+  // Promoção usa promo_resumo.aprovado (mesma fonte da coluna "Promoções" da
+  // tabela) em vez de campaign_statuses.super_promos — este último só reflete
+  // o mapa `campanhas` (Netlify function), que fica em 0 pra praticamente todo
+  // parceiro novo; promo_resumo vem do `promo-status`, item a item, e é quem
+  // realmente aparece como aprovado no painel.
   const jornadaKpiTotal = filteredTableData.length || 1;
   const jornadaKpiPedidosCount = filteredTableData.filter(row => row.total_pedidos > 0).length;
-  const jornadaKpiPromocaoCount = filteredTableData.filter(row =>
-    getRowCampaignStatus(row, 'ofertas_da_casa') === 'ativo' || getRowCampaignStatus(row, 'super_promos') === 'ativo'
-  ).length;
+  const jornadaKpiPromocaoCount = filteredTableData.filter(row => (row.promo_resumo?.aprovado ?? 0) > 0).length;
   const jornadaKpiCupomCount = filteredTableData.filter(row => getRowCampaignStatus(row, 'cupons_destaque') === 'ativo').length;
 
   const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros'
