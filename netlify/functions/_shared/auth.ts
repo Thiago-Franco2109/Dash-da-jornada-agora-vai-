@@ -29,7 +29,7 @@ export interface AuthResult {
 // Hosts liberados: env ALLOWED_ORIGIN_HOSTS (CSV) ou o default abaixo.
 // Casa o host exato e subdomínios (ex: deploy previews *.netlify.app do site).
 // ─────────────────────────────────────────────────────────────────────────
-const DEFAULT_ALLOWED_HOSTS = ['jornada-netlifyreserva.netlify.app', 'localhost', '127.0.0.1'];
+const DEFAULT_ALLOWED_HOSTS = ['central-cs-bigou.netlify.app', 'localhost', '127.0.0.1'];
 
 export interface OriginResult {
     ok: boolean;
