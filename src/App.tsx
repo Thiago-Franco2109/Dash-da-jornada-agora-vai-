@@ -22,6 +22,7 @@ import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
 import AcoesPromocionaisView from './components/AcoesPromocionaisView';
 import PedidoMensalView from './components/PedidoMensalView';
 import OnboardingView from './components/OnboardingView';
+import OnboardingCompletoAlert from './components/OnboardingCompletoAlert';
 import CrmView from './components/CrmView';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
@@ -647,7 +648,8 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen w-full overflow-hidden bg-white dark:bg-slate-900">
-      <Header 
+      <OnboardingCompletoAlert />
+      <Header
         currentView={currentView} 
         onNavigate={setCurrentView} 
         searchQuery={searchQuery} 
