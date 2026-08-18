@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { cityBelongsToManager, type Manager, type ProductModeKey } from '../config/managerMapping';
 import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
+import type { EtapaTrello } from '../hooks/useOnboardingTrello';
 
 interface OnboardingViewProps {
     pendentes: ParceiroPendente[];
@@ -14,6 +15,8 @@ interface OnboardingViewProps {
     managerFilter?: string;
     /** No Cardápio Digital a cidade quase nunca diz quem gerencia — ver useAtribuicaoCs. */
     mode?: ProductModeKey;
+    /** Etapa atual no board do Trello, casada por estabId — ver useOnboardingTrello. */
+    etapasTrello?: Map<string, EtapaTrello>;
 }
 
 /** Sem cor de alarme antes de uma semana — atraso de verdade só começa depois disso. */
@@ -32,6 +35,7 @@ export default function OnboardingView({
     onRefresh,
     managerFilter = '',
     mode = 'marketplace',
+    etapasTrello,
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
 
@@ -114,6 +118,7 @@ export default function OnboardingView({
                                 <th className="px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cidade</th>
                                 <th className="px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assinado em</th>
                                 <th className="px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Dias pendente</th>
+                                <th className="px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Etapa (Trello)</th>
                                 <th className="px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">CMS</th>
                             </tr>
                         </thead>
@@ -135,6 +140,30 @@ export default function OnboardingView({
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
+                                        {(() => {
+                                            const etapa = etapasTrello?.get(p.estabId);
+                                            if (!etapa) {
+                                                return <span className="text-xs italic text-slate-300 dark:text-slate-600">sem card</span>;
+                                            }
+                                            return (
+                                                <a
+                                                    href={etapa.cardUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400 hover:underline"
+                                                    title="Abrir card no Trello"
+                                                >
+                                                    {etapa.etapa}
+                                                    {etapa.diasNaEtapa != null && (
+                                                        <span className="opacity-70">
+                                                            · {etapa.diasNaEtapa === 0 ? 'hoje' : `${etapa.diasNaEtapa}d`}
+                                                        </span>
+                                                    )}
+                                                </a>
+                                            );
+                                        })()}
+                                    </td>
+                                    <td className="px-4 py-3">
                                         <a
                                             href={`https://admin.bigou.com.br/estabelecimento/cadastro/${p.estabId}`}
                                             target="_blank"
@@ -149,7 +178,7 @@ export default function OnboardingView({
                             ))}
                             {filtrados.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-12 text-center text-slate-500 text-sm">
+                                    <td colSpan={6} className="px-4 py-12 text-center text-slate-500 text-sm">
                                         {busca ? `Nenhum resultado para "${busca}"` : 'Nenhum parceiro pendente de ativação.'}
                                     </td>
                                 </tr>

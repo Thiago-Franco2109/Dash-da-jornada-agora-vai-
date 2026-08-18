@@ -13,10 +13,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  * Na primeira carga (sem régua salva) só posiciona a régua no que já existe,
  * sem alertar — senão todo onboarding histórico já concluído dispararia de
  * uma vez na primeira vez que alguém abrir o dashboard.
+ *
+ * POLL_MS não é 30s por acaso: o banco que essa function lê tem ~1 dia de
+ * atraso em relação ao banco real (replicação, não é bug). Não tem por que
+ * bater no banco a cada 30s pra um dado que só muda 1x por dia — 10min já é
+ * bem mais rápido que o próprio delay do dado.
  */
 
 const FN_URL = '/.netlify/functions/onboarding-parceiro';
-const POLL_MS = 30_000;
+const POLL_MS = 10 * 60_000;
 const STORAGE_KEY = 'onboarding100_ultimaConclusaoVista';
 
 export interface ParceiroOnboardingCompleto {

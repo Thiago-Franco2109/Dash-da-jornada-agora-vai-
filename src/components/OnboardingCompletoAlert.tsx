@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale/pt-BR';
 import { useOnboardingCompleto } from '../hooks/useOnboardingCompleto';
 
 const DURACAO_TOAST_MS = 15_000;
@@ -63,9 +65,12 @@ export default function OnboardingCompletoAlert() {
                 >
                     <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-2xl">celebration</span>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">Onboarding 100% concluído!</p>
+                        <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">Onboarding 100% concluído</p>
                         <p className="text-sm text-emerald-800 dark:text-emerald-300 truncate">{p.estabelecimento}</p>
-                        {p.cidade && <p className="text-xs text-emerald-600 dark:text-emerald-400">{p.cidade}</p>}
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                            {p.cidade && `${p.cidade} · `}
+                            concluído {formatDistanceToNow(new Date(p.concluidoEm), { locale: ptBR, addSuffix: true })}
+                        </p>
                     </div>
                     <button
                         type="button"

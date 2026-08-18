@@ -31,6 +31,7 @@ import { fetchPedidoMensalTable, fetchParceiroMensalTable } from './utils/pedido
 import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './utils/jornadaFromDb';
 import { useAtribuicaoCs } from './hooks/useAtribuicaoCs';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
+import { useOnboardingTrello } from './hooks/useOnboardingTrello';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -230,6 +231,10 @@ function App() {
     lastSyncTime: onboardingLastSync,
     refreshData: refreshOnboarding,
   } = useOnboardingPendente({ enabled: onboardingTabActive, produto: isCD ? 'cd' : undefined });
+
+  const { etapasPorEstabId: onboardingEtapasTrello, refreshTrello: refreshOnboardingTrello } = useOnboardingTrello({
+    enabled: onboardingTabActive,
+  });
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -770,9 +775,10 @@ function App() {
             isRefreshing={refreshingOnboarding}
             error={onboardingError}
             lastSyncTime={onboardingLastSync}
-            onRefresh={refreshOnboarding}
+            onRefresh={() => { refreshOnboarding(); refreshOnboardingTrello(); }}
             managerFilter={managerFilter}
             mode={mode}
+            etapasTrello={onboardingEtapasTrello}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (
