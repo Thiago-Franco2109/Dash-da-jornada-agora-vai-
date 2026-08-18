@@ -31,6 +31,15 @@ body {
   animation: slide-in-right 0.3s ease-out forwards;
 }
 
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Cabeçalho fixo nas tabelas de jornada e desempenho */
 .performance-table thead th {
   @apply sticky top-0 z-20 bg-slate-50 dark:bg-slate-800;
