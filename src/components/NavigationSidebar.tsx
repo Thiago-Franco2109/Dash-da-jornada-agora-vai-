@@ -15,33 +15,41 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
     const isExpanded = isPinned || isHovered;
     const sc = theme.sidebarClasses;
 
-    const navItems: { id: AppView; icon: string; label: string }[] = [
-        { id: 'home', icon: 'home', label: 'Início' },
-        { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
-        ...(!isCD ? [
-            { id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' },
-            { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' },
+    const allNavGroups: { label: string; items: { id: AppView; icon: string; label: string }[] }[] = [
+        { label: 'Jornada', items: [
+            { id: 'home', icon: 'home', label: 'Início' },
+            { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+            ...(!isCD ? [{ id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' }] : []),
+            isCD
+                ? { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }
+                : { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
+            { id: 'contacts' as AppView, icon: 'contact_phone', label: 'Contatos' },
+        ] },
+        { label: 'Onboarding', items: [
+            { id: 'onboarding', icon: 'pending_actions', label: 'Acompanhar Onboarding' },
+        ] },
+        { label: 'Captação de Ações', items: !isCD ? [
             { id: 'acoes_promocionais' as AppView, icon: 'local_offer', label: 'Ações Promocionais' },
-            { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
-            { id: 'onboarding' as AppView, icon: 'pending_actions', label: 'Acompanhar Onboarding' },
             { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
-            { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
-            { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
-        ] : [
-            { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' },
-            { id: 'onboarding' as AppView, icon: 'pending_actions', label: 'Acompanhar Onboarding' },
-            { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
-        ]),
-        { id: 'cs_kpis', icon: 'monitoring', label: 'KPIs CS' },
-        { id: 'reports', icon: 'assessment', label: 'Relatórios' },
-        { id: 'contacts', icon: 'contact_phone', label: 'Contatos' },
-        { id: 'managers', icon: 'badge', label: 'Gestores' },
+            { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
+        ] : [] },
+        { label: 'Análise de Cidades', items: !isCD ? [
+            { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' },
+        ] : [] },
+        { label: 'Prevenção de Churn', items: [
+            { id: 'churn', icon: 'trending_down', label: 'Churn' },
+        ] },
+        { label: 'Gestão & Relatórios', items: [
+            { id: 'cs_kpis', icon: 'monitoring', label: 'KPIs CS' },
+            { id: 'reports', icon: 'assessment', label: 'Relatórios' },
+            { id: 'managers', icon: 'badge', label: 'Gestores' },
+        ] },
+        { label: 'Sistema', items: [
+            { id: 'settings', icon: 'settings', label: 'Configurações' },
+            { id: 'about', icon: 'info', label: 'Sobre' },
+        ] },
     ];
-
-    const secondaryItems = [
-        { id: 'settings', icon: 'settings', label: 'Configurações' },
-        { id: 'about', icon: 'info', label: 'Sobre' },
-    ] as const;
+    const navGroups = allNavGroups.filter(group => group.items.length > 0);
 
     return (
         <aside 
@@ -69,36 +77,28 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
 
             {/* Main Navigation */}
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 flex flex-col gap-1 px-2 scrollbar-hide">
-                {navItems.map(item => (
-                    <button 
-                        key={item.id}
-                        onClick={() => onNavigate(item.id)}
-                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? `${sc.activeItem} shadow-sm font-bold` : 'text-white/90 hover:bg-white/10 hover:text-white font-medium'}`}
-                        title={!isExpanded ? item.label : undefined}
-                    >
-                        <span className="material-symbols-outlined shrink-0 text-[22px]">{item.icon}</span>
-                        <span className={`transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
-                            {item.label}
+                {navGroups.map((group, groupIndex) => (
+                    <div key={group.label} className="flex flex-col gap-1">
+                        {groupIndex > 0 && (
+                            <div className={`mt-4 mb-1 h-px ${sc.divider} mx-2`} />
+                        )}
+                        <span className={`px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-white/50 whitespace-nowrap transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                            {group.label}
                         </span>
-                    </button>
-                ))}
-
-
-
-                <div className={`mt-8 mb-4 h-px ${sc.divider} mx-2`} />
-
-                {secondaryItems.map(item => (
-                    <button 
-                        key={item.id}
-                        onClick={() => onNavigate(item.id)}
-                        className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? `${sc.activeItem} shadow-sm font-bold` : 'text-white/90 hover:bg-white/10 hover:text-white font-medium'}`}
-                        title={!isExpanded ? item.label : undefined}
-                    >
-                        <span className="material-symbols-outlined shrink-0 text-[22px]">{item.icon}</span>
-                        <span className={`transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
-                            {item.label}
-                        </span>
-                    </button>
+                        {group.items.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => onNavigate(item.id)}
+                                className={`flex items-center gap-4 px-3 py-3 rounded-xl transition-all whitespace-nowrap ${currentView === item.id ? `${sc.activeItem} shadow-sm font-bold` : 'text-white/90 hover:bg-white/10 hover:text-white font-medium'}`}
+                                title={!isExpanded ? item.label : undefined}
+                            >
+                                <span className="material-symbols-outlined shrink-0 text-[22px]">{item.icon}</span>
+                                <span className={`transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                                    {item.label}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
                 ))}
             </nav>
 
