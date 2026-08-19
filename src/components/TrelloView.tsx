@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { differenceInCalendarDays, format, isPast, isToday, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
@@ -49,10 +49,22 @@ function nivelDaTarefa(due: string | null): { nivel: Nivel; data: Date | null } 
 
 export default function TrelloView() {
     const { data: tarefas, isLoading, error, refresh } = useTrelloTarefas();
+    const [boardFilter, setBoardFilter] = useState('');
+
+    const boards = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const t of tarefas) counts.set(t.board, (counts.get(t.board) ?? 0) + 1);
+        return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+    }, [tarefas]);
+
+    const tarefasFiltradas = useMemo(
+        () => (boardFilter ? tarefas.filter(t => t.board === boardFilter) : tarefas),
+        [tarefas, boardFilter],
+    );
 
     const grupos = useMemo(() => {
         const hoje = startOfDay(new Date());
-        const comNivel = tarefas.map(t => {
+        const comNivel = tarefasFiltradas.map(t => {
             const { nivel, data } = nivelDaTarefa(t.due);
             return { tarefa: t, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
         });
@@ -63,7 +75,7 @@ export default function TrelloView() {
                 .filter(c => c.nivel === nivel)
                 .sort((a, b) => (a.daysOffset ?? 0) - (b.daysOffset ?? 0)),
         })).filter(g => g.itens.length > 0);
-    }, [tarefas]);
+    }, [tarefasFiltradas]);
 
     return (
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto">
@@ -74,15 +86,32 @@ export default function TrelloView() {
                         Cards atribuídos a você em todos os boards — tudo o que está pendente, num lugar só.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={refresh}
-                    disabled={isLoading}
-                    className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
-                >
-                    <span className={`material-symbols-outlined text-[18px] ${isLoading ? 'animate-spin' : ''}`}>sync</span>
-                    {isLoading ? 'Atualizando…' : 'Atualizar'}
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    {boards.length > 0 && (
+                        <select
+                            value={boardFilter}
+                            onChange={e => setBoardFilter(e.target.value)}
+                            className="text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none"
+                            title="Filtrar por board"
+                        >
+                            <option value="">Todos os boards ({tarefas.length})</option>
+                            {boards.map(([board, count]) => (
+                                <option key={board} value={board}>
+                                    {board} ({count})
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <button
+                        type="button"
+                        onClick={refresh}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                    >
+                        <span className={`material-symbols-outlined text-[18px] ${isLoading ? 'animate-spin' : ''}`}>sync</span>
+                        {isLoading ? 'Atualizando…' : 'Atualizar'}
+                    </button>
+                </div>
             </header>
 
             {error && (
@@ -95,7 +124,7 @@ export default function TrelloView() {
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">Carregando cards…</div>
             ) : grupos.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">
-                    Nenhum card pendente atribuído a você.
+                    {boardFilter ? `Nenhum card pendente no board "${boardFilter}".` : 'Nenhum card pendente atribuído a você.'}
                 </div>
             ) : (
                 <div className="space-y-4">
