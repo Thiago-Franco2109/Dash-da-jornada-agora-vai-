@@ -706,6 +706,7 @@ function App() {
             lastSyncTime={carteiraLastSync}
             onRefresh={refreshCarteiraData}
             managerFilter={managerFilter}
+            onNavigateToPartner={estab => navigateToPartner({ estabelecimento: estab.nome, estab_id: String(estab.id) } as EnrichedPerformanceRow)}
           />
         ) : currentView === 'carteira_grupo' ? (
           <CarteiraPorGrupoView

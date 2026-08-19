@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
-import type { CarteiraRow } from '../types/carteira';
+import type { CarteiraEstabelecimento, CarteiraMetrica, CarteiraRow } from '../types/carteira';
 import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
+import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
 import { pctCellClass, CARTEIRA_COLUMNS as COLUMNS } from '../utils/carteiraColumns';
+import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
 
 interface CarteiraViewProps {
     rows: CarteiraRow[];
@@ -16,6 +18,8 @@ interface CarteiraViewProps {
     lastSyncTime: Date | null;
     onRefresh: () => void;
     managerFilter?: string;
+    /** Abre a tela interna do parceiro (mesma navegação da busca Cmd+K). */
+    onNavigateToPartner?: (estabelecimento: CarteiraEstabelecimento) => void;
 }
 
 /**
@@ -78,10 +82,12 @@ export default function CarteiraView({
     lastSyncTime,
     onRefresh,
     managerFilter = '',
+    onNavigateToPartner,
 }: CarteiraViewProps) {
     const [grupoFilter, setGrupoFilter] = useState('');
     const [cidadeFilter, setCidadeFilter] = useState('');
     const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+    const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: CarteiraMetrica; label: string } | null>(null);
 
     // Divisão e grupo não existem no banco Bigou: são classificação comercial,
     // guardada no Supabase e editada aqui mesmo (ver carteira_cidade.sql).
@@ -146,7 +152,8 @@ export default function CarteiraView({
         );
     }, [filteredRows]);
 
-    const renderCell = (row: CarteiraRow, key: keyof CarteiraRow, isPct?: boolean) => {
+    const renderCell = (row: CarteiraRow, col: (typeof COLUMNS)[number]) => {
+        const { key, isPct, metrica, label } = col;
         const value = row[key];
 
         if (key === 'divisao' || key === 'grupo') {
@@ -169,6 +176,22 @@ export default function CarteiraView({
                 </td>
             );
         }
+
+        if (metrica && typeof value === 'number') {
+            return (
+                <td key={String(key)} className="px-2 py-2 text-center">
+                    <button
+                        type="button"
+                        onClick={() => setDrillDown({ cidade: row.cidade, metrica, label })}
+                        disabled={value === 0}
+                        className="text-sm font-medium text-slate-700 dark:text-slate-300 tabular-nums px-2 py-0.5 rounded hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:cursor-default transition-colors"
+                    >
+                        {value.toLocaleString('pt-BR')}
+                    </button>
+                </td>
+            );
+        }
+
         return (
             <td
                 key={String(key)}
@@ -295,7 +318,7 @@ export default function CarteiraView({
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                                 {filteredRows.map(row => (
                                     <tr key={`${row.cidade}-${row.grupo}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                        {COLUMNS.map(col => renderCell(row, col.key, col.isPct))}
+                                        {COLUMNS.map(col => renderCell(row, col))}
                                     </tr>
                                 ))}
                             </tbody>
@@ -325,6 +348,15 @@ export default function CarteiraView({
                     </div>
                 )}
             </div>
+
+            {drillDown && (
+                <EstablishmentDrillDownModal
+                    title={`${drillDown.label} - ${drillDown.cidade}`}
+                    fetchList={() => fetchCarteiraDrillDown(drillDown.cidade, drillDown.metrica)}
+                    onNavigateToPartner={onNavigateToPartner}
+                    onClose={() => setDrillDown(null)}
+                />
+            )}
         </div>
     );
 }
