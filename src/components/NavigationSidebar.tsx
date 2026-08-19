@@ -19,6 +19,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         { label: 'Jornada', items: [
             { id: 'home', icon: 'home', label: 'Início' },
             { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+            { id: 'trello', icon: 'task_alt', label: 'Trello' },
             ...(!isCD ? [{ id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' }] : []),
             isCD
                 ? { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }

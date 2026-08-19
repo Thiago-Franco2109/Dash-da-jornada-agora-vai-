@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { checkOrigin } from './_shared/auth';
+import { trelloFetch } from './_shared/trello';
 
 /**
  * Etapa atual (lista do Trello) de cada parceiro pendente de onboarding.
@@ -36,15 +37,6 @@ interface TrelloAction {
     type: string;
     date: string;
     data: { card?: { id: string }; listAfter?: { id: string } };
-}
-
-async function trelloFetch<T>(path: string, key: string, token: string, params: Record<string, string> = {}): Promise<T> {
-    const query = new URLSearchParams({ key, token, ...params }).toString();
-    const res = await fetch(`https://api.trello.com/1${path}?${query}`);
-    if (!res.ok) {
-        throw new Error(`Trello API ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
 }
 
 /** "28509 - Sublime Açaí Express" -> "28509" */

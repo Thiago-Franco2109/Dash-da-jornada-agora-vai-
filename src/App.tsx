@@ -17,6 +17,7 @@ import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
 import CsKpisView from './components/CsKpisView';
+import TrelloView from './components/TrelloView';
 import CarteiraView from './components/CarteiraView';
 import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
 import AcoesPromocionaisView from './components/AcoesPromocionaisView';
@@ -671,6 +672,8 @@ function App() {
             <HomeView rows={homeRows} onPartnerClick={handleRowClick} onNavigate={setCurrentView} />
         ) : currentView === 'cs_kpis' ? (
             <CsKpisView />
+        ) : currentView === 'trello' ? (
+            <TrelloView />
         ) : currentView === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <SettingsView />

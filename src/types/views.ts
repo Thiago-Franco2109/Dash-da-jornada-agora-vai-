@@ -1,6 +1,7 @@
 export type AppView =
     | 'home'
     | 'dashboard'
+    | 'trello'
     | 'carteira'
     | 'carteira_grupo'
     | 'acoes_promocionais'
