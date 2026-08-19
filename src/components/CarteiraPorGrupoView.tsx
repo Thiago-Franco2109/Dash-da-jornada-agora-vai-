@@ -95,6 +95,7 @@ export default function CarteiraPorGrupoView({
 }: CarteiraPorGrupoViewProps) {
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
     const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: CarteiraMetrica; label: string } | null>(null);
+    const [cidadeFilter, setCidadeFilter] = useState('');
 
     // Mesma classificação (Supabase) usada na Carteira — aqui é só leitura.
     const { mapa: classificacao } = useCarteiraClassificacao();
@@ -111,9 +112,10 @@ export default function CarteiraPorGrupoView({
     const filteredRows = useMemo(() => {
         return rowsClassificadas.filter(row => {
             if (managerFilter && !cityBelongsToManager(row.cidade, managerFilter as Manager)) return false;
+            if (cidadeFilter && !row.cidade.toLowerCase().includes(cidadeFilter.toLowerCase())) return false;
             return true;
         });
-    }, [rowsClassificadas, managerFilter]);
+    }, [rowsClassificadas, managerFilter, cidadeFilter]);
 
     const requestSort = (key: keyof CarteiraRow) => {
         setSort(prev => (prev.key === key && prev.direction === 'asc'
@@ -222,8 +224,18 @@ export default function CarteiraPorGrupoView({
                 )}
             </div>
 
-            <div className="shrink-0 px-6 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-end bg-slate-50/50 dark:bg-slate-900/50">
-                <span className="text-xs text-slate-400">
+            <div className="shrink-0 px-6 py-2 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+                <label className="flex items-center gap-2 text-sm flex-1 min-w-[200px] max-w-xs">
+                    <span className="material-symbols-outlined text-slate-400 text-[18px]">search</span>
+                    <input
+                        type="search"
+                        value={cidadeFilter}
+                        onChange={e => setCidadeFilter(e.target.value)}
+                        placeholder="Filtrar cidade..."
+                        className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm"
+                    />
+                </label>
+                <span className="text-xs text-slate-400 ml-auto">
                     {groups.length} grupo{groups.length !== 1 ? 's' : ''} · {filteredRows.length} cidade{filteredRows.length !== 1 ? 's' : ''}
                 </span>
             </div>
