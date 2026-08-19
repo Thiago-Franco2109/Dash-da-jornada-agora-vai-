@@ -24,7 +24,7 @@ const RAW_CITY_GRUPO: Record<string, string> = {
 
     'Natividade': 'LANÇADAS_26',
 
-    'Miraí': 'LANÇADAS_27',
+    'Miraí': 'LANÇADAS_26',
 
     'Santos Dumont': 'TOP_5',
     'Além Paraíba': 'TOP_5',

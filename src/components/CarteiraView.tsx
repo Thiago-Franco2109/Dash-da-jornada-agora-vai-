@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CarteiraEstabelecimento, CarteiraMetrica, CarteiraRow } from '../types/carteira';
@@ -72,6 +72,8 @@ function CelulaEditavel({
         />
     );
 }
+
+const SEM_GRUPO = 'Sem grupo';
 
 export default function CarteiraView({
     rows,
@@ -150,6 +152,25 @@ export default function CarteiraView({
                 semCupom: 0,
             },
         );
+    }, [filteredRows]);
+
+    const groups = useMemo(() => {
+        const byGrupo = new Map<string, CarteiraRow[]>();
+        for (const row of filteredRows) {
+            const grupo = row.grupo || SEM_GRUPO;
+            if (!byGrupo.has(grupo)) byGrupo.set(grupo, []);
+            byGrupo.get(grupo)!.push(row);
+        }
+        return Array.from(byGrupo.entries())
+            .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
+            .map(([grupo, groupRows]) => ({
+                grupo,
+                rows: [...groupRows].sort((a, b) => a.cidade.localeCompare(b.cidade, 'pt-BR')),
+                totals: groupRows.reduce(
+                    (acc, row) => ({ total: acc.total + row.total, ativos: acc.ativos + row.ativos }),
+                    { total: 0, ativos: 0 },
+                ),
+            }));
     }, [filteredRows]);
 
     const renderCell = (row: CarteiraRow, col: (typeof COLUMNS)[number]) => {
@@ -287,7 +308,7 @@ export default function CarteiraView({
                     />
                 </label>
                 <span className="text-xs text-slate-400 ml-auto">
-                    {filteredRows.length} linha{filteredRows.length !== 1 ? 's' : ''}
+                    {groups.length} grupo{groups.length !== 1 ? 's' : ''} · {filteredRows.length} cidade{filteredRows.length !== 1 ? 's' : ''}
                 </span>
             </div>
 
@@ -316,17 +337,34 @@ export default function CarteiraView({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                                {filteredRows.map(row => (
-                                    <tr key={`${row.cidade}-${row.grupo}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                        {COLUMNS.map(col => renderCell(row, col))}
-                                    </tr>
+                                {groups.map((group, groupIndex) => (
+                                    <Fragment key={group.grupo}>
+                                        <tr className="bg-slate-50 dark:bg-slate-800/60">
+                                            <td colSpan={COLUMNS.length} className="px-2 py-1.5 text-left text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                {group.grupo}
+                                                <span className="ml-2 font-normal text-[11px] text-slate-400">
+                                                    {group.rows.length} cidade{group.rows.length !== 1 ? 's' : ''} · {group.totals.ativos.toLocaleString('pt-BR')}/{group.totals.total.toLocaleString('pt-BR')} ativos
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {group.rows.map(row => (
+                                            <tr key={`${row.cidade}-${row.grupo}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                                {COLUMNS.map(col => renderCell(row, col))}
+                                            </tr>
+                                        ))}
+                                        {groupIndex < groups.length - 1 && (
+                                            <tr aria-hidden="true">
+                                                <td colSpan={COLUMNS.length} className="h-3 bg-transparent border-none p-0" />
+                                            </tr>
+                                        )}
+                                    </Fragment>
                                 ))}
                             </tbody>
                             {filteredRows.length > 0 && (
                                 <tfoot className="bg-slate-50 dark:bg-slate-800/80 border-t-2 border-slate-200 dark:border-slate-600">
                                     <tr className="font-bold text-sm text-slate-800 dark:text-slate-200">
                                         <td colSpan={3} className="px-2 py-3 text-left">
-                                            Total ({filteredRows.length} grupos)
+                                            Total ({filteredRows.length} cidades)
                                         </td>
                                         <td className="px-2 py-3 text-center">{totals.total.toLocaleString('pt-BR')}</td>
                                         <td className="px-2 py-3 text-center">{totals.ativos.toLocaleString('pt-BR')}</td>

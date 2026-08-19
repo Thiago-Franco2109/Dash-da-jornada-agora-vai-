@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { AcaoPromocionalCidade, AcaoPromocionalMetrica, AcoesPromocionaisTotais } from '../types/acoesPromocionais';
 import { ACOES_PROMOCIONAIS_COLUMNS, metricCellClass } from '../utils/acoesPromocionaisColumns';
 import { cityBelongsToManager, type Manager } from '../config/managerMapping';
+import { getInitialGrupo } from '../config/carteiraGrupoMapping';
+import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import AcaoPromocionalDrillDownModal from './AcaoPromocionalDrillDownModal';
+
+const SEM_GRUPO = 'Sem grupo';
 
 interface AcoesPromocionaisViewProps {
     cidades: AcaoPromocionalCidade[];
@@ -65,6 +69,12 @@ export default function AcoesPromocionaisView({
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
     const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: AcaoPromocionalMetrica; label: string } | null>(null);
 
+    // Mesma classificação (Supabase + semente) usada na Carteira/Cidades —
+    // aqui é só leitura, pra agrupar visualmente.
+    const { mapa: classificacao } = useCarteiraClassificacao();
+    const grupoPorCidade = (cidade: string): string =>
+        classificacao[cidade]?.grupo || getInitialGrupo(cidade) || SEM_GRUPO;
+
     // Escopo do gestor logado — mesma regra da Carteira/Cidades. As cidades
     // fora da carteira dele (Laís, standby etc.) nem entram no cálculo dos KPIs.
     const cidadesEscopo = useMemo(() => {
@@ -80,6 +90,19 @@ export default function AcoesPromocionaisView({
             return sort.direction === 'asc' ? cmp : -cmp;
         });
     }, [cidadesEscopo, cidadeFilter, sort]);
+
+    const groups = useMemo(() => {
+        const byGrupo = new Map<string, AcaoPromocionalCidade[]>();
+        for (const row of filteredCidades) {
+            const grupo = grupoPorCidade(row.cidade);
+            if (!byGrupo.has(grupo)) byGrupo.set(grupo, []);
+            byGrupo.get(grupo)!.push(row);
+        }
+        return Array.from(byGrupo.entries())
+            .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
+            .map(([grupo, groupRows]) => ({ grupo, rows: groupRows }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filteredCidades, classificacao]);
 
     const totais = useMemo(() => cidadesEscopo.reduce(
         (acc, c) => ({
@@ -201,7 +224,7 @@ export default function AcoesPromocionaisView({
                     />
                 </label>
                 <span className="text-xs text-slate-400 ml-auto">
-                    {filteredCidades.length} cidade{filteredCidades.length !== 1 ? 's' : ''}
+                    {groups.length} grupo{groups.length !== 1 ? 's' : ''} · {filteredCidades.length} cidade{filteredCidades.length !== 1 ? 's' : ''}
                 </span>
             </div>
 
@@ -239,48 +262,60 @@ export default function AcoesPromocionaisView({
                                 </tr>
                             </thead>
                             <tbody className="bg-white dark:bg-slate-900">
-                                {filteredCidades.map((row, rowIndex) => (
-                                    <tr
-                                        key={row.cidade}
-                                        className={`hover:bg-slate-50 dark:hover:bg-slate-900/20 ${
-                                            rowIndex < filteredCidades.length - 1 ? 'border-b border-slate-100 dark:border-slate-800' : ''
-                                        }`}
-                                    >
-                                        {ACOES_PROMOCIONAIS_COLUMNS.map((col, i) => {
-                                            const borderClass = i < ACOES_PROMOCIONAIS_COLUMNS.length - 1 ? 'border-r border-slate-100 dark:border-slate-800' : '';
-                                            if (col.key === 'cidade') {
-                                                return (
-                                                    <td key={col.key} className={`px-2 py-2 text-xs font-semibold text-slate-800 dark:text-white text-left whitespace-nowrap ${borderClass}`}>
-                                                        {row.cidade}
-                                                    </td>
-                                                );
-                                            }
-                                            const value = row[col.key] as number;
-                                            const pctValue = col.pctKey ? (row[col.pctKey] as number) : null;
-                                            if (!col.metrica) {
-                                                return (
-                                                    <td key={col.key} className={`px-2 py-2 text-xs text-center text-slate-700 dark:text-slate-300 ${borderClass}`}>
-                                                        {value.toLocaleString('pt-BR')}
-                                                    </td>
-                                                );
-                                            }
-                                            return (
-                                                <td key={col.key} className={`px-2 py-2 text-center ${borderClass}`}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setDrillDown({ cidade: row.cidade, metrica: col.metrica!, label: col.label })}
-                                                        disabled={value === 0}
-                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold tabular-nums transition-opacity hover:opacity-80 disabled:cursor-default ${metricCellClass(col.metrica, value)}`}
-                                                    >
-                                                        {value.toLocaleString('pt-BR')}
-                                                        {pctValue != null && value > 0 && (
-                                                            <span className="opacity-70 font-normal">({pctValue}%)</span>
-                                                        )}
-                                                    </button>
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
+                                {groups.map((group, groupIndex) => (
+                                    <Fragment key={group.grupo}>
+                                        <tr className="bg-slate-50 dark:bg-slate-800/60 border-t border-b border-slate-300 dark:border-slate-600">
+                                            <td colSpan={ACOES_PROMOCIONAIS_COLUMNS.length} className="px-2 py-1.5 text-left text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                {group.grupo}
+                                                <span className="ml-2 font-normal text-[11px] text-slate-400">
+                                                    {group.rows.length} cidade{group.rows.length !== 1 ? 's' : ''}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {group.rows.map(row => (
+                                            <tr key={row.cidade} className="hover:bg-slate-50 dark:hover:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800">
+                                                {ACOES_PROMOCIONAIS_COLUMNS.map((col, i) => {
+                                                    const borderClass = i < ACOES_PROMOCIONAIS_COLUMNS.length - 1 ? 'border-r border-slate-100 dark:border-slate-800' : '';
+                                                    if (col.key === 'cidade') {
+                                                        return (
+                                                            <td key={col.key} className={`px-2 py-2 text-xs font-semibold text-slate-800 dark:text-white text-left whitespace-nowrap ${borderClass}`}>
+                                                                {row.cidade}
+                                                            </td>
+                                                        );
+                                                    }
+                                                    const value = row[col.key] as number;
+                                                    const pctValue = col.pctKey ? (row[col.pctKey] as number) : null;
+                                                    if (!col.metrica) {
+                                                        return (
+                                                            <td key={col.key} className={`px-2 py-2 text-xs text-center text-slate-700 dark:text-slate-300 ${borderClass}`}>
+                                                                {value.toLocaleString('pt-BR')}
+                                                            </td>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <td key={col.key} className={`px-2 py-2 text-center ${borderClass}`}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDrillDown({ cidade: row.cidade, metrica: col.metrica!, label: col.label })}
+                                                                disabled={value === 0}
+                                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold tabular-nums transition-opacity hover:opacity-80 disabled:cursor-default ${metricCellClass(col.metrica, value)}`}
+                                                            >
+                                                                {value.toLocaleString('pt-BR')}
+                                                                {pctValue != null && value > 0 && (
+                                                                    <span className="opacity-70 font-normal">({pctValue}%)</span>
+                                                                )}
+                                                            </button>
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                        {groupIndex < groups.length - 1 && (
+                                            <tr aria-hidden="true">
+                                                <td colSpan={ACOES_PROMOCIONAIS_COLUMNS.length} className="h-2 bg-transparent border-none p-0" />
+                                            </tr>
+                                        )}
+                                    </Fragment>
                                 ))}
                             </tbody>
                         </table>
