@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
 import { format, parseISO, isPast, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
-import type { CrmPartner, CrmParseInfo, CrmPipelineStage } from '../types/crm';
-import { useCrmNotes } from '../hooks/useCrmNotes';
+import type { CrmPartner, CrmParseInfo, CrmPartnerNote, CrmPipelineStage } from '../types/crm';
 import { useCrmViewMode } from '../hooks/useCrmViewMode';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
@@ -43,6 +42,9 @@ interface CrmViewProps {
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange?: (partnerId: string, newStatus: PromoStatus) => void;
     onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
+    getNote: (partnerId: string) => CrmPartnerNote | undefined;
+    upsertNote: (partnerId: string, patch: Partial<Pick<CrmPartnerNote, 'notes' | 'lastContact' | 'nextFollowUp'>>) => void;
+    registerContact: (partnerId: string) => void;
 }
 
 const PIPELINE_TABS: { id: CrmPipelineStage; label: string; icon: string }[] = [
@@ -78,8 +80,10 @@ export default function CrmView({
     onStatusChange,
     onPartnerStatusChange,
     onCampaignStatusChange,
+    getNote,
+    upsertNote,
+    registerContact,
 }: CrmViewProps) {
-    const { getNote, upsertNote, registerContact } = useCrmNotes();
     const { getStatus: getOfertasStatus, setStatus: setOfertasStatus } = useOfertasDaCasa();
     const { getCmsPromoUrl } = useCityIds();
     const { viewMode, setViewMode } = useCrmViewMode();

@@ -57,6 +57,9 @@ import { overlayCampanhas, normalizeNome } from './utils/campanhasOverlay';
 import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
+import { useCrmNotes } from './hooks/useCrmNotes';
+import { useTrelloTarefas } from './hooks/useTrelloTarefas';
+import { computeFollowUpAlerts } from './utils/crmPipeline';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -212,6 +215,13 @@ function App() {
     isUsingCache: crmUsingCache,
     refreshData: refreshCrmData,
   } = useCrmData({ enabled: crmDataEnabled });
+
+  const { getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact } = useCrmNotes();
+  const { data: trelloTarefas } = useTrelloTarefas();
+  const crmFollowUpAlerts = useMemo(
+    () => computeFollowUpAlerts(crmPartners, getCrmNote),
+    [crmPartners, getCrmNote],
+  );
 
   // Atribuição de CS (cidade e loja) do Supabase — publica no resolvedor
   // síncrono usado por todas as telas.
@@ -656,11 +666,13 @@ function App() {
     <div className="flex flex-col h-screen w-full overflow-hidden bg-white dark:bg-slate-900">
       <OnboardingCompletoAlert />
       <Header
-        currentView={currentView} 
-        onNavigate={setCurrentView} 
-        searchQuery={searchQuery} 
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onOpenPartnerSearch={() => setPartnerSearchOpen(true)}
+        crmAlerts={crmFollowUpAlerts}
+        trelloTasks={trelloTarefas}
       />
       <div className="flex flex-1 min-h-0 relative">
         <NavigationSidebar 
@@ -751,6 +763,9 @@ function App() {
             setCityFilter={setCityFilter}
             onStatusChange={handleStatusChange}
             onCampaignStatusChange={handleCampaignStatusChange}
+            getNote={getCrmNote}
+            upsertNote={upsertCrmNote}
+            registerContact={registerCrmContact}
           />
         ) : currentView === 'pedido_mensal' ? (
           <PedidoMensalView

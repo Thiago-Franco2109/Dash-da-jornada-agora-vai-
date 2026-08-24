@@ -3,7 +3,7 @@ import type { CrmPartner } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { CrmPartnerNote } from '../../types/crm';
 import type { CampaignTypeId } from '../../config/campaignTypes';
-import { KANBAN_STAGES, getPromoStatusForPartner } from '../../utils/crmPipeline';
+import { KANBAN_STAGES, getPromoStatusForPartner, sumIndiceGmv, formatGmvTotal } from '../../utils/crmPipeline';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv } from './crmShared';
 import { isPast, isToday, parseISO } from 'date-fns';
 
@@ -55,10 +55,10 @@ export default function CrmKanbanBoard({
             else map.get('aguardando')!.push(row);
         }
 
-        return KANBAN_STAGES.map(stage => ({
-            ...stage,
-            cards: map.get(stage.id) ?? [],
-        }));
+        return KANBAN_STAGES.map(stage => {
+            const cards = map.get(stage.id) ?? [];
+            return { ...stage, cards, total: sumIndiceGmv(cards) };
+        });
     }, [partners, localStatus, campaign]);
 
     const handleDrop = (stage: PromoStatus) => {
@@ -75,8 +75,8 @@ export default function CrmKanbanBoard({
             {columns.map(col => (
                 <div
                     key={col.id}
-                    className={`flex-shrink-0 w-72 flex flex-col rounded-xl border-2 transition-colors ${
-                        dropTarget === col.id ? 'border-primary ring-2 ring-primary/30' : col.color
+                    className={`flex-shrink-0 w-72 flex flex-col rounded-xl border bg-slate-100 dark:bg-slate-800/40 transition-colors ${
+                        dropTarget === col.id ? 'border-primary ring-2 ring-primary/30' : 'border-slate-200 dark:border-slate-700/60'
                     }`}
                     onDragOver={e => {
                         e.preventDefault();
@@ -88,14 +88,11 @@ export default function CrmKanbanBoard({
                         handleDrop(col.id);
                     }}
                 >
-                    <div className="px-3 py-2.5 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <span className="material-symbols-outlined text-[18px] text-slate-600">{col.icon}</span>
-                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{col.label}</span>
-                        </div>
-                        <span className="text-xs font-bold bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded-full">
-                            {col.cards.length}
-                        </span>
+                    <div className="px-3.5 py-3 border-b border-slate-200 dark:border-slate-700/60">
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{col.label}</p>
+                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                            {formatGmvTotal(col.total)} · {col.cards.length} {col.cards.length === 1 ? 'parceiro' : 'parceiros'}
+                        </p>
                     </div>
 
                     <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-320px)]">
@@ -112,43 +109,41 @@ export default function CrmKanbanBoard({
                                         setDraggingId(null);
                                         setDropTarget(null);
                                     }}
-                                    className={`bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                                    className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all ${
                                         draggingId === row.partnerId ? 'opacity-50' : ''
                                     }`}
                                 >
-                                    <div className="flex items-start gap-2 mb-2">
+                                    <div className="flex items-start gap-2">
                                         <PartnerAvatar row={row} size="sm" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate leading-tight">
                                                 {row.estabelecimento}
                                             </p>
-                                            <p className="text-[10px] text-slate-500 truncate">{row.cidade}</p>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                                {row.cidade} · {row.analista || 'Sem gestor'}
+                                            </p>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between gap-1 mb-2">
-                                        <span className="text-[10px] font-medium text-slate-500">{row.analista || '—'}</span>
-                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{formatGmv(row)}</span>
-                                    </div>
-
                                     {note?.nextFollowUp && fbClass && (
-                                        <div className={`text-[10px] font-bold px-2 py-0.5 rounded mb-2 inline-flex items-center gap-1 ${fbClass}`}>
+                                        <div className={`text-[10px] font-bold px-2 py-0.5 rounded mt-2 inline-flex items-center gap-1 ${fbClass}`}>
                                             <span className="material-symbols-outlined text-[12px]">event</span>
                                             {formatCrmDate(note.nextFollowUp)}
                                         </div>
                                     )}
 
-                                    <div className="flex items-center justify-between gap-1 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                        <StatusDropdown
-                                            partnerId={row.partnerId}
-                                            currentStatus={getPromoStatusForPartner(row, localStatus, campaign)}
-                                            onStatusChange={onStatusChange}
-                                            onPartnerStatusChange={onPartnerStatusChange}
-                                            onCampaignStatusChange={onCampaignStatusChange}
-                                            campaign={campaign}
-                                            compact
-                                        />
-                                        <div className="flex gap-0.5">
+                                    <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatGmv(row)}</span>
+                                        <div className="flex items-center gap-1">
+                                            <StatusDropdown
+                                                partnerId={row.partnerId}
+                                                currentStatus={getPromoStatusForPartner(row, localStatus, campaign)}
+                                                onStatusChange={onStatusChange}
+                                                onPartnerStatusChange={onPartnerStatusChange}
+                                                onCampaignStatusChange={onCampaignStatusChange}
+                                                campaign={campaign}
+                                                compact
+                                            />
                                             <button
                                                 type="button"
                                                 onClick={() => onRegisterContact(row.partnerId)}

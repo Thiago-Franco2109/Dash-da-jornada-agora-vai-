@@ -1,6 +1,9 @@
 import { useAuth } from '../context/AuthContext';
 import { useProductMode } from '../context/ProductModeContext';
 import type { AppView } from '../types/views';
+import type { CrmFollowUpAlert } from '../types/crm';
+import type { TarefaTrello } from '../hooks/useTrelloTarefas';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
     currentView: AppView;
@@ -8,6 +11,8 @@ interface HeaderProps {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
     onOpenPartnerSearch?: () => void;
+    crmAlerts?: CrmFollowUpAlert[];
+    trelloTasks?: TarefaTrello[];
 }
 
 export default function Header(props: HeaderProps) {
@@ -81,7 +86,13 @@ export default function Header(props: HeaderProps) {
 
 
             <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
-                <button 
+                <NotificationBell
+                    crmAlerts={props.crmAlerts ?? []}
+                    trelloTasks={props.trelloTasks ?? []}
+                    onNavigate={props.onNavigate}
+                />
+
+                <button
                     onClick={() => props.onNavigate('profile')}
                     className="flex items-center gap-3 text-left hover:bg-white/10 p-1.5 rounded-xl transition-colors group"
                     title="Ver meu perfil"

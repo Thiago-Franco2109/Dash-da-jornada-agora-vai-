@@ -14,12 +14,26 @@ export const CRM_VIEW_MODES: { id: CrmViewMode; label: string; icon: string }[] 
     { id: 'calendar', label: 'Calendário', icon: 'calendar_month' },
 ];
 
-export const KANBAN_STAGES: { id: PromoStatus; label: string; icon: string; color: string }[] = [
-    { id: 'aguardando', label: 'Não ofertado', icon: 'campaign', color: 'border-red-300 bg-red-50 dark:bg-red-950/30' },
-    { id: 'ofertei', label: 'Aguardando retorno', icon: 'hourglass_top', color: 'border-orange-300 bg-orange-50 dark:bg-orange-950/30' },
-    { id: 'negado', label: 'Negado', icon: 'block', color: 'border-slate-300 bg-slate-50 dark:bg-slate-800/50' },
-    { id: 'ativo', label: 'Promo ativa', icon: 'check_circle', color: 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30' },
+export const KANBAN_STAGES: { id: PromoStatus; label: string }[] = [
+    { id: 'aguardando', label: 'Não ofertado' },
+    { id: 'ofertei', label: 'Aguardando retorno' },
+    { id: 'negado', label: 'Negado' },
+    { id: 'ativo', label: 'Promo ativa' },
 ];
+
+/** Soma o GMV (indiceGmv) de uma lista de parceiros — usado no total por coluna do Kanban. */
+export function sumIndiceGmv(partners: CrmPartner[]): number {
+    return partners.reduce((total, row) => total + (row.indiceGmv ?? 0), 0);
+}
+
+/**
+ * Formata um total de GMV para o subtítulo de uma coluna do Kanban. Diferente de `formatBRL`
+ * (que retorna '—' para valores <= 0), aqui o total deve sempre aparecer como valor monetário
+ * literal — inclusive "R$ 0" para uma coluna vazia, igual ao Pipedrive.
+ */
+export function formatGmvTotal(value: number): string {
+    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+}
 
 export function getPromoStatusForPartner(
     row: CrmPartner,

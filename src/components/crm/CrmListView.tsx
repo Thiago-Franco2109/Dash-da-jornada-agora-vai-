@@ -20,6 +20,8 @@ interface CrmListViewProps {
 
 type GroupBy = 'none' | 'stage' | 'manager' | 'city';
 
+const COLUMN_COUNT = 7;
+
 function followUpClass(iso: string | null | undefined) {
     if (!iso) return 'text-slate-400';
     try {
@@ -73,24 +75,24 @@ export default function CrmListView({
     const renderRow = (row: CrmPartner, idx: number) => {
         const note = getNote(row.partnerId);
         const promoStatus = getPromoStatusForPartner(row, localStatus, campaign);
-        const meta = getStatusMeta(promoStatus);
 
         return (
-            <div
-                key={`${row.partnerId}::${row.cidade}::${idx}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 last:border-0"
-            >
-                <PartnerAvatar row={row} size="sm" />
-                <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 md:gap-4 items-center">
-                    <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{row.estabelecimento}</p>
-                        <p className="text-[11px] text-slate-500 truncate">
-                            {row.cidade} · {row.analista || 'Sem gestor'} · {formatGmv(row)}
-                        </p>
-                        {note?.notes && (
-                            <p className="text-[11px] text-slate-400 truncate mt-0.5" title={note.notes}>{note.notes}</p>
-                        )}
+            <tr key={`${row.partnerId}::${row.cidade}::${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-3 px-4">
+                    <div className="flex items-center gap-2.5">
+                        <PartnerAvatar row={row} size="sm" />
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{row.estabelecimento}</p>
+                            {note?.notes && (
+                                <p className="text-[11px] text-slate-400 truncate" title={note.notes}>{note.notes}</p>
+                            )}
+                        </div>
                     </div>
+                </td>
+                <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-400">{row.cidade}</td>
+                <td className="py-3 px-4 text-sm text-slate-700 dark:text-slate-300">{row.analista || '—'}</td>
+                <td className="py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 text-right">{formatGmv(row)}</td>
+                <td className="py-3 px-4">
                     <StatusDropdown
                         partnerId={row.partnerId}
                         currentStatus={promoStatus}
@@ -100,30 +102,37 @@ export default function CrmListView({
                         campaign={campaign}
                         compact
                     />
-                    <div className="text-right">
-                        <p className={`text-xs ${followUpClass(note?.nextFollowUp)}`}>
-                            {note?.nextFollowUp ? formatCrmDate(note.nextFollowUp) : '—'}
-                        </p>
-                        <p className="text-[10px] text-slate-400">follow-up</p>
-                    </div>
-                    <div className="flex items-center gap-1 justify-end">
-                        <span className={`hidden md:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${meta.badge}`}>
-                            {meta.icon}
-                        </span>
-                        <button type="button" onClick={() => onRegisterContact(row.partnerId)} className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                </td>
+                <td className={`py-3 px-4 text-sm ${followUpClass(note?.nextFollowUp)}`}>
+                    {note?.nextFollowUp ? formatCrmDate(note.nextFollowUp) : '—'}
+                </td>
+                <td className="py-3 px-4">
+                    <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => onRegisterContact(row.partnerId)} className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Registrar contato">
                             <span className="material-symbols-outlined text-[18px]">call</span>
                         </button>
-                        <button type="button" onClick={() => onEditPartner(row.partnerId)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <button type="button" onClick={() => onEditPartner(row.partnerId)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" title="Editar notas">
                             <span className="material-symbols-outlined text-[18px]">edit_note</span>
                         </button>
                     </div>
-                </div>
-            </div>
+                </td>
+            </tr>
         );
     };
 
+    const groupHeaderRow = (label: string, count: number) => (
+        <tr key={`group-${label}`} className="bg-slate-50 dark:bg-slate-800/50">
+            <td colSpan={COLUMN_COUNT} className="py-2 px-4">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</span>
+                    <span className="text-xs font-bold text-slate-500">{count}</span>
+                </div>
+            </td>
+        </tr>
+    );
+
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
                     <span className="font-bold text-slate-900 dark:text-white">{partners.length}</span> parceiros
@@ -140,23 +149,35 @@ export default function CrmListView({
                 </select>
             </div>
 
-            {groupBy === 'none' ? (
-                <div>{partners.map((row, i) => renderRow(row, i))}</div>
-            ) : (
-                groups.map(([label, items]) => (
-                    <div key={label}>
-                        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</span>
-                            <span className="text-xs font-bold text-slate-500">{items.length}</span>
-                        </div>
-                        {items.map((row, i) => renderRow(row, i))}
-                    </div>
-                ))
-            )}
-
-            {partners.length === 0 && (
-                <p className="p-12 text-center text-sm text-slate-500">Nenhum parceiro neste recorte.</p>
-            )}
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Parceiro</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Cidade</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gestor</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Próximo follow-up</th>
+                            <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {partners.length === 0 ? (
+                            <tr>
+                                <td colSpan={COLUMN_COUNT} className="p-12 text-center text-sm text-slate-500">Nenhum parceiro neste recorte.</td>
+                            </tr>
+                        ) : groupBy === 'none' ? (
+                            partners.map((row, i) => renderRow(row, i))
+                        ) : (
+                            groups.flatMap(([label, items]) => [
+                                groupHeaderRow(label, items.length),
+                                ...items.map((row, i) => renderRow(row, i)),
+                            ])
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
