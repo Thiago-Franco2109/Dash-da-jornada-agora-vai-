@@ -100,8 +100,11 @@ interface PartnerPromoCrmSectionProps {
     localidadeId?: string | null;
     cityIdsLoading?: boolean;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     onNavigateToCrm?: () => void;
 }
+
+const CRM_STATUS_SELECT_OPTIONS = CRM_STATUS_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }));
 
 function partnerKey(partner: EnrichedPerformanceRow): string {
     return String(partner.estab_id || partner.estabelecimento);
@@ -117,10 +120,17 @@ export default function PartnerPromoCrmSection({
     localidadeId,
     cityIdsLoading,
     onStatusChange,
+    onCampaignStatusChange,
     onNavigateToCrm,
 }: PartnerPromoCrmSectionProps) {
     const [crmPromoStatus, setCrmPromoStatus] = useState<PromoStatus>(
         () => (crmPartner?.promoStatus ?? partner.promo_status ?? 'aguardando') as PromoStatus,
+    );
+    const [superPromosCrmStatus, setSuperPromosCrmStatus] = useState<PromoStatus>(
+        () => crmPartner?.campaigns.super_promos.status ?? 'aguardando',
+    );
+    const [cupomCrmStatus, setCupomCrmStatus] = useState<PromoStatus>(
+        () => crmPartner?.campaigns.cupons_destaque.status ?? 'aguardando',
     );
     const [editNotes, setEditNotes] = useState('');
     const [editFollowUp, setEditFollowUp] = useState('');
@@ -159,6 +169,16 @@ export default function PartnerPromoCrmSection({
     const handlePromoStatusChange = (status: PromoStatus) => {
         setCrmPromoStatus(status);
         onStatusChange?.(pid, 'promo_status_override', status);
+    };
+
+    const handleSuperPromosCrmStatusChange = (status: PromoStatus) => {
+        setSuperPromosCrmStatus(status);
+        onCampaignStatusChange?.(pid, 'super_promos', status);
+    };
+
+    const handleCupomCrmStatusChange = (status: PromoStatus) => {
+        setCupomCrmStatus(status);
+        onCampaignStatusChange?.(pid, 'cupons_destaque', status);
     };
 
     const openCrmEdit = () => {
@@ -220,7 +240,7 @@ export default function PartnerPromoCrmSection({
                 <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_150px_190px_215px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/30">
                     <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Campanha</span>
                     <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Estado</span>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Participação</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Status CRM</span>
                     <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 text-right">Ação</span>
                 </div>
 
@@ -237,6 +257,7 @@ export default function PartnerPromoCrmSection({
                     footnote={ofertasRecord?.source === 'auto' ? 'Atualizado automaticamente' : undefined}
                     manual={{
                         value: ofertasStatus,
+                        options: OFERTAS_DA_CASA_STATUS_OPTIONS,
                         onChange: val => setStatus(pid, val as OfertasDaCasaStatus, 'manual'),
                     }}
                     onOpenCrm={openCrmEdit}
@@ -256,6 +277,11 @@ export default function PartnerPromoCrmSection({
                     toneLabel={superPromosState.label}
                     itemCount={crmPartner?.campaigns.super_promos.itemCount}
                     itemCountLabel="na PROMO-ESPECIAL"
+                    manual={{
+                        value: superPromosCrmStatus,
+                        options: CRM_STATUS_SELECT_OPTIONS,
+                        onChange: val => handleSuperPromosCrmStatusChange(val as PromoStatus),
+                    }}
                     href={promoUrl}
                     localidadeId={localidadeId}
                     cityIdsLoading={cityIdsLoading}
@@ -271,6 +297,11 @@ export default function PartnerPromoCrmSection({
                     toneLabel={cupomState.label}
                     itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
                     itemCountLabel="na PROMO-ESPECIAL"
+                    manual={{
+                        value: cupomCrmStatus,
+                        options: CRM_STATUS_SELECT_OPTIONS,
+                        onChange: val => handleCupomCrmStatusChange(val as PromoStatus),
+                    }}
                     href={cupomUrl}
                     localidadeId={localidadeId}
                     cityIdsLoading={cityIdsLoading}
@@ -571,7 +602,7 @@ function CampaignRow({
     itemCount?: number;
     itemCountLabel?: string;
     footnote?: string;
-    manual?: { value: OfertasDaCasaStatus; onChange: (val: string) => void };
+    manual?: { value: string; options: { value: string; label: string }[]; onChange: (val: string) => void };
     onOpenCrm?: () => void;
     href: string;
     cmsLabel?: string;
@@ -634,16 +665,16 @@ function CampaignRow({
                 </p>
             </div>
 
-            {/* Participação */}
+            {/* Status CRM — acompanhamento manual do CS, distinto do Estado (fato do banco) */}
             <div className="pl-2 lg:pl-0">
-                <span className="lg:hidden block text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 mb-1">Participação</span>
+                <span className="lg:hidden block text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 mb-1">Status CRM</span>
                 {manual ? (
                     <select
                         value={manual.value}
                         onChange={e => manual.onChange(e.target.value)}
                         className="w-full h-9 rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-violet-500/25 focus:border-violet-500 outline-none transition-colors"
                     >
-                        {OFERTAS_DA_CASA_STATUS_OPTIONS.map(opt => (
+                        {manual.options.map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>

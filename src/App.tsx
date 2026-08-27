@@ -811,6 +811,7 @@ function App() {
               crmPartner={crmPartnerForSelected}
               topCities={topCitiesByGmv}
               onStatusChange={handleStatusChange}
+              onCampaignStatusChange={handleCampaignStatusChange}
               onNavigateToCrm={() => {
                 setCityFilter(currentSelectedRow.cidade);
                 setSelectedRow(null);
@@ -856,6 +857,7 @@ function App() {
               crmPartner={!isCD ? crmPartnerForSelected : null}
               topCities={!isCD ? topCitiesByGmv : undefined}
               onStatusChange={handleStatusChange}
+              onCampaignStatusChange={handleCampaignStatusChange}
               onNavigateToCrm={!isCD ? () => {
                 setCityFilter(currentSelectedRow.cidade);
                 setSelectedRow(null);
@@ -939,6 +941,7 @@ function App() {
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}
                 onStatusChange={handleStatusChange}
+                onCampaignStatusChange={handleCampaignStatusChange}
                 onNavigateToCrm={() => {
                   setCityFilter(currentSelectedRow.cidade);
                   setSelectedRow(null);

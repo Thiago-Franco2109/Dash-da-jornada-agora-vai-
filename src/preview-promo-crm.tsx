@@ -11,6 +11,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import PartnerPromoCrmSection from './components/PartnerPromoCrmSection';
 import type { EnrichedPerformanceRow } from './utils/calculations';
+import type { CrmPartner } from './types/crm';
 import './index.css';
 
 const mockPartner = {
@@ -31,15 +32,27 @@ const mockPartner = {
     priority_stars: 3,
 } as unknown as EnrichedPerformanceRow;
 
+const mockCrmPartner = {
+    partnerId: '28136',
+    campaigns: {
+        super_promos: { status: 'ofertei', resumo: '1 item na PROMO-ESPECIAL', itemCount: 1, hasActive: false },
+        ofertas_da_casa: { status: 'aguardando', resumo: '—', itemCount: 0, hasActive: false },
+        cupons_destaque: { status: 'aguardando', resumo: '—', itemCount: 0, hasActive: false },
+    },
+} as unknown as CrmPartner;
+
 export function PreviewPromoCrm() {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
             <PartnerPromoCrmSection
                 partner={mockPartner}
+                crmPartner={mockCrmPartner}
                 promoUrl="https://admin.bigou.com.br/campanha/promocao/cadastro/26?localidade_id=1"
                 ofertasDaCasaUrl="https://admin.bigou.com.br/campanha/promocao/cadastro/31?localidade_id=1"
                 cupomUrl="https://admin.bigou.com.br/estabelecimento/cadastro/28136/cupons"
                 localidadeId="1"
+                onStatusChange={(id, field, status) => console.log('onStatusChange', id, field, status)}
+                onCampaignStatusChange={(id, campaign, status) => console.log('onCampaignStatusChange', id, campaign, status)}
             />
         </div>
     );

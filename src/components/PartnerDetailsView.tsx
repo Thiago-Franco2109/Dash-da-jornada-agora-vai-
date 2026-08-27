@@ -10,6 +10,7 @@ import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
 import { useCityIds } from '../hooks/useCityIds';
 import type { CrmPartner } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
+import type { CampaignTypeId } from '../config/campaignTypes';
 import PartnerPromoCrmSection from './PartnerPromoCrmSection';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
@@ -24,6 +25,7 @@ interface PartnerDetailsViewProps {
     crmPartner?: CrmPartner | null;
     topCities?: string[];
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
+    onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     onNavigateToCrm?: () => void;
 }
 
@@ -73,6 +75,7 @@ export default function PartnerDetailsView({
     crmPartner,
     topCities = [],
     onStatusChange,
+    onCampaignStatusChange,
     onNavigateToCrm,
 }: PartnerDetailsViewProps) {
     const isDesempenho = viewContext === 'desempenho';
@@ -1009,6 +1012,7 @@ export default function PartnerDetailsView({
                         localidadeId={localidadeId != null ? String(localidadeId) : null}
                         cityIdsLoading={cityIdsLoading}
                         onStatusChange={onStatusChange}
+                        onCampaignStatusChange={onCampaignStatusChange}
                         onNavigateToCrm={onNavigateToCrm}
                     />
                 )}
