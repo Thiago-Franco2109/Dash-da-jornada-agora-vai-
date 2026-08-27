@@ -1,5 +1,93 @@
+import { useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { identifyManagerFromUser } from '../config/managerMapping';
+import { useProductMode } from '../context/ProductModeContext';
+import { identifyManagerFromUser, type Manager } from '../config/managerMapping';
+import { useAtivacoesDiarias } from '../hooks/useAtivacoesDiarias';
+import { computeMeuRitmo } from '../utils/minhasAtivacoes';
+
+function hojeLocalStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function MeuRitmoCard({ manager }: { manager: Manager }) {
+    const { mode } = useProductMode();
+    const { rows, loading, error } = useAtivacoesDiarias();
+
+    // hojeStr é recalculado a cada render (não fica preso a quando rows/mode
+    // mudaram por último) — senão "Hoje" congela se a aba ficar aberta
+    // passando da meia-noite sem esses valores mudarem de referência.
+    const hojeStr = hojeLocalStr();
+    const ritmo = useMemo(
+        () => computeMeuRitmo(rows, manager, mode, hojeStr),
+        [rows, manager, mode, hojeStr],
+    );
+
+    const maxDia = Math.max(1, ...ritmo.porDiaSemana.map(d => d.total));
+    const faltamPraRecorde = ritmo.recorde ? ritmo.recorde.total - ritmo.hoje.total : null;
+
+    return (
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-emerald-500">local_offer</span>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Meu ritmo de ativações</h3>
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                Cupons de destaque + promoções aprovadas nas suas cidades — a métrica do seu dia a dia.
+            </p>
+
+            {loading ? (
+                <p className="text-sm text-slate-400">Calculando no banco…</p>
+            ) : error ? (
+                <p className="text-sm text-amber-600 dark:text-amber-400">Não foi possível carregar: {error}</p>
+            ) : (
+                <>
+                    <div className="flex items-end gap-3 h-28 mb-2">
+                        {ritmo.porDiaSemana.map(d => (
+                            <div key={d.dow} className="flex-1 h-full flex flex-col items-center justify-end gap-1">
+                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{d.total}</span>
+                                <div
+                                    className="w-full rounded-t-md bg-emerald-400/80 dark:bg-emerald-500/70"
+                                    style={{ height: `${(d.total / maxDia) * 100}%`, minHeight: d.total > 0 ? '4px' : '0' }}
+                                />
+                                <span className="text-[11px] font-semibold text-slate-400 uppercase">{d.label}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-4 mt-4 border-t border-slate-100 dark:border-slate-700">
+                        <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Recorde diário</p>
+                            {ritmo.recorde ? (
+                                <p className="text-slate-900 dark:text-white font-semibold">
+                                    {ritmo.recorde.total} <span className="text-slate-400 text-sm font-normal">em {ritmo.recorde.dia.split('-').reverse().join('/')}</span>
+                                </p>
+                            ) : (
+                                <p className="text-slate-400 text-sm">Sem dado ainda</p>
+                            )}
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Hoje</p>
+                            <p className="text-slate-900 dark:text-white font-semibold">
+                                {ritmo.hoje.total}{' '}
+                                {faltamPraRecorde !== null && (
+                                    <span className={`text-sm font-normal ${faltamPraRecorde <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                        {faltamPraRecorde <= 0 ? '🎉 novo recorde!' : `faltam ${faltamPraRecorde} pro recorde`}
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
+                        Aproximação: o banco não guarda quem ativou, só a cidade — aqui contamos tudo nas cidades sob sua gestão.
+                        Dias mais antigos podem estar levemente subcontados (o banco só guarda a última mudança de status de cada item).
+                    </p>
+                </>
+            )}
+        </div>
+    );
+}
 
 export default function ProfileView() {
     const { user, logout } = useAuth();
@@ -7,6 +95,7 @@ export default function ProfileView() {
     if (!user) return null;
 
     const managerRole = identifyManagerFromUser(user);
+    const manager: Manager | null = managerRole === 'THIAGO' || managerRole === 'LAÍS' ? managerRole : null;
 
     return (
         <div className="flex-1 bg-white dark:bg-slate-900 overflow-y-auto p-6 md:p-10">
@@ -72,6 +161,8 @@ export default function ProfileView() {
                         </div>
                     </div>
                 </div>
+
+                {manager && <MeuRitmoCard manager={manager} />}
 
                 {/* Secção de Ações */}
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">

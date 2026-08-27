@@ -130,7 +130,7 @@ function sheetReadDevPlugin(): Plugin {
 function dbFunctionsDevPlugin(): Plugin {
   const FN_PREFIX = '/.netlify/functions/'
   const DB_FNS = new Set([
-    'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'campanhas',
+    'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'ativacoes-diarias', 'campanhas',
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
     'trello-tarefas', 'loja-link',
