@@ -48,9 +48,22 @@ export default function CrmKanbanBoard({
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dropTarget, setDropTarget] = useState<PromoStatus | null>(null);
 
+    // Cupons de destaque tem um estágio manual a mais ("Confirmado") entre o pedido
+    // de retorno e a ativação real — só o banco leva pra "Ativo" (ver campanhasOverlay.ts).
+    const isCupons = campaign === 'cupons_destaque';
+    const stages = useMemo(() => {
+        if (!isCupons) return KANBAN_STAGES;
+        const ativoIdx = KANBAN_STAGES.findIndex(s => s.id === 'ativo');
+        const withConfirmado = [...KANBAN_STAGES];
+        withConfirmado.splice(ativoIdx, 0, { id: 'confirmado', label: 'Confirmado' });
+        return withConfirmado;
+    }, [isCupons]);
+
+    const isDropDisabled = (stageId: PromoStatus) => isCupons && stageId === 'ativo';
+
     const columns = useMemo(() => {
         const map = new Map<PromoStatus, CrmPartner[]>();
-        for (const stage of KANBAN_STAGES) map.set(stage.id, []);
+        for (const stage of stages) map.set(stage.id, []);
 
         for (const row of partners) {
             const status = getPromoStatusForPartner(row, localStatus, campaign);
@@ -58,14 +71,14 @@ export default function CrmKanbanBoard({
             else map.get('aguardando')!.push(row);
         }
 
-        return KANBAN_STAGES.map(stage => {
+        return stages.map(stage => {
             const cards = map.get(stage.id) ?? [];
             return { ...stage, cards, total: sumIndiceGmv(cards) };
         });
-    }, [partners, localStatus, campaign]);
+    }, [partners, localStatus, campaign, stages]);
 
     const handleDrop = (stage: PromoStatus) => {
-        if (!draggingId) return;
+        if (!draggingId || isDropDisabled(stage)) return;
         if (onCampaignStatusChange) onCampaignStatusChange(draggingId, campaign, stage);
         else onStatusChange?.(draggingId, 'promo_status_override', stage);
         onPartnerStatusChange(draggingId, stage);
@@ -82,19 +95,24 @@ export default function CrmKanbanBoard({
                         dropTarget === col.id ? 'border-primary ring-2 ring-primary/30' : 'border-slate-200 dark:border-slate-700/60'
                     }`}
                     onDragOver={e => {
-                        if (!isEditable) return;
+                        if (!isEditable || isDropDisabled(col.id)) return;
                         e.preventDefault();
                         setDropTarget(col.id);
                     }}
                     onDragLeave={() => setDropTarget(null)}
                     onDrop={e => {
-                        if (!isEditable) return;
+                        if (!isEditable || isDropDisabled(col.id)) return;
                         e.preventDefault();
                         handleDrop(col.id);
                     }}
                 >
                     <div className="px-3.5 py-3 border-b border-slate-200 dark:border-slate-700/60">
-                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{col.label}</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                            {col.label}
+                            {isDropDisabled(col.id) && (
+                                <span className="material-symbols-outlined text-[13px] text-slate-400" title="Só o sistema move parceiros pra cá, quando o banco confirma">lock</span>
+                            )}
+                        </p>
                         <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                             {formatGmvTotal(col.total)} · {col.cards.length} {col.cards.length === 1 ? 'parceiro' : 'parceiros'}
                         </p>

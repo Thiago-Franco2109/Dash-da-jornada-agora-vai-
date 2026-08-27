@@ -10,12 +10,25 @@ export const STATUS_OPTIONS: { value: PromoStatus; icon: string; label: string; 
     { value: 'aguardando', icon: '🔴', label: 'Não ofertado', color: 'text-red-500', badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
     { value: 'ofertei', icon: '🟠', label: 'Aguardando retorno', color: 'text-orange-500', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
     { value: 'negado', icon: '⛔', label: 'Negado', color: 'text-slate-500', badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
+    { value: 'confirmado', icon: '☑️', label: 'Confirmado', color: 'text-sky-600', badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' },
     { value: 'ativo', icon: '✅', label: 'Promo ativa', color: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
     { value: 'inativo', icon: '➖', label: 'Inativo', color: 'text-slate-400', badge: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500' },
 ];
 
 export function getStatusMeta(status?: PromoStatus) {
     return STATUS_OPTIONS.find(o => o.value === status) ?? STATUS_OPTIONS[0];
+}
+
+/**
+ * Opções que o CS pode escolher manualmente, por campanha. 'confirmado' só existe pra
+ * Cupons de destaque (fluxo de confirmação); 'ativo' nunca é escolhível ali — só o
+ * sistema chega nesse estado quando o banco confirma de verdade (ver campanhasOverlay.ts).
+ */
+function selectableStatusOptions(campaign?: CampaignTypeId) {
+    if (campaign === 'cupons_destaque') {
+        return STATUS_OPTIONS.filter(o => o.value !== 'ativo' && o.value !== 'inativo');
+    }
+    return STATUS_OPTIONS.filter(o => o.value !== 'confirmado');
 }
 
 export function formatCrmDate(iso: string | null | undefined) {
@@ -90,7 +103,7 @@ export function StatusDropdown({
             </button>
             {open && (
                 <div className="absolute z-50 left-0 mt-1 w-48 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 overflow-hidden">
-                    {STATUS_OPTIONS.map(opt => (
+                    {selectableStatusOptions(campaign).map(opt => (
                         <button
                             key={opt.value}
                             onClick={() => {

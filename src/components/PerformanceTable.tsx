@@ -19,7 +19,7 @@ export type CampaignStatusChangeHandler = (
     newStatus: PromoStatusValue,
 ) => void;
 
-export type PromoStatusValue = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
+export type PromoStatusValue = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado' | 'confirmado';
 
 export type PerformanceRow = {
     cidade: string;
@@ -210,11 +210,10 @@ function StatusDropdown({
                     />
                     <div className="py-1">
                         {[
-                            { value: 'ativo' as const,     icon: '✅', label: 'Ativo',               color: 'text-emerald-600' },
                             { value: 'aguardando' as const, icon: '🔴', label: 'Não ofertado',       color: 'text-red-400'     },
                             { value: 'ofertei' as const,   icon: '🟠', label: 'Aguardando retorno', color: 'text-orange-500'  },
                             { value: 'negado' as const,    icon: '⛔', label: 'Negado',             color: 'text-slate-500'   },
-                            { value: 'inativo' as const,   icon: '➖', label: 'Inativo / Limpar',   color: 'text-slate-400'   },
+                            { value: 'confirmado' as const, icon: '☑️', label: 'Confirmado',         color: 'text-sky-600'     },
                         ].map(opt => (
                             <button
                                 key={opt.value}
@@ -440,12 +439,20 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
         );
     };
 
-    const renderIndicadorBadge = (status: 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado' | undefined) => {
+    const renderIndicadorBadge = (status: PromoStatusValue | undefined) => {
         if (status === 'ativo') {
             return (
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 ring-1 ring-inset ring-emerald-600/20 whitespace-nowrap">
-                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                    <span className="material-symbols-outlined text-[13px]">done_all</span>
                     Ativo
+                </span>
+            );
+        }
+        if (status === 'confirmado') {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 ring-1 ring-inset ring-sky-500/30 whitespace-nowrap" title="Confirmado pelo CS — aguardando o banco ativar de fato">
+                    <span className="material-symbols-outlined text-[13px]">check</span>
+                    Confirmado
                 </span>
             );
         }

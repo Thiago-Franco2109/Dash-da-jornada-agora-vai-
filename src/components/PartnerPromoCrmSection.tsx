@@ -57,6 +57,7 @@ const CUPOM_TONE: Record<string, { tone: CardTone; label: string }> = {
     aguardando: { tone: 'denied', label: 'Não ofertado' },
     ofertei: { tone: 'pending', label: 'Aguard. retorno' },
     negado: { tone: 'idle', label: 'Negado' },
+    confirmado: { tone: 'pending', label: 'Confirmado' },
     inativo: { tone: 'idle', label: '—' },
 };
 
@@ -105,6 +106,18 @@ interface PartnerPromoCrmSectionProps {
 }
 
 const CRM_STATUS_SELECT_OPTIONS = CRM_STATUS_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }));
+
+/**
+ * Cupons de destaque tem um fluxo próprio: o CS confirma com o parceiro ('confirmado'),
+ * e só o sistema promove pra 'ativo' quando o banco confirma de verdade — por isso
+ * 'ativo' não entra aqui como opção manual (ver campanhasOverlay.ts).
+ */
+const CUPOM_STATUS_SELECT_OPTIONS: { value: PromoStatus; label: string }[] = [
+    { value: 'aguardando', label: 'Não ofertado' },
+    { value: 'ofertei', label: 'Aguardando retorno' },
+    { value: 'negado', label: 'Negado' },
+    { value: 'confirmado', label: 'Confirmado' },
+];
 
 function partnerKey(partner: EnrichedPerformanceRow): string {
     return String(partner.estab_id || partner.estabelecimento);
@@ -299,7 +312,7 @@ export default function PartnerPromoCrmSection({
                     itemCountLabel="na PROMO-ESPECIAL"
                     manual={{
                         value: cupomCrmStatus,
-                        options: CRM_STATUS_SELECT_OPTIONS,
+                        options: CUPOM_STATUS_SELECT_OPTIONS,
                         onChange: val => handleCupomCrmStatusChange(val as PromoStatus),
                     }}
                     href={cupomUrl}

@@ -9,6 +9,9 @@ const PROMO_TO_OFERTAS: Record<PromoStatus, OfertasDaCasaStatus> = {
     ofertei: 'aguardando_retorno',
     negado: 'nao_participando',
     inativo: 'desconhecido',
+    // Ofertas da Casa não usa o fluxo de confirmação (é exclusivo de Cupons) — nunca é
+    // alcançado na prática, entrada só pra satisfazer o Record exaustivo.
+    confirmado: 'aguardando_retorno',
 };
 
 const OFERTAS_TO_PROMO: Record<OfertasDaCasaStatus, PromoStatus> = {

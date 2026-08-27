@@ -16,9 +16,10 @@ import './index.css';
 /** Campanha real e vigente hoje no banco, mas fora dos 3 tipos conhecidos — ver conversa com o usuário. */
 const DYNAMIC_CAMPAIGN_ID = 'Super Bigou!';
 
-function mockPartner(partial: Partial<CrmPartner> & { partnerId: string; estabelecimento: string; dynamicStatus?: PromoStatus }): CrmPartner {
+function mockPartner(partial: Partial<CrmPartner> & { partnerId: string; estabelecimento: string; dynamicStatus?: PromoStatus; cupomStatus2?: PromoStatus }): CrmPartner {
     const status: PromoStatus = (partial.promoStatus as PromoStatus) ?? 'aguardando';
     const dynamicStatus = partial.dynamicStatus ?? 'aguardando';
+    const cupomStatus2 = partial.cupomStatus2 ?? 'aguardando';
     return {
         cidade: 'São Paulo',
         estabId: partial.partnerId,
@@ -29,7 +30,7 @@ function mockPartner(partial: Partial<CrmPartner> & { partnerId: string; estabel
         campaigns: {
             super_promos: { status, resumo: '—', itemCount: 0, hasActive: status === 'ativo' },
             ofertas_da_casa: { status, resumo: '—', itemCount: 0, hasActive: status === 'ativo' },
-            cupons_destaque: { status, resumo: '—', itemCount: 0, hasActive: status === 'ativo' },
+            cupons_destaque: { status: cupomStatus2, resumo: '—', itemCount: 0, hasActive: cupomStatus2 === 'ativo' },
             [DYNAMIC_CAMPAIGN_ID]: { status: dynamicStatus, resumo: '2 item(ns)', itemCount: 2, hasActive: dynamicStatus === 'ativo' },
         },
         promoResumo: '—',
@@ -47,12 +48,12 @@ function mockPartner(partial: Partial<CrmPartner> & { partnerId: string; estabel
 }
 
 const PARTNERS: CrmPartner[] = [
-    mockPartner({ partnerId: '1', estabelecimento: '[Amostra] Tony Turner', cidade: 'São Paulo', indiceGmv: 30000, indiceGmvRaw: 'R$ 30.000', promoStatus: 'aguardando', dynamicStatus: 'aguardando' }),
-    mockPartner({ partnerId: '2', estabelecimento: '[Amostra] iTable', cidade: 'Campinas', indiceGmv: 7000, indiceGmvRaw: 'R$ 7.000', promoStatus: 'ofertei', dynamicStatus: 'ofertei' }),
-    mockPartner({ partnerId: '3', estabelecimento: '[Amostra] Damone', cidade: 'Santos', indiceGmv: 15000, indiceGmvRaw: 'R$ 15.000', promoStatus: 'ofertei', dynamicStatus: 'aguardando' }),
-    mockPartner({ partnerId: '4', estabelecimento: '[Amostra] Phyllis & Cie', cidade: 'São Paulo', indiceGmv: 16000, indiceGmvRaw: 'R$ 16.000', promoStatus: 'negado', dynamicStatus: 'ativo' }),
-    mockPartner({ partnerId: '5', estabelecimento: '[Amostra] SoRock', cidade: 'Osasco', indiceGmv: 31000, indiceGmvRaw: 'R$ 31.000', promoStatus: 'ativo', dynamicStatus: 'ativo' }),
-    mockPartner({ partnerId: '6', estabelecimento: '[Amostra] Lorean', cidade: 'Guarulhos', indiceGmv: 22000, indiceGmvRaw: 'R$ 22.000', promoStatus: 'ativo', dynamicStatus: 'ativo' }),
+    mockPartner({ partnerId: '1', estabelecimento: '[Amostra] Tony Turner', cidade: 'São Paulo', indiceGmv: 30000, indiceGmvRaw: 'R$ 30.000', promoStatus: 'aguardando', dynamicStatus: 'aguardando', cupomStatus2: 'aguardando' }),
+    mockPartner({ partnerId: '2', estabelecimento: '[Amostra] iTable', cidade: 'Campinas', indiceGmv: 7000, indiceGmvRaw: 'R$ 7.000', promoStatus: 'ofertei', dynamicStatus: 'ofertei', cupomStatus2: 'ofertei' }),
+    mockPartner({ partnerId: '3', estabelecimento: '[Amostra] Damone', cidade: 'Santos', indiceGmv: 15000, indiceGmvRaw: 'R$ 15.000', promoStatus: 'ofertei', dynamicStatus: 'aguardando', cupomStatus2: 'confirmado' }),
+    mockPartner({ partnerId: '4', estabelecimento: '[Amostra] Phyllis & Cie', cidade: 'São Paulo', indiceGmv: 16000, indiceGmvRaw: 'R$ 16.000', promoStatus: 'negado', dynamicStatus: 'ativo', cupomStatus2: 'negado' }),
+    mockPartner({ partnerId: '5', estabelecimento: '[Amostra] SoRock', cidade: 'Osasco', indiceGmv: 31000, indiceGmvRaw: 'R$ 31.000', promoStatus: 'ativo', dynamicStatus: 'ativo', cupomStatus2: 'ativo' }),
+    mockPartner({ partnerId: '6', estabelecimento: '[Amostra] Lorean', cidade: 'Guarulhos', indiceGmv: 22000, indiceGmvRaw: 'R$ 22.000', promoStatus: 'ativo', dynamicStatus: 'ativo', cupomStatus2: 'confirmado' }),
 ];
 
 const NOTES: Record<string, CrmPartnerNote> = {
@@ -79,6 +80,7 @@ export function PreviewCrmBoard() {
             </div>
             <div className="flex items-center gap-2 mb-4">
                 <button type="button" onClick={() => setCampaign('super_promos')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${campaign === 'super_promos' ? 'bg-violet-600 text-white' : 'bg-white border border-slate-200'}`}>Super Promos (editável)</button>
+                <button type="button" onClick={() => setCampaign('cupons_destaque')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${campaign === 'cupons_destaque' ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200'}`}>Cupons de destaque (Confirmado)</button>
                 <button type="button" onClick={() => setCampaign(DYNAMIC_CAMPAIGN_ID)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${campaign === DYNAMIC_CAMPAIGN_ID ? 'bg-slate-600 text-white' : 'bg-white border border-slate-200'}`}>{DYNAMIC_CAMPAIGN_ID} (dinâmica, somente leitura)</button>
             </div>
 

@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { CampaignStatusOverrideField } from '../config/campaignTypes';
 
-export type PromoStatus = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado';
+/**
+ * 'confirmado' é um estado manual do CS (ex.: cupons) — parceiro confirmou verbalmente
+ * mas o banco ainda não reflete a ativação real. Só o sistema promove pra 'ativo'
+ * quando o dado real do banco confirma (ver src/utils/campanhasOverlay.ts); o usuário
+ * nunca escolhe 'ativo' diretamente pra campanhas que usam esse fluxo de confirmação.
+ */
+export type PromoStatus = 'ativo' | 'aguardando' | 'inativo' | 'ofertei' | 'negado' | 'confirmado';
 
 export type StatusOverrideField = CampaignStatusOverrideField;
 
