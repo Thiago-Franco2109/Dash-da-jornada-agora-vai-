@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     usePromoItemArte,
+    useLojaLink,
     formatDiasAtivos,
     formatPrecoArte,
     resolveImagemItem,
@@ -40,6 +41,8 @@ const GERADOR_URL = '/gerador-artes/index.html';
 
 export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl, onClose }: GerarArteModalProps) {
     const { itens, isLoading, error, load } = usePromoItemArte();
+    const { url: lojaUrl, load: loadLojaLink } = useLojaLink();
+    const [linkCopiado, setLinkCopiado] = useState(false);
     const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
     const [templates, setTemplates] = useState<GeneratorTemplate[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -68,6 +71,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     const [logoUrlOverride, setLogoUrlOverride] = useState(() => resolveLogoUrl(logoUrl) || '');
 
     useEffect(() => { load(estabelecimentoId); }, [estabelecimentoId, load]);
+    useEffect(() => { loadLojaLink(estabelecimentoId); }, [estabelecimentoId, loadLojaLink]);
 
     useEffect(() => {
         function onMessage(event: MessageEvent) {
@@ -154,6 +158,32 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
             },
             window.location.origin,
         );
+    }
+
+    async function handleCopiarLink() {
+        if (!lojaUrl) return;
+        let copiado = false;
+        try {
+            await navigator.clipboard.writeText(lojaUrl);
+            copiado = true;
+        } catch {
+            // Fallback pra contextos onde a Clipboard API falha (sem foco, sem permissão, etc.)
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = lojaUrl;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                copiado = document.execCommand('copy');
+                document.body.removeChild(textarea);
+            } catch {
+                copiado = false;
+            }
+        }
+        if (!copiado) return;
+        setLinkCopiado(true);
+        setTimeout(() => setLinkCopiado(false), 2000);
     }
 
     const showGeneratorControls = manualMode || itens.length > 0;
@@ -318,6 +348,18 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                                         className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-lg transition-colors"
                                     >
                                         {isGenerating ? 'Gerando...' : 'Gerar Artes'}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleCopiarLink}
+                                        disabled={!lojaUrl}
+                                        className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 rounded-lg transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">
+                                            {linkCopiado ? 'check' : 'content_copy'}
+                                        </span>
+                                        {linkCopiado ? 'Link copiado!' : 'Copiar link da loja'}
                                     </button>
 
                                     {result?.alert && (

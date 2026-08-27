@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 
 const FN_URL = '/.netlify/functions/promo-item-arte';
 const CATALOGO_FN_URL = '/.netlify/functions/catalogo-item-arte';
+const LOJA_LINK_FN_URL = '/.netlify/functions/loja-link';
 
 function getFetchOptions(): RequestInit {
     const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token') || '';
@@ -148,6 +149,43 @@ export function usePromoItemArte(): UsePromoItemArteResult {
     }, []);
 
     return { itens, isLoading, error, load };
+}
+
+interface LojaLinkResponse {
+    url: string;
+}
+
+/** Link público da loja (bigou.com.br) — pro CTA que costuma ir junto com a arte. */
+export function fetchLojaLink(estabelecimentoId: number): Promise<string> {
+    const params = new URLSearchParams({ estabelecimentoId: String(estabelecimentoId) });
+    return fetchFn<LojaLinkResponse>(`${LOJA_LINK_FN_URL}?${params.toString()}`).then(res => res.url);
+}
+
+interface UseLojaLinkResult {
+    url: string | null;
+    isLoading: boolean;
+    error: string | null;
+    load: (estabelecimentoId: number) => void;
+}
+
+export function useLojaLink(): UseLojaLinkResult {
+    const [url, setUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = useCallback((estabelecimentoId: number) => {
+        setIsLoading(true);
+        setError(null);
+        fetchLojaLink(estabelecimentoId)
+            .then(setUrl)
+            .catch(err => {
+                console.warn('[useLojaLink] falha:', err);
+                setError(err.message);
+            })
+            .finally(() => setIsLoading(false));
+    }, []);
+
+    return { url, isLoading, error, load };
 }
 
 interface UseCatalogoItensResult {
