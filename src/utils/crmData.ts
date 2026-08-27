@@ -4,6 +4,7 @@ import type { PromoStatus } from '../hooks/useStatusOverride';
 import {
     CAMPAIGN_TYPE_IDS,
     CAMPAIGN_TYPES,
+    KNOWN_CAMPAIGN_TYPE_IDS,
     type CampaignSheetInfo,
     type CampaignTypeId,
     emptyCampaignSheetInfo,
@@ -22,7 +23,7 @@ import { getManagerForPartner } from '../config/managerMapping';
 import { agentDebugLog } from './agentDebugLog';
 
 /** Incrementar quando a lógica de parse/status mudar — invalida cache CRM pré-parseado */
-export const CRM_PARSER_VERSION = 6;
+export const CRM_PARSER_VERSION = 7;
 
 /**
  * Layout fixo da aba INDICADOR (1 linha = 1 parceiro):
@@ -221,20 +222,34 @@ function sheetIdentityFromEstabId(row: Record<string, unknown>, orderedHeaders: 
     return { estabId, key: buildPartnerLookupKey(estabId) };
 }
 
+/**
+ * Campanhas vistas na aba PROMO-ESPECIAL que não batem com nenhum dos 3 tipos
+ * conhecidos — nome bruto (trimado) usado como id dinâmico. Preenchido como
+ * efeito colateral de buildPromoEspecialCampaignMap; consumido por
+ * parseCrmPartners pra montar CrmParseInfo.dynamicCampaigns.
+ */
+const discoveredDynamicCampaigns = new Map<string, string>();
+
 function buildPromoEspecialCampaignMap(table: GatewaySheetTable): Map<string, Map<CampaignTypeId, CampaignSheetInfo>> {
     const ordered = orderedHeadersOf(table);
     const statusCol = resolveSheetColumn(ordered, ['STATUS']);
     const ativoCol = resolveSheetColumn(ordered, ['ATIVO']);
     const campanhaCol = resolveSheetColumn(ordered, ['CAMPANHA', 'Campanha']);
     const map = new Map<string, Map<CampaignTypeId, CampaignSheetInfo>>();
+    discoveredDynamicCampaigns.clear();
 
     for (const row of table.rows) {
         const id = sheetIdentityFromEstabId(row, ordered);
         if (!id) continue;
 
-        const campaignRaw = cellText(row, campanhaCol);
-        const campaignId = resolveCampaignTypeId(campaignRaw);
-        if (!campaignId) continue;
+        const campaignRaw = cellText(row, campanhaCol).trim();
+        if (!campaignRaw) continue;
+        // Tipo conhecido (Super Promos/Ofertas da Casa/Cupons) vira o id canônico;
+        // qualquer outro nome vira id dinâmico somente-leitura (o próprio nome bruto).
+        const campaignId = resolveCampaignTypeId(campaignRaw) ?? campaignRaw;
+        if (!KNOWN_CAMPAIGN_TYPE_IDS.includes(campaignId as typeof KNOWN_CAMPAIGN_TYPE_IDS[number])) {
+            discoveredDynamicCampaigns.set(campaignId, campaignRaw);
+        }
 
         let partnerCampaigns = map.get(id.key);
         if (!partnerCampaigns) {
@@ -348,6 +363,20 @@ function buildPartnerCampaigns(
                 : resumo,
             itemCount: sheetInfo?.itemCount ?? 0,
             hasActive: Boolean(sheetInfo?.hasAprovadoAtivo || (indicadorCounts?.aprov ?? 0) > 0),
+            sheetInfo,
+        };
+    }
+
+    // Campanhas descobertas dinamicamente (fora dos 3 tipos conhecidos): status
+    // calculado só do dado real da planilha/banco, sem override manual do CS.
+    for (const dynamicId of discoveredDynamicCampaigns.keys()) {
+        const sheetInfo = mergeCampaignSheetInfo(promoCampaignMap, cupomMap, lookupKey, dynamicId);
+        const status = resolveCampaignStatusFromSheet(undefined, sheetInfo, undefined);
+        campaigns[dynamicId] = {
+            status,
+            resumo: sheetInfo?.itemCount ? `${sheetInfo.itemCount} item(ns)` : '—',
+            itemCount: sheetInfo?.itemCount ?? 0,
+            hasActive: Boolean(sheetInfo?.hasAprovadoAtivo),
             sheetInfo,
         };
     }
@@ -485,6 +514,8 @@ export function parseCrmPartners(
             gmvColumn: findGmvMonthColumns(parseHeaders)[0] ?? null,
             parsedPartners: partners.length,
             skippedRows: skipped,
+            dynamicCampaigns: Array.from(discoveredDynamicCampaigns, ([id, label]) => ({ id, label }))
+                .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
         },
     };
 }

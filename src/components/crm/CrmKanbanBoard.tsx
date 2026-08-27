@@ -4,13 +4,15 @@ import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { CrmPartnerNote } from '../../types/crm';
 import type { CampaignTypeId } from '../../config/campaignTypes';
 import { KANBAN_STAGES, getPromoStatusForPartner, sumIndiceGmv, formatGmvTotal } from '../../utils/crmPipeline';
-import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv } from './crmShared';
+import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv, getStatusMeta } from './crmShared';
 import { isPast, isToday, parseISO } from 'date-fns';
 
 interface CrmKanbanBoardProps {
     partners: CrmPartner[];
     localStatus: Record<string, PromoStatus>;
     campaign?: CampaignTypeId;
+    /** false para campanhas descobertas dinamicamente (status calculado, sem edição manual). Default true. */
+    isEditable?: boolean;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
@@ -35,6 +37,7 @@ export default function CrmKanbanBoard({
     partners,
     localStatus,
     campaign = 'super_promos',
+    isEditable = true,
     getNote,
     onStatusChange,
     onPartnerStatusChange,
@@ -79,11 +82,13 @@ export default function CrmKanbanBoard({
                         dropTarget === col.id ? 'border-primary ring-2 ring-primary/30' : 'border-slate-200 dark:border-slate-700/60'
                     }`}
                     onDragOver={e => {
+                        if (!isEditable) return;
                         e.preventDefault();
                         setDropTarget(col.id);
                     }}
                     onDragLeave={() => setDropTarget(null)}
                     onDrop={e => {
+                        if (!isEditable) return;
                         e.preventDefault();
                         handleDrop(col.id);
                     }}
@@ -103,15 +108,15 @@ export default function CrmKanbanBoard({
                             return (
                                 <div
                                     key={`${row.partnerId}::${row.cidade}::${idx}`}
-                                    draggable
-                                    onDragStart={() => setDraggingId(row.partnerId)}
+                                    draggable={isEditable}
+                                    onDragStart={() => isEditable && setDraggingId(row.partnerId)}
                                     onDragEnd={() => {
                                         setDraggingId(null);
                                         setDropTarget(null);
                                     }}
-                                    className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all ${
-                                        draggingId === row.partnerId ? 'opacity-50' : ''
-                                    }`}
+                                    className={`bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all ${
+                                        isEditable ? 'cursor-grab active:cursor-grabbing' : ''
+                                    } ${draggingId === row.partnerId ? 'opacity-50' : ''}`}
                                 >
                                     <div className="flex items-start gap-2">
                                         <PartnerAvatar row={row} size="sm" />
@@ -135,15 +140,21 @@ export default function CrmKanbanBoard({
                                     <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
                                         <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatGmv(row)}</span>
                                         <div className="flex items-center gap-1">
-                                            <StatusDropdown
-                                                partnerId={row.partnerId}
-                                                currentStatus={getPromoStatusForPartner(row, localStatus, campaign)}
-                                                onStatusChange={onStatusChange}
-                                                onPartnerStatusChange={onPartnerStatusChange}
-                                                onCampaignStatusChange={onCampaignStatusChange}
-                                                campaign={campaign}
-                                                compact
-                                            />
+                                            {isEditable ? (
+                                                <StatusDropdown
+                                                    partnerId={row.partnerId}
+                                                    currentStatus={getPromoStatusForPartner(row, localStatus, campaign)}
+                                                    onStatusChange={onStatusChange}
+                                                    onPartnerStatusChange={onPartnerStatusChange}
+                                                    onCampaignStatusChange={onCampaignStatusChange}
+                                                    campaign={campaign}
+                                                    compact
+                                                />
+                                            ) : (
+                                                <span className={`inline-flex items-center gap-1 rounded-full font-bold px-2 py-0.5 text-[10px] ${getStatusMeta(getPromoStatusForPartner(row, localStatus, campaign)).badge}`}>
+                                                    <span>{getStatusMeta(getPromoStatusForPartner(row, localStatus, campaign)).icon}</span>
+                                                </span>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => onRegisterContact(row.partnerId)}
@@ -166,7 +177,7 @@ export default function CrmKanbanBoard({
                             );
                         })}
                         {col.cards.length === 0 && (
-                            <p className="text-center text-xs text-slate-400 py-8">Arraste cards aqui</p>
+                            <p className="text-center text-xs text-slate-400 py-8">{isEditable ? 'Arraste cards aqui' : 'Nenhum parceiro'}</p>
                         )}
                     </div>
                 </div>

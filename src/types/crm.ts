@@ -23,7 +23,11 @@ export interface CrmPartner {
     gmvMesLabel: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
     gmvMensal?: { label: string; value: number }[];
-    /** Status e métricas por tipo de campanha */
+    /**
+     * Status e métricas por campanha. Sempre tem entradas pros 3 tipos conhecidos
+     * (ver KNOWN_CAMPAIGN_TYPE_IDS); pode ter entradas extras pra campanhas
+     * descobertas dinamicamente no banco (somente-leitura).
+     */
     campaigns: Record<CampaignTypeId, {
         status: PromoStatus;
         resumo: string;
@@ -62,6 +66,8 @@ export interface CrmParseInfo {
     gmvColumn: string | null;
     parsedPartners: number;
     skippedRows: number;
+    /** Campanhas vistas na aba PROMO-ESPECIAL que não são nenhum dos 3 tipos conhecidos — somente-leitura no CRM. */
+    dynamicCampaigns: { id: string; label: string }[];
 }
 
 export type CrmViewMode = 'dashboard' | 'kanban' | 'list' | 'table' | 'calendar';

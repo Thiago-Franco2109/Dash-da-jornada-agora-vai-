@@ -10,6 +10,8 @@ interface CrmListViewProps {
     partners: CrmPartner[];
     localStatus: Record<string, PromoStatus>;
     campaign?: CampaignTypeId;
+    /** false para campanhas descobertas dinamicamente (status calculado, sem edição manual). Default true. */
+    isEditable?: boolean;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
@@ -38,6 +40,7 @@ export default function CrmListView({
     partners,
     localStatus,
     campaign = 'super_promos',
+    isEditable = true,
     getNote,
     onStatusChange,
     onPartnerStatusChange,
@@ -93,15 +96,22 @@ export default function CrmListView({
                 <td className="py-3 px-4 text-sm text-slate-700 dark:text-slate-300">{row.analista || '—'}</td>
                 <td className="py-3 px-4 text-sm font-semibold text-slate-700 dark:text-slate-300 text-right">{formatGmv(row)}</td>
                 <td className="py-3 px-4">
-                    <StatusDropdown
-                        partnerId={row.partnerId}
-                        currentStatus={promoStatus}
-                        onStatusChange={onStatusChange}
-                        onPartnerStatusChange={onPartnerStatusChange}
-                        onCampaignStatusChange={onCampaignStatusChange}
-                        campaign={campaign}
-                        compact
-                    />
+                    {isEditable ? (
+                        <StatusDropdown
+                            partnerId={row.partnerId}
+                            currentStatus={promoStatus}
+                            onStatusChange={onStatusChange}
+                            onPartnerStatusChange={onPartnerStatusChange}
+                            onCampaignStatusChange={onCampaignStatusChange}
+                            campaign={campaign}
+                            compact
+                        />
+                    ) : (
+                        <span className={`inline-flex items-center gap-1.5 rounded-full font-bold px-2.5 py-1 text-[11px] ${getStatusMeta(promoStatus).badge}`}>
+                            <span>{getStatusMeta(promoStatus).icon}</span>
+                            {getStatusMeta(promoStatus).label}
+                        </span>
+                    )}
                 </td>
                 <td className={`py-3 px-4 text-sm ${followUpClass(note?.nextFollowUp)}`}>
                     {note?.nextFollowUp ? formatCrmDate(note.nextFollowUp) : '—'}

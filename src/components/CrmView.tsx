@@ -5,7 +5,7 @@ import type { CrmPartner, CrmParseInfo, CrmPartnerNote, CrmPipelineStage } from 
 import { useCrmViewMode } from '../hooks/useCrmViewMode';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
-import { CAMPAIGN_TYPES, CAMPAIGN_TYPE_IDS, getCampaignConfig } from '../config/campaignTypes';
+import { CAMPAIGN_TYPES, getCampaignConfig, isEditableCampaign } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
 import { crmCitiesMatch, normalizeCrmCity } from '../utils/crmData';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
@@ -95,7 +95,7 @@ export default function CrmView({
     const setCityFilter = setCityFilterProp ?? setInternalCityFilter;
     const [campaignFilter, setCampaignFilter] = useState<CampaignTypeId>(() => {
         const saved = localStorage.getItem(CAMPAIGN_FILTER_STORAGE_KEY);
-        return saved && (CAMPAIGN_TYPE_IDS as string[]).includes(saved) ? (saved as CampaignTypeId) : 'super_promos';
+        return saved || 'super_promos';
     });
     const [statusParceiroFilter, setStatusParceiroFilter] = useState<'all' | 'ativo' | 'pendente' | 'suspenso' | 'cancelado'>('all');
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -112,6 +112,26 @@ export default function CrmView({
 
     const campaignConfig = getCampaignConfig(campaignFilter);
     const getPromoStatus = (row: CrmPartner) => getPromoStatusForPartner(row, localStatus, campaignFilter);
+    const campaignIsEditable = isEditableCampaign(campaignFilter);
+
+    /** Os 3 tipos conhecidos + qualquer campanha descoberta no banco (somente-leitura). */
+    const campaignPickerItems = useMemo(() => {
+        const known = CAMPAIGN_TYPES.map(c => ({
+            id: c.id,
+            label: c.label,
+            icons: c.icons,
+            subtitle: c.id === 'super_promos' ? 'Promoção subsidiada' : c.id === 'ofertas_da_casa' ? 'Ofertas da casa' : 'Cupons de destaque',
+            editable: true,
+        }));
+        const dynamic = (parseInfo?.dynamicCampaigns ?? []).map(c => ({
+            id: c.id,
+            label: c.label,
+            icons: ['campaign'],
+            subtitle: 'Detectada automaticamente',
+            editable: false,
+        }));
+        return [...known, ...dynamic];
+    }, [parseInfo]);
 
     const changeCampaign = (id: CampaignTypeId) => {
         setCampaignFilter(id);
@@ -331,8 +351,8 @@ export default function CrmView({
                         <span className="material-symbols-outlined text-primary text-[22px]">tune</span>
                         <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Qual CRM você vai trabalhar?</span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {CAMPAIGN_TYPES.map(c => {
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {campaignPickerItems.map(c => {
                             const selected = campaignFilter === c.id;
                             return (
                                 <button
@@ -351,8 +371,9 @@ export default function CrmView({
                                     />
                                     <div className="min-w-0">
                                         <p className={`text-sm font-bold truncate ${selected ? 'text-primary' : 'text-slate-700 dark:text-slate-200'}`}>{c.label}</p>
-                                        <p className="text-[11px] text-slate-400 truncate">
-                                            {c.id === 'super_promos' ? 'Promoção subsidiada' : c.id === 'ofertas_da_casa' ? 'Ofertas da casa' : 'Cupons de destaque'}
+                                        <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+                                            {!c.editable && <span className="material-symbols-outlined text-[12px]">visibility</span>}
+                                            {c.editable ? c.subtitle : 'Somente leitura'}
                                         </p>
                                     </div>
                                     {selected && <span className="material-symbols-outlined text-primary text-[18px] ml-auto shrink-0">check_circle</span>}
@@ -402,7 +423,7 @@ export default function CrmView({
                         { label: 'Parceiros ativos', value: kpis.total, icon: 'store', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
                         { label: 'Não ofertado', value: kpis.pending, icon: 'campaign', color: 'text-red-500 bg-red-50 dark:bg-red-900/20' },
                         { label: 'Aguardando retorno', value: kpis.offered, icon: 'hourglass_top', color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' },
-                        { label: ACTIVE_STAGE_LABEL[campaignFilter], value: kpis.active, icon: 'check_circle', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+                        { label: ACTIVE_STAGE_LABEL[campaignFilter] ?? 'Ativo', value: kpis.active, icon: 'check_circle', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
                         { label: 'Negado', value: kpis.denied, icon: 'block', color: 'text-slate-500 bg-slate-50 dark:bg-slate-800/40' },
                         { label: 'Follow-up atrasado', value: kpis.overdue, icon: 'event_busy', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
                     ].map(kpi => (
@@ -453,7 +474,7 @@ export default function CrmView({
                                             }`}
                                         >
                                             <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
-                                            {tab.id === 'ativo' ? ACTIVE_STAGE_LABEL[campaignFilter] : tab.label}
+                                            {tab.id === 'ativo' ? (ACTIVE_STAGE_LABEL[campaignFilter] ?? 'Ativo') : tab.label}
                                             <span className={`py-0.5 px-2 rounded-full text-xs ${stageFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>
                                                 {stageCounts[tab.id].toLocaleString('pt-BR')}
                                             </span>
@@ -474,6 +495,7 @@ export default function CrmView({
                         partners={stageFiltered}
                         localStatus={localStatus}
                         campaign={campaignFilter}
+                        isEditable={campaignIsEditable}
                         getNote={getNote}
                         onStatusChange={onStatusChange}
                         onPartnerStatusChange={handlePartnerStatusChange}
@@ -488,6 +510,7 @@ export default function CrmView({
                         partners={sorted}
                         localStatus={localStatus}
                         campaign={campaignFilter}
+                        isEditable={campaignIsEditable}
                         getNote={getNote}
                         onStatusChange={onStatusChange}
                         onPartnerStatusChange={handlePartnerStatusChange}

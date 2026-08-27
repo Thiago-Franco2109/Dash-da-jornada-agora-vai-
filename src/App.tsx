@@ -48,7 +48,7 @@ import {
 } from './config/promoCupomFilter';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
 import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/ofertasStatusMap';
-import { getCampaignOverrideField, type CampaignTypeId } from './config/campaignTypes';
+import { getCampaignOverrideField, isEditableCampaign, type CampaignTypeId } from './config/campaignTypes';
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
 import { useDataSync } from './hooks/useDataSync';
 import { useRelevanceMap } from './hooks/useRelevanceMap';
@@ -311,6 +311,9 @@ function App() {
   const { cityIdMap, loading: cityIdsLoading } = useCityIds();
 
   const handleCampaignStatusChange = async (partnerId: string, campaignId: CampaignTypeId, newStatus: PromoStatus) => {
+    // Campanhas descobertas dinamicamente (fora dos 3 tipos conhecidos) são somente-leitura —
+    // não há onde persistir o status manual do CS pra elas (ver isEditableCampaign).
+    if (!isEditableCampaign(campaignId)) return;
     if (campaignId === 'ofertas_da_casa') {
         setOfertasStatus(partnerId, promoStatusToOfertasStatus(newStatus), 'manual');
         setForceRender(prev => prev + 1);
