@@ -30,6 +30,7 @@ interface TrelloMemberCard {
     idBoard: string;
     idList: string;
     shortUrl: string;
+    closed: boolean;
 }
 
 interface TrelloBoardRef {
@@ -70,9 +71,11 @@ export const handler: Handler = async (event) => {
 
     const started = Date.now();
     try {
+        // filter=all: traz também cards arquivados — o front decide se mostra,
+        // por padrão eles ficam ocultos (ver TrelloView).
         const cards = await trelloFetch<TrelloMemberCard[]>('/members/me/cards', key!, token!, {
-            fields: 'name,due,dueComplete,idBoard,idList,shortUrl',
-            filter: 'open',
+            fields: 'name,due,dueComplete,idBoard,idList,shortUrl,closed',
+            filter: 'all',
         });
 
         const idsDosBoards = [...new Set(cards.map(c => c.idBoard))];
@@ -99,6 +102,7 @@ export const handler: Handler = async (event) => {
             listId: card.idList,
             lista: nomeDaLista.get(card.idList) ?? 'Lista desconhecida',
             cardUrl: card.shortUrl,
+            closed: card.closed,
         }));
 
         return {

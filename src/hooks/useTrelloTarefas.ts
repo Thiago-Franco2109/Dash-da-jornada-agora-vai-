@@ -17,6 +17,7 @@ export interface TarefaTrello {
     listId: string;
     lista: string;
     cardUrl: string;
+    closed: boolean;
 }
 
 async function fetchTarefasTrello(): Promise<TarefaTrello[]> {

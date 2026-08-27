@@ -52,6 +52,8 @@ const listaKey = (board: string, lista: string) => `${board}::${lista}`;
 /** Preferência pessoal de boards/listas ocultos — sobrevive a refresh, não é dado do Trello. */
 const STORAGE_KEY_BOARDS = 'trello_view_boards_ocultos_v1';
 const STORAGE_KEY_LISTAS = 'trello_view_listas_ocultas_v1';
+const STORAGE_KEY_ARQUIVADO = 'trello_view_filtro_arquivado_v1';
+const STORAGE_KEY_CONCLUIDO = 'trello_view_filtro_concluido_v1';
 
 function loadSet(key: string): Set<string> {
     try {
@@ -67,11 +69,73 @@ function saveSet(key: string, set: Set<string>) {
     } catch { /* ignore */ }
 }
 
+type Estado3 = 'todos' | 'so' | 'ocultar';
+
+function loadEstado3(key: string, padrao: Estado3): Estado3 {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === 'todos' || raw === 'so' || raw === 'ocultar') return raw;
+    } catch { /* ignore */ }
+    return padrao;
+}
+
+function saveEstado3(key: string, valor: Estado3) {
+    try {
+        localStorage.setItem(key, valor);
+    } catch { /* ignore */ }
+}
+
+function aplicaEstado3<T>(itens: T[], estado: Estado3, ehVerdadeiro: (item: T) => boolean): T[] {
+    if (estado === 'todos') return itens;
+    if (estado === 'so') return itens.filter(ehVerdadeiro);
+    return itens.filter(item => !ehVerdadeiro(item));
+}
+
+function FiltroTresEstados({ label, valor, onChange, labelSo, labelOcultar }: {
+    label: string;
+    valor: Estado3;
+    onChange: (v: Estado3) => void;
+    labelSo: string;
+    labelOcultar: string;
+}) {
+    const opcoes: { value: Estado3; label: string }[] = [
+        { value: 'todos', label: 'Todos' },
+        { value: 'so', label: labelSo },
+        { value: 'ocultar', label: labelOcultar },
+    ];
+    return (
+        <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">{label}</span>
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {opcoes.map((op, i) => (
+                    <button
+                        key={op.value}
+                        type="button"
+                        onClick={() => onChange(op.value)}
+                        className={`px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? 'border-l border-slate-200 dark:border-slate-700' : ''} ${
+                            valor === op.value
+                                ? 'bg-primary text-white'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                        }`}
+                    >
+                        {op.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function TrelloView() {
     const { data: tarefas, isLoading, error, refresh } = useTrelloTarefas();
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [boardsOcultos, setBoardsOcultos] = useState<Set<string>>(() => loadSet(STORAGE_KEY_BOARDS));
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(() => loadSet(STORAGE_KEY_LISTAS));
+    const [arquivadoFiltro, setArquivadoFiltro] = useState<Estado3>(() => loadEstado3(STORAGE_KEY_ARQUIVADO, 'ocultar'));
+    const [concluidoFiltro, setConcluidoFiltro] = useState<Estado3>(() => loadEstado3(STORAGE_KEY_CONCLUIDO, 'todos'));
+
+    const mudarArquivadoFiltro = (v: Estado3) => { setArquivadoFiltro(v); saveEstado3(STORAGE_KEY_ARQUIVADO, v); };
+    const mudarConcluidoFiltro = (v: Estado3) => { setConcluidoFiltro(v); saveEstado3(STORAGE_KEY_CONCLUIDO, v); };
 
     const toggleBoard = (board: string) => {
         setBoardsOcultos(prev => {
@@ -94,17 +158,25 @@ export default function TrelloView() {
     const mostrarTodosBoards = () => { setBoardsOcultos(new Set()); saveSet(STORAGE_KEY_BOARDS, new Set()); };
     const mostrarTodasListas = () => { setListasOcultas(new Set()); saveSet(STORAGE_KEY_LISTAS, new Set()); };
 
+    // Arquivado/concluído são filtros globais (aplicam antes de tudo) — os
+    // contadores de board/lista já refletem esse recorte.
+    const tarefasBase = useMemo(() => {
+        let itens = aplicaEstado3(tarefas, arquivadoFiltro, t => t.closed);
+        itens = aplicaEstado3(itens, concluidoFiltro, t => t.dueComplete);
+        return itens;
+    }, [tarefas, arquivadoFiltro, concluidoFiltro]);
+
     const boards = useMemo(() => {
         const counts = new Map<string, number>();
-        for (const t of tarefas) counts.set(t.board, (counts.get(t.board) ?? 0) + 1);
+        for (const t of tarefasBase) counts.set(t.board, (counts.get(t.board) ?? 0) + 1);
         return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
-    }, [tarefas]);
+    }, [tarefasBase]);
 
     // Só lista as listas dos boards ainda visíveis, senão a checklist fica com
     // lixo de board que o próprio usuário já ocultou.
     const listas = useMemo(() => {
         const counts = new Map<string, { board: string; lista: string; count: number }>();
-        for (const t of tarefas) {
+        for (const t of tarefasBase) {
             if (boardsOcultos.has(t.board)) continue;
             const key = listaKey(t.board, t.lista);
             const atual = counts.get(key);
@@ -113,11 +185,11 @@ export default function TrelloView() {
         }
         return [...counts.values()].sort((a, b) =>
             a.board.localeCompare(b.board, 'pt-BR') || a.lista.localeCompare(b.lista, 'pt-BR'));
-    }, [tarefas, boardsOcultos]);
+    }, [tarefasBase, boardsOcultos]);
 
     const tarefasFiltradas = useMemo(
-        () => tarefas.filter(t => !boardsOcultos.has(t.board) && !listasOcultas.has(listaKey(t.board, t.lista))),
-        [tarefas, boardsOcultos, listasOcultas],
+        () => tarefasBase.filter(t => !boardsOcultos.has(t.board) && !listasOcultas.has(listaKey(t.board, t.lista))),
+        [tarefasBase, boardsOcultos, listasOcultas],
     );
 
     const grupos = useMemo(() => {
@@ -135,7 +207,9 @@ export default function TrelloView() {
         })).filter(g => g.itens.length > 0);
     }, [tarefasFiltradas]);
 
-    const totalFiltrosAtivos = boardsOcultos.size + listasOcultas.size;
+    const totalFiltrosAtivos = boardsOcultos.size + listasOcultas.size
+        + (arquivadoFiltro !== 'ocultar' ? 1 : 0)
+        + (concluidoFiltro !== 'todos' ? 1 : 0);
 
     return (
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto">
@@ -178,6 +252,23 @@ export default function TrelloView() {
 
             {filtrosAbertos && (
                 <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-4">
+                    <div className="flex flex-wrap gap-6">
+                        <FiltroTresEstados
+                            label="Arquivados"
+                            valor={arquivadoFiltro}
+                            onChange={mudarArquivadoFiltro}
+                            labelSo="Só arquivados"
+                            labelOcultar="Ocultar arquivados"
+                        />
+                        <FiltroTresEstados
+                            label="Concluídos"
+                            valor={concluidoFiltro}
+                            onChange={mudarConcluidoFiltro}
+                            labelSo="Só concluídos"
+                            labelOcultar="Ocultar concluídos"
+                        />
+                    </div>
+
                     <div>
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -301,7 +392,7 @@ function TarefaItem({ tarefa, mostrarAtraso, daysOffset }: { tarefa: TarefaTrell
                 href={tarefa.cardUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between gap-2 rounded-lg bg-white/70 dark:bg-slate-900/50 px-3 py-2 hover:opacity-80 transition-opacity"
+                className={`flex items-center justify-between gap-2 rounded-lg bg-white/70 dark:bg-slate-900/50 px-3 py-2 hover:opacity-80 transition-opacity ${tarefa.closed ? 'opacity-60' : ''}`}
             >
                 <div className="flex-1 min-w-0">
                     <p className={`text-sm font-semibold text-slate-900 dark:text-white truncate ${tarefa.dueComplete ? 'line-through opacity-60' : ''}`}>
@@ -320,6 +411,11 @@ function TarefaItem({ tarefa, mostrarAtraso, daysOffset }: { tarefa: TarefaTrell
                         )}
                     </p>
                 </div>
+                {tarefa.closed && (
+                    <span className="material-symbols-outlined text-[18px] text-slate-400 shrink-0" title="Card arquivado no Trello">
+                        archive
+                    </span>
+                )}
                 {tarefa.dueComplete && (
                     <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0" title="Marcado como concluído no Trello">
                         check_circle
