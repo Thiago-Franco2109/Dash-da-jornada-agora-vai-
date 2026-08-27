@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 // ─────────────────────────────────────────────────────────────────────────
 
 const FN_URL = '/.netlify/functions/promo-item-arte';
+const CATALOGO_FN_URL = '/.netlify/functions/catalogo-item-arte';
 
 function getFetchOptions(): RequestInit {
     const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token') || '';
@@ -16,8 +17,8 @@ function getFetchOptions(): RequestInit {
     return options;
 }
 
-async function fetchFn<T>(query: string): Promise<T> {
-    const res = await fetch(`${FN_URL}${query}`, getFetchOptions());
+async function fetchFn<T>(url: string): Promise<T> {
+    const res = await fetch(url, getFetchOptions());
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json?.ok !== true) {
         if (res.status === 401) {
@@ -46,7 +47,23 @@ interface PromoItemArteResponse {
 
 export function fetchPromoItemArte(estabelecimentoId: number): Promise<PromoItemArte[]> {
     const params = new URLSearchParams({ estabelecimentoId: String(estabelecimentoId) });
-    return fetchFn<PromoItemArteResponse>(`?${params.toString()}`).then(res => res.itens);
+    return fetchFn<PromoItemArteResponse>(`${FN_URL}?${params.toString()}`).then(res => res.itens);
+}
+
+/** Item do cardápio completo do parceiro (não só os em promoção) — pro seletor "Escolher do cardápio". */
+export interface CatalogoItem {
+    id: number;
+    nome: string;
+    imagem: string | null;
+}
+
+interface CatalogoItemArteResponse {
+    itens: CatalogoItem[];
+}
+
+export function fetchCatalogoItens(estabelecimentoId: number): Promise<CatalogoItem[]> {
+    const params = new URLSearchParams({ estabelecimentoId: String(estabelecimentoId) });
+    return fetchFn<CatalogoItemArteResponse>(`${CATALOGO_FN_URL}?${params.toString()}`).then(res => res.itens);
 }
 
 /** Mesma formatação de `js/csvParser.js` do gerador (formatDays), pra ficar idêntico ao CSV. */
@@ -125,6 +142,34 @@ export function usePromoItemArte(): UsePromoItemArteResult {
             .then(setItens)
             .catch(err => {
                 console.warn('[usePromoItemArte] falha:', err);
+                setError(err.message);
+            })
+            .finally(() => setIsLoading(false));
+    }, []);
+
+    return { itens, isLoading, error, load };
+}
+
+interface UseCatalogoItensResult {
+    itens: CatalogoItem[];
+    isLoading: boolean;
+    error: string | null;
+    /** Lazy: só busca quando chamado (ex. ao abrir o seletor "Escolher do cardápio"). */
+    load: (estabelecimentoId: number) => void;
+}
+
+export function useCatalogoItens(): UseCatalogoItensResult {
+    const [itens, setItens] = useState<CatalogoItem[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = useCallback((estabelecimentoId: number) => {
+        setIsLoading(true);
+        setError(null);
+        fetchCatalogoItens(estabelecimentoId)
+            .then(setItens)
+            .catch(err => {
+                console.warn('[useCatalogoItens] falha:', err);
                 setError(err.message);
             })
             .finally(() => setIsLoading(false));

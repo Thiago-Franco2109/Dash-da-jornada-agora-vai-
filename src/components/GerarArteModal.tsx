@@ -7,6 +7,7 @@ import {
     resolveLogoUrl,
     type PromoItemArte,
 } from '../hooks/usePromoItemArte';
+import CatalogoItemPicker from './CatalogoItemPicker';
 
 interface GerarArteModalProps {
     estabelecimentoId: number;
@@ -57,7 +58,10 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     // não chegou na réplica do banco (sincroniza ~1x por dia) — o usuário digita
     // os dados que já sabe (acabou de cadastrar no CMS) e gera a arte mesmo assim.
     const [manualMode, setManualMode] = useState(false);
-    const [manualImageUrl, setManualImageUrl] = useState('');
+
+    // Imagem do item — pré-preenchida a partir do item automático, mas sempre editável
+    // (o seletor "Escolher do cardápio" também escreve aqui) nos dois modos.
+    const [itemImageUrl, setItemImageUrl] = useState('');
 
     // A logo do parceiro (vinda da planilha) às vezes é uma URL quebrada/bloqueada
     // — dá pra colar um link alternativo aqui em vez de travar sem logo na arte.
@@ -109,17 +113,18 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
             pricePromo: formatPrecoArte(selectedItem.precoPromocional),
             daysText: formatDiasAtivos(selectedItem.disponibilidadeDiaria) || 'Todos os dias',
         });
+        setItemImageUrl(resolveImagemItem(selectedItem.imagem) || '');
     }
 
     function enterManualMode() {
         setManualMode(true);
         setFields({ ...BLANK_FIELDS });
+        setItemImageUrl('');
     }
 
     function exitManualMode() {
         setManualMode(false);
-        setManualImageUrl('');
-        setFieldsForItemId(null); // força repopular a partir do item selecionado
+        setFieldsForItemId(null); // força repopular fields + itemImageUrl a partir do item selecionado
     }
 
     function handleIframeLoad() {
@@ -133,9 +138,6 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
         setGenError(null);
         setResult(null);
         setIsGenerating(true);
-        const itemImage = manualMode
-            ? (manualImageUrl.trim() || null)
-            : resolveImagemItem(selectedItem!.imagem);
         iframeRef.current?.contentWindow?.postMessage(
             {
                 type: 'bigou:generate',
@@ -146,7 +148,7 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                     priceOrig: fields.priceOrig,
                     pricePromo: fields.pricePromo,
                     daysText: fields.daysText,
-                    itemImage,
+                    itemImage: itemImageUrl.trim() || null,
                     logoImage: resolveLogoUrl(logoUrlOverride.trim()) || null,
                 },
             },
@@ -234,7 +236,13 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                                                     </span>
                                                 )}
                                             </div>
-                                            <EditableFieldsForm fields={fields} onChange={setFields} />
+                                            <EditableFieldsForm
+                                                fields={fields}
+                                                onChange={setFields}
+                                                itemImageUrl={itemImageUrl}
+                                                onItemImageUrlChange={setItemImageUrl}
+                                                estabelecimentoId={estabelecimentoId}
+                                            />
                                         </div>
                                     )}
 
@@ -262,17 +270,13 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
                                             </button>
                                         )}
                                     </div>
-                                    <EditableFieldsForm fields={fields} onChange={setFields} />
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">URL da imagem do item (opcional)</label>
-                                        <input
-                                            type="text"
-                                            value={manualImageUrl}
-                                            onChange={e => setManualImageUrl(e.target.value)}
-                                            placeholder="https://..."
-                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
-                                        />
-                                    </div>
+                                    <EditableFieldsForm
+                                        fields={fields}
+                                        onChange={setFields}
+                                        itemImageUrl={itemImageUrl}
+                                        onItemImageUrlChange={setItemImageUrl}
+                                        estabelecimentoId={estabelecimentoId}
+                                    />
                                 </div>
                             )}
 
@@ -374,11 +378,54 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
     );
 }
 
-function EditableFieldsForm({ fields, onChange }: { fields: EditableFields; onChange: (fields: EditableFields) => void }) {
+/** Trata o valor digitado como centavos — "1850" vira "R$ 18,50", igual a um caixa de loja. */
+function formatCentavos(digits: string): string {
+    const cents = parseInt(digits || '0', 10);
+    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+}
+
+function CurrencyMaskedInput({
+    value,
+    onChange,
+    className,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    className?: string;
+}) {
+    return (
+        <input
+            type="text"
+            inputMode="numeric"
+            value={value}
+            onChange={e => onChange(formatCentavos(e.target.value.replace(/\D/g, '')))}
+            className={className}
+        />
+    );
+}
+
+interface EditableFieldsFormProps {
+    fields: EditableFields;
+    onChange: (fields: EditableFields) => void;
+    itemImageUrl: string;
+    onItemImageUrlChange: (url: string) => void;
+    estabelecimentoId: number;
+}
+
+function EditableFieldsForm({ fields, onChange, itemImageUrl, onItemImageUrlChange, estabelecimentoId }: EditableFieldsFormProps) {
     return (
         <>
             <div>
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Nome do item</label>
+                <div className="flex items-center justify-between mb-0.5">
+                    <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">Nome do item</label>
+                    <CatalogoItemPicker
+                        estabelecimentoId={estabelecimentoId}
+                        onSelect={item => {
+                            onChange({ ...fields, itemName: item.nome });
+                            onItemImageUrlChange(resolveImagemItem(item.imagem) || '');
+                        }}
+                    />
+                </div>
                 <input
                     type="text"
                     value={fields.itemName}
@@ -389,19 +436,17 @@ function EditableFieldsForm({ fields, onChange }: { fields: EditableFields; onCh
             <div className="grid grid-cols-2 gap-2">
                 <div>
                     <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço original</label>
-                    <input
-                        type="text"
+                    <CurrencyMaskedInput
                         value={fields.priceOrig}
-                        onChange={e => onChange({ ...fields, priceOrig: e.target.value })}
+                        onChange={v => onChange({ ...fields, priceOrig: v })}
                         className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
                     />
                 </div>
                 <div>
                     <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Preço promocional</label>
-                    <input
-                        type="text"
+                    <CurrencyMaskedInput
                         value={fields.pricePromo}
-                        onChange={e => onChange({ ...fields, pricePromo: e.target.value })}
+                        onChange={v => onChange({ ...fields, pricePromo: v })}
                         className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 font-semibold"
                     />
                 </div>
@@ -412,6 +457,16 @@ function EditableFieldsForm({ fields, onChange }: { fields: EditableFields; onCh
                     type="text"
                     value={fields.daysText}
                     onChange={e => onChange({ ...fields, daysText: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                />
+            </div>
+            <div>
+                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Imagem do item (URL)</label>
+                <input
+                    type="text"
+                    value={itemImageUrl}
+                    onChange={e => onItemImageUrlChange(e.target.value)}
+                    placeholder="https://..."
                     className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
                 />
             </div>
