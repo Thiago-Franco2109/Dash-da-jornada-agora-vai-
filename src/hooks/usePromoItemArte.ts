@@ -102,7 +102,7 @@ export function formatPrecoArte(valor: number | null): string {
  */
 export function resolveImagemItem(imagem: string | null): string | null {
     if (!imagem) return null;
-    if (/^https?:\/\//i.test(imagem)) return imagem;
+    if (/^https?:\/\//i.test(imagem) || imagem.startsWith('data:')) return imagem;
     return `https://labcinco.nyc3.cdn.digitaloceanspaces.com/bigou/item/${imagem.replace(/^\/+/, '')}`;
 }
 

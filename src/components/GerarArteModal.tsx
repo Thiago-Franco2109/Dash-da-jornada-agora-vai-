@@ -282,17 +282,12 @@ export default function GerarArteModal({ estabelecimentoId, partnerName, logoUrl
 
                             {showGeneratorControls && (
                                 <>
-                                    <div>
-                                        <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Logo do parceiro (URL)</label>
-                                        <input
-                                            type="text"
-                                            value={logoUrlOverride}
-                                            onChange={e => setLogoUrlOverride(e.target.value)}
-                                            placeholder="https://..."
-                                            className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
-                                        />
-                                        <p className="text-[11px] text-slate-400 mt-0.5">Se a logo não carregar na arte, cole aqui o link direto de outra imagem.</p>
-                                    </div>
+                                    <ImageFieldInput
+                                        label="Logo do parceiro"
+                                        value={logoUrlOverride}
+                                        onChange={setLogoUrlOverride}
+                                        hint="Se a logo não carregar na arte, cole ou envie outra aqui."
+                                    />
 
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Template</label>
@@ -460,16 +455,104 @@ function EditableFieldsForm({ fields, onChange, itemImageUrl, onItemImageUrlChan
                     className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
                 />
             </div>
-            <div>
-                <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Imagem do item (URL)</label>
+            <ImageFieldInput label="Imagem do item" value={itemImageUrl} onChange={onItemImageUrlChange} />
+        </>
+    );
+}
+
+/**
+ * Campo de imagem que aceita colar (Ctrl+V) direto do clipboard ou enviar um
+ * arquivo — vira um data URL (canvasRenderer.js do gerador já lida com
+ * `data:` nativamente). Ainda dá pra colar um link (URL) como alternativa.
+ */
+function ImageFieldInput({
+    label,
+    value,
+    onChange,
+    hint,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    hint?: string;
+}) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showUrlInput, setShowUrlInput] = useState(false);
+
+    function handleFile(file: File | null | undefined) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => onChange(String(reader.result));
+        reader.readAsDataURL(file);
+    }
+
+    function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+        const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
+        if (item) {
+            e.preventDefault();
+            handleFile(item.getAsFile());
+        }
+    }
+
+    return (
+        <div>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-0.5">{label}</label>
+            <div
+                onPaste={handlePaste}
+                tabIndex={0}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-dashed border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/60"
+            >
+                {value ? (
+                    <img src={value} alt="" className="size-9 rounded object-cover shrink-0 bg-slate-100 dark:bg-slate-800" />
+                ) : (
+                    <span className="material-symbols-outlined text-[18px] text-slate-300 dark:text-slate-600 shrink-0">image</span>
+                )}
+                <span className="flex-1 text-xs text-slate-400 truncate">
+                    {value ? 'Imagem selecionada — clique aqui e cole (Ctrl+V) pra trocar' : 'Clique aqui e cole uma imagem (Ctrl+V)'}
+                </span>
+                {value && (
+                    <button
+                        type="button"
+                        onClick={() => onChange('')}
+                        title="Remover"
+                        className="text-slate-400 hover:text-red-500 shrink-0"
+                    >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                )}
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Enviar arquivo"
+                    className="text-slate-400 hover:text-primary shrink-0"
+                >
+                    <span className="material-symbols-outlined text-[18px]">upload</span>
+                </button>
                 <input
-                    type="text"
-                    value={itemImageUrl}
-                    onChange={e => onItemImageUrlChange(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => handleFile(e.target.files?.[0])}
                 />
             </div>
-        </>
+            {hint && <p className="text-[11px] text-slate-400 mt-0.5">{hint}</p>}
+            <button
+                type="button"
+                onClick={() => setShowUrlInput(v => !v)}
+                className="text-[11px] font-semibold text-primary hover:underline mt-1"
+            >
+                {showUrlInput ? 'Esconder link' : 'Ou colar um link (URL)'}
+            </button>
+            {showUrlInput && (
+                <input
+                    type="text"
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full mt-1 px-2.5 py-1.5 text-sm rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                />
+            )}
+        </div>
     );
 }
