@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { differenceInCalendarDays, format, isPast, isToday, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
-import { useTrelloAtividadeHoje, type AtividadeTrelloHoje } from '../hooks/useTrelloAtividadeHoje';
+import { useTrelloAtividadeHoje, type AtividadeTrelloHoje, type MovimentacaoTrello } from '../hooks/useTrelloAtividadeHoje';
 
 type Nivel = 'overdue' | 'today' | 'upcoming' | 'sem_prazo';
 
@@ -414,31 +414,113 @@ function AtividadeHojeResumo({ atividade, isLoading, error }: {
     isLoading: boolean;
     error: string | null;
 }) {
+    const [aberto, setAberto] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!aberto) return;
+        const fechar = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+        };
+        document.addEventListener('mousedown', fechar);
+        return () => document.removeEventListener('mousedown', fechar);
+    }, [aberto]);
+
     // Widget secundário — se falhar, não quebra a tela principal.
     if (error) return null;
 
+    const tileClasses = (ativo: boolean) =>
+        `flex flex-col items-center px-3 py-1.5 rounded-lg border min-w-[80px] transition-colors ${
+            ativo
+                ? 'border-primary bg-primary/10'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+        }`;
+
     return (
-        <div className="flex items-center gap-2" title="Sua atividade hoje no Trello, em todos os boards">
-            <div className="flex flex-col items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[80px]">
-                <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
-                    {isLoading || !atividade ? '—' : atividade.totalMovimentacoes}
-                </span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
-                    Movimentações hoje
-                </span>
-            </div>
-            <div
-                className="flex flex-col items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[80px]"
-                title={isLoading || !atividade ? undefined : `${atividade.comentarios} comentários · ${atividade.cardsMovidos} cards movidos`}
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                onClick={() => setAberto(v => !v)}
+                className="flex items-center gap-2"
+                title="Clique pra ver o detalhe da sua atividade hoje no Trello"
             >
-                <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
-                    {isLoading || !atividade ? '—' : atividade.cardsMovidos}
-                </span>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
-                    Cards movidos
-                </span>
-            </div>
+                <div className={tileClasses(aberto)}>
+                    <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
+                        {isLoading || !atividade ? '—' : atividade.totalMovimentacoes}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
+                        Movimentações hoje
+                    </span>
+                </div>
+                <div className={tileClasses(aberto)}>
+                    <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
+                        {isLoading || !atividade ? '—' : atividade.cardsMovidos}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
+                        Cards movidos
+                    </span>
+                </div>
+            </button>
+
+            {aberto && (
+                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[70vh] overflow-y-auto rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 z-50 text-left">
+                    <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Atividade de hoje</p>
+                        {atividade && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                                {atividade.comentarios} comentários · {atividade.cardsMovidos} cards movidos
+                            </p>
+                        )}
+                    </div>
+                    {!atividade || atividade.movimentacoes.length === 0 ? (
+                        <p className="p-6 text-center text-sm text-slate-400">Nenhuma movimentação ainda hoje.</p>
+                    ) : (
+                        <div className="pb-2">
+                            {atividade.movimentacoes.map(m => (
+                                <MovimentacaoItem key={m.id} movimentacao={m} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
+    );
+}
+
+function limparTextoComentario(texto: string): string {
+    const semImagens = texto.replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim();
+    return semImagens || texto.trim() || '(sem texto)';
+}
+
+function MovimentacaoItem({ movimentacao: m }: { movimentacao: MovimentacaoTrello }) {
+    const hora = new Date(m.quando).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    return (
+        <a
+            href={m.cardUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-start gap-2 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60"
+        >
+            <span className={`material-symbols-outlined text-[16px] mt-0.5 shrink-0 ${m.tipo === 'comentario' ? 'text-sky-500' : 'text-violet-500'}`}>
+                {m.tipo === 'comentario' ? 'chat_bubble' : 'swap_horiz'}
+            </span>
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">{m.cardNome}</p>
+                    <span className="text-[10px] text-slate-400 shrink-0">{hora}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 truncate">{m.boardNome}</p>
+                {m.tipo === 'comentario' ? (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                        {limparTextoComentario(m.texto ?? '')}
+                    </p>
+                ) : (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                        {m.listaAntes ?? '?'} → {m.listaDepois ?? '?'}
+                    </p>
+                )}
+            </div>
+        </a>
     );
 }
 

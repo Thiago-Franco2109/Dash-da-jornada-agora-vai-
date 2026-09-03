@@ -19,9 +19,16 @@ const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'priv
 const erroHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 
 interface TrelloAction {
+    id: string;
     type: 'commentCard' | 'updateCard';
     date: string;
-    data: { card?: { id: string } };
+    data: {
+        card?: { id: string; name: string; shortLink: string };
+        board?: { name: string };
+        text?: string;
+        listBefore?: { name: string };
+        listAfter?: { name: string };
+    };
 }
 
 export const handler: Handler = async (event) => {
@@ -69,6 +76,21 @@ export const handler: Handler = async (event) => {
         const movimentacoesDeLista = acoes.filter(a => a.type === 'updateCard');
         const cardsMovidos = new Set(movimentacoesDeLista.map(a => a.data.card?.id).filter(Boolean)).size;
 
+        const movimentacoes = acoes
+            .filter(a => a.data.card)
+            .map(a => ({
+                id: a.id,
+                tipo: a.type === 'commentCard' ? 'comentario' as const : 'movido' as const,
+                quando: a.date,
+                cardNome: a.data.card!.name,
+                cardUrl: `https://trello.com/c/${a.data.card!.shortLink}`,
+                boardNome: a.data.board?.name ?? 'Board desconhecido',
+                texto: a.data.text,
+                listaAntes: a.data.listBefore?.name,
+                listaDepois: a.data.listAfter?.name,
+            }))
+            .sort((a, b) => new Date(b.quando).getTime() - new Date(a.quando).getTime());
+
         return {
             statusCode: 200,
             headers: jsonHeaders,
@@ -78,6 +100,7 @@ export const handler: Handler = async (event) => {
                 totalMovimentacoes: comentarios + movimentacoesDeLista.length,
                 comentarios,
                 cardsMovidos,
+                movimentacoes,
                 elapsedMs: Date.now() - started,
             }),
         };

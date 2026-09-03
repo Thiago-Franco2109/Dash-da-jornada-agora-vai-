@@ -7,11 +7,26 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const FN_URL = '/.netlify/functions/trello-atividade-hoje';
 
+export interface MovimentacaoTrello {
+    id: string;
+    tipo: 'comentario' | 'movido';
+    quando: string;
+    cardNome: string;
+    cardUrl: string;
+    boardNome: string;
+    /** Só em comentários — texto cru do Trello (pode ter markdown/anexos embutidos). */
+    texto?: string;
+    /** Só em movimentações de lista. */
+    listaAntes?: string;
+    listaDepois?: string;
+}
+
 export interface AtividadeTrelloHoje {
     data: string;
     totalMovimentacoes: number;
     comentarios: number;
     cardsMovidos: number;
+    movimentacoes: MovimentacaoTrello[];
 }
 
 async function fetchAtividadeHoje(): Promise<AtividadeTrelloHoje> {
