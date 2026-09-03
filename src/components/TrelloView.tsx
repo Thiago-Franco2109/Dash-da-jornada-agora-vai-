@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { differenceInCalendarDays, format, isPast, isToday, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
+import { useTrelloAtividadeHoje, type AtividadeTrelloHoje } from '../hooks/useTrelloAtividadeHoje';
 
 type Nivel = 'overdue' | 'today' | 'upcoming' | 'sem_prazo';
 
@@ -138,6 +139,7 @@ function FiltroTresEstados({ label, valor, onChange, labelSo, labelOcultar }: {
 
 export default function TrelloView() {
     const { data: tarefas, isLoading, isRefreshing, error, refresh } = useTrelloTarefas();
+    const { data: atividadeHoje, isLoading: loadingAtividade, error: erroAtividade } = useTrelloAtividadeHoje();
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [boardsOcultos, setBoardsOcultos] = useState<Set<string>>(() => loadSet(STORAGE_KEY_BOARDS));
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(() => loadSet(STORAGE_KEY_LISTAS));
@@ -233,33 +235,36 @@ export default function TrelloView() {
                         Cards atribuídos a você em todos os boards — tudo o que está pendente, num lugar só.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <button
-                        type="button"
-                        onClick={() => setFiltrosAbertos(v => !v)}
-                        className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                            filtrosAbertos
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
-                    >
-                        <span className="material-symbols-outlined text-[18px]">filter_list</span>
-                        Filtros
-                        {totalFiltrosAtivos > 0 && (
-                            <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold leading-none">
-                                {totalFiltrosAtivos}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={refresh}
-                        disabled={isLoading || isRefreshing}
-                        className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
-                    >
-                        <span className={`material-symbols-outlined text-[18px] ${isLoading || isRefreshing ? 'animate-spin' : ''}`}>sync</span>
-                        {isLoading || isRefreshing ? 'Atualizando…' : 'Atualizar'}
-                    </button>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                    <AtividadeHojeResumo atividade={atividadeHoje} isLoading={loadingAtividade} error={erroAtividade} />
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFiltrosAbertos(v => !v)}
+                            className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                                filtrosAbertos
+                                    ? 'border-primary bg-primary/10 text-primary'
+                                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[18px]">filter_list</span>
+                            Filtros
+                            {totalFiltrosAtivos > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold leading-none">
+                                    {totalFiltrosAtivos}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={refresh}
+                            disabled={isLoading || isRefreshing}
+                            className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                        >
+                            <span className={`material-symbols-outlined text-[18px] ${isLoading || isRefreshing ? 'animate-spin' : ''}`}>sync</span>
+                            {isLoading || isRefreshing ? 'Atualizando…' : 'Atualizar'}
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -400,6 +405,39 @@ export default function TrelloView() {
                     </div>
                 </>
             )}
+        </div>
+    );
+}
+
+function AtividadeHojeResumo({ atividade, isLoading, error }: {
+    atividade: AtividadeTrelloHoje | null;
+    isLoading: boolean;
+    error: string | null;
+}) {
+    // Widget secundário — se falhar, não quebra a tela principal.
+    if (error) return null;
+
+    return (
+        <div className="flex items-center gap-2" title="Sua atividade hoje no Trello, em todos os boards">
+            <div className="flex flex-col items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[80px]">
+                <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
+                    {isLoading || !atividade ? '—' : atividade.totalMovimentacoes}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
+                    Movimentações hoje
+                </span>
+            </div>
+            <div
+                className="flex flex-col items-center px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 min-w-[80px]"
+                title={isLoading || !atividade ? undefined : `${atividade.comentarios} comentários · ${atividade.cardsMovidos} cards movidos`}
+            >
+                <span className="text-base font-black text-slate-900 dark:text-white leading-none tabular-nums">
+                    {isLoading || !atividade ? '—' : atividade.cardsMovidos}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1 text-center leading-tight">
+                    Cards movidos
+                </span>
+            </div>
         </div>
     );
 }

@@ -133,7 +133,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'ativacoes-diarias', 'campanhas',
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
-    'trello-tarefas', 'loja-link',
+    'trello-tarefas', 'loja-link', 'trello-atividade-hoje',
   ])
   return {
     name: 'db-functions-dev',
