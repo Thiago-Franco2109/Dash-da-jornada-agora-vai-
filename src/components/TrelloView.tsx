@@ -33,6 +33,16 @@ const NIVEL_META: Record<Nivel, { label: string; icon: string; header: string; b
 };
 
 const NIVEL_ORDEM: Nivel[] = ['overdue', 'today', 'upcoming', 'sem_prazo'];
+const NIVEL_INDICE: Record<Nivel, number> = { overdue: 0, today: 1, upcoming: 2, sem_prazo: 3 };
+
+// Tarja colorida na 1ª coluna da tabela — mesmo código de cor do NIVEL_META,
+// só que como borda em vez de fundo (a tabela não tem mais um bloco por nível).
+const NIVEL_BORDA: Record<Nivel, string> = {
+    overdue: 'border-l-red-400 dark:border-l-red-600',
+    today: 'border-l-amber-400 dark:border-l-amber-600',
+    upcoming: 'border-l-sky-400 dark:border-l-sky-600',
+    sem_prazo: 'border-l-slate-300 dark:border-l-slate-700',
+};
 
 function nivelDaTarefa(due: string | null): { nivel: Nivel; data: Date | null } {
     if (!due) return { nivel: 'sem_prazo', data: null };
@@ -127,7 +137,7 @@ function FiltroTresEstados({ label, valor, onChange, labelSo, labelOcultar }: {
 }
 
 export default function TrelloView() {
-    const { data: tarefas, isLoading, error, refresh } = useTrelloTarefas();
+    const { data: tarefas, isLoading, isRefreshing, error, refresh } = useTrelloTarefas();
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [boardsOcultos, setBoardsOcultos] = useState<Set<string>>(() => loadSet(STORAGE_KEY_BOARDS));
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(() => loadSet(STORAGE_KEY_LISTAS));
@@ -192,28 +202,31 @@ export default function TrelloView() {
         [tarefasBase, boardsOcultos, listasOcultas],
     );
 
-    const grupos = useMemo(() => {
+    // Uma tabela só (estilo Pipedrive/Notion), ordenada por urgência e depois
+    // por prazo — em vez de um bloco vertical por nível.
+    const linhas = useMemo(() => {
         const hoje = startOfDay(new Date());
         const comNivel = tarefasFiltradas.map(t => {
             const { nivel, data } = nivelDaTarefa(t.due);
             return { tarefa: t, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
         });
-
-        return NIVEL_ORDEM.map(nivel => ({
-            nivel,
-            itens: comNivel
-                .filter(c => c.nivel === nivel)
-                .sort((a, b) => (a.daysOffset ?? 0) - (b.daysOffset ?? 0)),
-        })).filter(g => g.itens.length > 0);
+        return comNivel.sort((a, b) =>
+            NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel] || (a.daysOffset ?? 0) - (b.daysOffset ?? 0));
     }, [tarefasFiltradas]);
+
+    const contagensPorNivel = useMemo(() => {
+        const counts: Record<Nivel, number> = { overdue: 0, today: 0, upcoming: 0, sem_prazo: 0 };
+        for (const l of linhas) counts[l.nivel]++;
+        return counts;
+    }, [linhas]);
 
     const totalFiltrosAtivos = boardsOcultos.size + listasOcultas.size
         + (arquivadoFiltro !== 'ocultar' ? 1 : 0)
         + (concluidoFiltro !== 'todos' ? 1 : 0);
 
     return (
-        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto">
-            <header className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-8 max-w-6xl mx-auto w-full">
+            <header className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Trello</h1>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
@@ -241,17 +254,17 @@ export default function TrelloView() {
                     <button
                         type="button"
                         onClick={refresh}
-                        disabled={isLoading}
+                        disabled={isLoading || isRefreshing}
                         className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
                     >
-                        <span className={`material-symbols-outlined text-[18px] ${isLoading ? 'animate-spin' : ''}`}>sync</span>
-                        {isLoading ? 'Atualizando…' : 'Atualizar'}
+                        <span className={`material-symbols-outlined text-[18px] ${isLoading || isRefreshing ? 'animate-spin' : ''}`}>sync</span>
+                        {isLoading || isRefreshing ? 'Atualizando…' : 'Atualizar'}
                     </button>
                 </div>
             </header>
 
             {filtrosAbertos && (
-                <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-4">
+                <div className="mb-4 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-4">
                     <div className="flex flex-wrap gap-6">
                         <FiltroTresEstados
                             label="Arquivados"
@@ -349,80 +362,94 @@ export default function TrelloView() {
 
             {isLoading ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">Carregando cards…</div>
-            ) : grupos.length === 0 ? (
+            ) : linhas.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">
                     {totalFiltrosAtivos > 0 ? 'Nenhum card pendente com os filtros atuais.' : 'Nenhum card pendente atribuído a você.'}
                 </div>
             ) : (
-                <div className="space-y-4">
-                    {grupos.map(grupo => {
-                        const meta = NIVEL_META[grupo.nivel];
-                        return (
-                            <div key={grupo.nivel} className={`rounded-xl border p-3 ${meta.header}`}>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="material-symbols-outlined text-[18px]">{meta.icon}</span>
-                                    <span className="text-xs font-bold uppercase tracking-wider">{meta.label}</span>
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${meta.badge}`}>
-                                        {grupo.itens.length}
-                                    </span>
-                                </div>
-                                <ul className="space-y-1.5">
-                                    {grupo.itens.map(({ tarefa, daysOffset }) => (
-                                        <TarefaItem
-                                            key={tarefa.id}
-                                            tarefa={tarefa}
-                                            mostrarAtraso={grupo.nivel === 'overdue'}
-                                            daysOffset={daysOffset}
-                                        />
-                                    ))}
-                                </ul>
-                            </div>
-                        );
-                    })}
-                </div>
+                <>
+                    <div className="mb-3 flex flex-wrap gap-2 shrink-0">
+                        {NIVEL_ORDEM.filter(n => contagensPorNivel[n] > 0).map(n => {
+                            const meta = NIVEL_META[n];
+                            return (
+                                <span key={n} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${meta.badge}`}>
+                                    <span className="material-symbols-outlined text-[14px]">{meta.icon}</span>
+                                    {meta.label}: {contagensPorNivel[n]}
+                                </span>
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex-1 min-h-0 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                        <table className="w-full text-left border-collapse text-sm">
+                            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 z-10">
+                                <tr className="border-b border-slate-100 dark:border-slate-700">
+                                    <th className="px-4 py-2.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Card</th>
+                                    <th className="px-3 py-2.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:table-cell">Board</th>
+                                    <th className="px-3 py-2.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden md:table-cell">Lista</th>
+                                    <th className="px-3 py-2.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Prazo</th>
+                                    <th className="w-8"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                                {linhas.map(({ tarefa, nivel, daysOffset }) => (
+                                    <TarefaLinha key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
             )}
         </div>
     );
 }
 
-function TarefaItem({ tarefa, mostrarAtraso, daysOffset }: { tarefa: TarefaTrello; mostrarAtraso: boolean; daysOffset: number | null }) {
+function TarefaLinha({ tarefa, nivel, daysOffset }: { tarefa: TarefaTrello; nivel: Nivel; daysOffset: number | null }) {
+    const abrirCard = () => window.open(tarefa.cardUrl, '_blank', 'noopener,noreferrer');
     return (
-        <li>
-            <a
-                href={tarefa.cardUrl}
-                target="_blank"
-                rel="noreferrer"
-                className={`flex items-center justify-between gap-2 rounded-lg bg-white/70 dark:bg-slate-900/50 px-3 py-2 hover:opacity-80 transition-opacity ${tarefa.closed ? 'opacity-60' : ''}`}
-            >
-                <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold text-slate-900 dark:text-white truncate ${tarefa.dueComplete ? 'line-through opacity-60' : ''}`}>
+        <tr
+            onClick={abrirCard}
+            className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${tarefa.closed ? 'opacity-60' : ''}`}
+        >
+            <td className={`px-4 py-2.5 border-l-4 ${NIVEL_BORDA[nivel]}`}>
+                <div className="flex items-center gap-1.5 min-w-0 max-w-[260px] sm:max-w-[320px]">
+                    <span className={`truncate font-semibold text-slate-900 dark:text-white ${tarefa.dueComplete ? 'line-through opacity-60' : ''}`}>
                         {tarefa.nome}
-                    </p>
-                    <p className="text-[11px] text-slate-500 truncate">
-                        {tarefa.board} · {tarefa.lista}
-                        {tarefa.due && (
-                            <>
-                                {' · '}
-                                {format(parseISO(tarefa.due), 'dd/MM/yyyy', { locale: ptBR })}
-                                {mostrarAtraso && daysOffset != null && (
-                                    <span className="text-red-600 font-bold ml-1">({Math.abs(daysOffset)}d atraso)</span>
-                                )}
-                            </>
-                        )}
-                    </p>
+                    </span>
+                    {tarefa.closed && (
+                        <span className="material-symbols-outlined text-[15px] text-slate-400 shrink-0" title="Card arquivado no Trello">
+                            archive
+                        </span>
+                    )}
+                    {tarefa.dueComplete && (
+                        <span className="material-symbols-outlined text-[15px] text-emerald-600 shrink-0" title="Marcado como concluído no Trello">
+                            check_circle
+                        </span>
+                    )}
                 </div>
-                {tarefa.closed && (
-                    <span className="material-symbols-outlined text-[18px] text-slate-400 shrink-0" title="Card arquivado no Trello">
-                        archive
+                <div className="text-[11px] text-slate-400 truncate sm:hidden">{tarefa.board} · {tarefa.lista}</div>
+            </td>
+            <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400 hidden sm:table-cell">
+                <div className="truncate max-w-[220px]">{tarefa.board}</div>
+            </td>
+            <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400 hidden md:table-cell">
+                <div className="truncate max-w-[220px]">{tarefa.lista}</div>
+            </td>
+            <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                {tarefa.due ? (
+                    <span className={nivel === 'overdue' ? 'text-red-600 font-bold' : 'text-slate-500 dark:text-slate-400'}>
+                        {format(parseISO(tarefa.due), 'dd/MM/yyyy', { locale: ptBR })}
+                        {nivel === 'overdue' && daysOffset != null && (
+                            <span className="block text-[10px] font-normal">{Math.abs(daysOffset)}d atraso</span>
+                        )}
                     </span>
+                ) : (
+                    <span className="text-slate-300 dark:text-slate-600 text-xs italic">—</span>
                 )}
-                {tarefa.dueComplete && (
-                    <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0" title="Marcado como concluído no Trello">
-                        check_circle
-                    </span>
-                )}
-                <span className="material-symbols-outlined text-[16px] text-slate-400 shrink-0">open_in_new</span>
-            </a>
-        </li>
+            </td>
+            <td className="px-3 py-2.5">
+                <span className="material-symbols-outlined text-[16px] text-slate-400">open_in_new</span>
+            </td>
+        </tr>
     );
 }

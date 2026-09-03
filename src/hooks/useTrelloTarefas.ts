@@ -32,11 +32,15 @@ async function fetchTarefasTrello(): Promise<TarefaTrello[]> {
 export function useTrelloTarefas() {
     const [data, setData] = useState<TarefaTrello[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const carregouUmaVez = useRef(false);
 
     const refresh = useCallback(async () => {
-        setIsLoading(!carregouUmaVez.current);
+        // Depois da 1ª carga, "isLoading" fica sempre false — sem isso o botão
+        // "Atualizar" clicava mas não dava nenhum feedback visual.
+        if (carregouUmaVez.current) setIsRefreshing(true);
+        else setIsLoading(true);
         try {
             const tarefas = await fetchTarefasTrello();
             setData(tarefas);
@@ -46,6 +50,7 @@ export function useTrelloTarefas() {
         } finally {
             carregouUmaVez.current = true;
             setIsLoading(false);
+            setIsRefreshing(false);
         }
     }, []);
 
@@ -53,5 +58,5 @@ export function useTrelloTarefas() {
         refresh();
     }, [refresh]);
 
-    return { data, isLoading, error, refresh };
+    return { data, isLoading, isRefreshing, error, refresh };
 }
