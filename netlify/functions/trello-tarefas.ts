@@ -41,6 +41,7 @@ interface TrelloBoardRef {
 interface TrelloListRef {
     id: string;
     name: string;
+    closed: boolean;
 }
 
 export const handler: Handler = async (event) => {
@@ -84,26 +85,33 @@ export const handler: Handler = async (event) => {
             trelloFetch<TrelloBoardRef[]>('/members/me/boards', key!, token!, { fields: 'name' }),
             Promise.all(idsDosBoards.map(id =>
                 // filter=all: um card aberto pode estar numa lista arquivada
-                // (lista fechada sem que o card em si tenha sido arquivado).
-                trelloFetch<TrelloListRef[]>(`/boards/${id}/lists`, key!, token!, { fields: 'name', filter: 'all' }),
+                // (lista fechada sem que o card em si tenha sido arquivado) —
+                // e nesse caso o Trello já trata o card como "arquivado" pra
+                // quem tá olhando o board, mesmo com card.closed = false.
+                trelloFetch<TrelloListRef[]>(`/boards/${id}/lists`, key!, token!, { fields: 'name,closed', filter: 'all' }),
             )),
         ]);
 
         const nomeDoBoard = new Map(boards.map(b => [b.id, b.name]));
-        const nomeDaLista = new Map(listasPorBoard.flat().map(l => [l.id, l.name]));
+        const listasPorId = new Map(listasPorBoard.flat().map(l => [l.id, l]));
 
-        const tarefas = cards.map(card => ({
-            id: card.id,
-            nome: card.name,
-            due: card.due,
-            dueComplete: card.dueComplete,
-            boardId: card.idBoard,
-            board: nomeDoBoard.get(card.idBoard) ?? 'Board desconhecido',
-            listId: card.idList,
-            lista: nomeDaLista.get(card.idList) ?? 'Lista desconhecida',
-            cardUrl: card.shortUrl,
-            closed: card.closed,
-        }));
+        const tarefas = cards.map(card => {
+            const lista = listasPorId.get(card.idList);
+            return {
+                id: card.id,
+                nome: card.name,
+                due: card.due,
+                dueComplete: card.dueComplete,
+                boardId: card.idBoard,
+                board: nomeDoBoard.get(card.idBoard) ?? 'Board desconhecido',
+                listId: card.idList,
+                lista: lista?.name ?? 'Lista desconhecida',
+                cardUrl: card.shortUrl,
+                // "Arquivado" pro usuário é card fechado OU lista fechada —
+                // ver comentário acima sobre lista arquivada com card aberto.
+                closed: card.closed || (lista?.closed ?? false),
+            };
+        });
 
         return {
             statusCode: 200,
