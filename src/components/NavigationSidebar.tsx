@@ -15,35 +15,35 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
     const isExpanded = isPinned || isHovered;
     const sc = theme.sidebarClasses;
 
-    const allNavGroups: { label: string; items: { id: AppView; icon: string; label: string }[] }[] = [
-        { label: 'Jornada', items: [
+    const allNavGroups: { label?: string; items: { id: AppView; icon: string; label: string }[] }[] = [
+        { items: [
             { id: 'home', icon: 'home', label: 'Início' },
-            { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
-            { id: 'trello', icon: 'task_alt', label: 'Trello' },
+        ] },
+        { label: 'Onboarding', items: [
+            { id: 'onboarding', icon: 'pending_actions', label: 'Acompanhar Onboarding' },
+        ] },
+        { label: 'Jornada Adoção', items: [
+            { id: 'dashboard', icon: 'dashboard', label: 'Lista jornada 28D' },
+        ] },
+        { label: 'Ongoing', items: [
             ...(!isCD ? [{ id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' }] : []),
             isCD
                 ? { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }
                 : { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
             { id: 'contacts' as AppView, icon: 'contact_phone', label: 'Contatos' },
+            { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
         ] },
-        { label: 'Onboarding', items: [
-            { id: 'onboarding', icon: 'pending_actions', label: 'Acompanhar Onboarding' },
-        ] },
-        { label: 'Captação de Ações', items: !isCD ? [
+        { label: 'CS Growth', items: !isCD ? [
             { id: 'acoes_promocionais' as AppView, icon: 'local_offer', label: 'Ações Promocionais' },
             { id: 'crm' as AppView, icon: 'handshake', label: 'CRM Promoções' },
             { id: 'pedido_mensal' as AppView, icon: 'receipt_long', label: 'Pedido mensal' },
         ] : [] },
-        { label: 'Análise de Cidades', items: !isCD ? [
-            { id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' },
-        ] : [] },
-        { label: 'Prevenção de Churn', items: [
-            { id: 'churn', icon: 'trending_down', label: 'Churn' },
-        ] },
-        { label: 'Gestão & Relatórios', items: [
-            { id: 'cs_kpis', icon: 'monitoring', label: 'KPIs CS' },
-            { id: 'reports', icon: 'assessment', label: 'Relatórios' },
-            { id: 'managers', icon: 'badge', label: 'Gestores' },
+        { label: 'CS Operations', items: [
+            { id: 'trello' as AppView, icon: 'task_alt', label: 'Trello' },
+            { id: 'cs_kpis' as AppView, icon: 'monitoring', label: 'KPIs CS' },
+            { id: 'reports' as AppView, icon: 'assessment', label: 'Relatórios' },
+            ...(!isCD ? [{ id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' }] : []),
+            { id: 'managers' as AppView, icon: 'badge', label: 'Gestores' },
         ] },
         { label: 'Sistema', items: [
             { id: 'settings', icon: 'settings', label: 'Configurações' },
@@ -79,13 +79,15 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
             {/* Main Navigation */}
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 flex flex-col gap-1 px-2 scrollbar-hide">
                 {navGroups.map((group, groupIndex) => (
-                    <div key={group.label} className="flex flex-col gap-1">
+                    <div key={group.label ?? 'inicio'} className="flex flex-col gap-1">
                         {groupIndex > 0 && (
                             <div className={`mt-4 mb-1 h-px ${sc.divider} mx-2`} />
                         )}
-                        <span className={`px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-white/50 whitespace-nowrap transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
-                            {group.label}
-                        </span>
+                        {group.label && (
+                            <span className={`px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-white/50 whitespace-nowrap transition-opacity duration-300 ${isExpanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                                {group.label}
+                            </span>
+                        )}
                         {group.items.map(item => (
                             <button
                                 key={item.id}

@@ -235,7 +235,7 @@ export default function AnalystHome({ rows, onPartnerClick, onNavigate }: Analys
                         onClick={() => onNavigate('dashboard')}
                         className="self-start sm:self-auto flex items-center gap-1 text-sm font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
                     >
-                        Abrir o dashboard
+                        Abrir a Lista jornada 28D
                         <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                     </button>
                 </div>
