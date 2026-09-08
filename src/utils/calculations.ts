@@ -240,8 +240,8 @@ export const enrichPartnerData = (
     const priority_stars = calculatePriorityStars(partner, dias_desde_lancamento, total_pedidos, indice_desempenho, city_weight);
 
     const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode, partner.estab_id);
-    const state = getPartnerState(partner.estab_id || partner.estabelecimento);
-    
+    const state = getPartnerState(partner.estab_id || partner.estabelecimento, partner.lancamento);
+
     return {
         ...partner,
         ...state,

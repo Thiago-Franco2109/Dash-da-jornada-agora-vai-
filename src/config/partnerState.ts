@@ -23,6 +23,12 @@ export interface PartnerState {
         w4?: ContactDetail;
     };
     notes?: string;
+    /** Lançamento (DD/MM/AAAA) do contrato ao qual este estado pertence — ver getPartnerState. */
+    lancamento?: string;
+}
+
+function defaultPartnerState(): PartnerState {
+    return { isFinished: false, contacts: { w1: false, w2: false, w3: false, w4: false } };
 }
 
 const STORAGE_KEY = 'partner_states_v1';
@@ -36,14 +42,32 @@ export function getAllPartnerStates(): Record<string, PartnerState> {
     }
 }
 
-export function getPartnerState(estabId: string | number): PartnerState {
+/**
+ * @param currentLancamento Lançamento (DD/MM/AAAA) do contrato atual do
+ * estabelecimento, quando conhecido (ver enrichPartnerData). Se o estado
+ * salvo pertencer a um lançamento diferente — ex.: parceiro cancelou e
+ * voltou com um contrato novo — o estado antigo (isFinished/contacts/notas)
+ * é descartado e um estado novo é persistido, para não arrastar uma jornada
+ * já encerrada para o contrato novo. Estados sem `lancamento` salvo (de
+ * antes desta checagem existir) só recebem a marcação, sem reset.
+ */
+export function getPartnerState(estabId: string | number, currentLancamento?: string): PartnerState {
     const states = getAllPartnerStates();
     const id = String(estabId);
-    const state = states[id] || {
-        isFinished: false,
-        contacts: { w1: false, w2: false, w3: false, w4: false }
-    };
-    
+    const stored = states[id];
+    const isNewContract = !!currentLancamento && !!stored?.lancamento && stored.lancamento !== currentLancamento;
+
+    const state: PartnerState = isNewContract
+        ? { ...defaultPartnerState(), lancamento: currentLancamento }
+        : (stored || defaultPartnerState());
+
+    if (currentLancamento && state.lancamento !== currentLancamento) {
+        state.lancamento = currentLancamento;
+    }
+    if (isNewContract || (currentLancamento && !stored?.lancamento)) {
+        savePartnerState(id, state);
+    }
+
     // Initialize or migrate contactDetails if not present
     if (!state.contactDetails) {
         state.contactDetails = {

@@ -96,7 +96,7 @@ export function crmPartnerToEnrichedRow(
         city_weight: getCityWeight(partner.cidade),
         priority_stars: risco,
         risco_churn: risco,
-        isFinished: true,
+        isFinished: state.isFinished,
         contacts: state.contacts,
         contactDetails: state.contactDetails,
         notes: state.notes,

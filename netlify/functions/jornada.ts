@@ -94,11 +94,26 @@ export const handler: Handler = async (event) => {
         connection = await getConnection();
 
         // ── quem entra na lista ───────────────────────────────────────────
-        // MIN, não MAX: o 1º contrato de cada estabelecimento é o verdadeiro
-        // lançamento. Um parceiro com renovação anual tem várias linhas em
-        // venda_estabelecimento; pegar a mais recente faz parceiro de anos
-        // atrás aparecer como "lançado hoje" — e nunca sair da tela, porque a
-        // cada renovação o "lançamento" se atualiza de novo.
+        // MIN, não MAX: pegar a linha de venda mais recente fazia parceiro de
+        // anos atrás aparecer como "lançado hoje" toda vez que um contrato
+        // novo era criado — e nunca sair da tela, porque a cada evento o
+        // "lançamento" se atualizava de novo (era esse o bug original que o
+        // MIN corrigiu; o estab 21817 foi o caso usado pra validar na época).
+        //
+        // MAS: MIN sobre TODO o histórico ignora cancelamento — um parceiro
+        // que cancelou e voltou com um contrato NOVO ficava ancorado para
+        // sempre na data do contrato antigo, que nunca cai dentro da janela
+        // de dias, e o retorno nunca aparecia na Jornada (conferido: mesmo o
+        // estab 21817 citado acima era, na verdade, um retorno de verdade —
+        // ~26 meses sem nenhum pedido e cardápio inteiro refeito do zero no
+        // relançamento — não uma renovação contínua como a análise original
+        // assumiu). Por isso o MIN abaixo é calculado só sobre contratos com
+        // status "vivo" (venda.status NOT IN (2,3,5) = cancelado/não
+        // renovado/desistência, mesmo enum de STATUS_POR_DELIVERY); só cai
+        // para o MIN de todo o histórico se TODOS os contratos do
+        // estabelecimento já estiverem cancelados (parceiro que lançou e
+        // cancelou sem nunca voltar — esse ainda precisa aparecer, com
+        // status "cancelado").
         //
         // delivery IN (1,2,4,5) nos dois modos: só quem JÁ lançou de verdade.
         // Pendente (delivery=0) fica de fora — vai para a aba de onboarding.
@@ -106,7 +121,12 @@ export const handler: Handler = async (event) => {
             `SELECT estab, primeiro_lancamento
              FROM (
                  SELECT ve.estabelecimento_id AS estab,
-                        DATE_FORMAT(MIN(v.data_lancamento), '%Y-%m-%d') AS primeiro_lancamento
+                        DATE_FORMAT(
+                            COALESCE(
+                                MIN(CASE WHEN v.status NOT IN (2, 3, 5) THEN v.data_lancamento END),
+                                MIN(v.data_lancamento)
+                            ),
+                        '%Y-%m-%d') AS primeiro_lancamento
                  FROM venda v
                  JOIN venda_estabelecimento ve ON ve.venda_id = v.id
                  JOIN estabelecimento e ON e.id = ve.estabelecimento_id

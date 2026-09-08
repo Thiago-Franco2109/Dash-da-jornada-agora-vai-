@@ -437,7 +437,7 @@ function App() {
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc, mappingVersion],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
@@ -628,14 +628,18 @@ function App() {
       setSelectedRow(inDesempenho ?? row);
       setCurrentView('cd_desempenho');
     } else {
-      const inIndicador = indicadorEnrichedData.find(matchKey);
-      if (inIndicador) {
-        setSelectedRow(inIndicador);
-        setCurrentView('todos_parceiros');
-      } else {
-        const inDashboard = enrichedData.find(matchKey);
-        setSelectedRow(inDashboard ?? row);
+      // Prioriza o pool real da Jornada: um estabelecimento recém-lançado
+      // também aparece no pool CRM genérico (sem filtro de data), então
+      // checar CRM primeiro sempre "ganhava" e mandava o usuário para a
+      // tela genérica em vez da tela de onboarding de verdade.
+      const inDashboard = enrichedData.find(matchKey);
+      if (inDashboard) {
+        setSelectedRow(inDashboard);
         setCurrentView('dashboard');
+      } else {
+        const inIndicador = indicadorEnrichedData.find(matchKey);
+        setSelectedRow(inIndicador ?? row);
+        setCurrentView('todos_parceiros');
       }
     }
     setSearchQuery('');
