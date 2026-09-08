@@ -7,6 +7,24 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const FN_URL = '/.netlify/functions/trello-tarefas';
 
+export interface LabelTrello {
+    id: string;
+    nome: string;
+    cor: string | null;
+}
+
+export interface MembroTrello {
+    id: string;
+    nome: string;
+    iniciais: string;
+    avatarUrl: string | null;
+}
+
+export interface ChecklistTrello {
+    total: number;
+    feitos: number;
+}
+
 export interface TarefaTrello {
     id: string;
     nome: string;
@@ -16,8 +34,15 @@ export interface TarefaTrello {
     board: string;
     listId: string;
     lista: string;
+    listaOrdem: number;
     cardUrl: string;
     closed: boolean;
+    labels: LabelTrello[];
+    membros: MembroTrello[];
+    checklist: ChecklistTrello | null;
+    comentarios: number;
+    anexos: number;
+    temDescricao: boolean;
 }
 
 async function fetchTarefasTrello(): Promise<TarefaTrello[]> {

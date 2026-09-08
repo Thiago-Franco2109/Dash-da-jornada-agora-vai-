@@ -11,16 +11,39 @@ import { trelloFetch } from './_shared/trello';
  * Esse endpoint NÃO aceita `board=true`/`list=true` pra embutir nome do board
  * e da lista (testado contra a API real — o card volta sem essas chaves,
  * apesar de documentação de outros endpoints do Trello sugerir o contrário).
- * Pra não fazer 1 request por card, resolvemos os nomes com só 2 chamadas
- * extras: nome de todos os meus boards de uma vez (`/members/me/boards`) e as
- * listas de cada board DISTINTO que apareceu entre os cards (paralelo) — o
- * fan-out é por board, não por card.
+ * Mas `labels`, `idMembers` e `badges` (testado direto contra a API) vêm
+ * certinho nesse endpoint — não precisou de gambiarra pra esses.
+ *
+ * Pra não fazer 1 request por card, resolvemos nome do board/lista e os
+ * membros com só 2 chamadas extras: nome de todos os meus boards de uma vez
+ * (`/members/me/boards`) e, por board DISTINTO que apareceu entre os cards
+ * (paralelo, fan-out por board — não por card), UMA chamada combinada
+ * `/boards/{id}?lists=all&members=all` que já traz lista E membros do board
+ * juntos (testado: `members` é enum open/closed/all/none, não boolean).
+ *
+ * `listaOrdem` é a posição real da lista no board (ordem que a Trello API
+ * devolve, que já é a ordem visual das colunas) — usada pra ordenar as
+ * colunas do "Quadro" igual ao board de verdade, em vez de alfabética.
  *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
 
 const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'private, max-age=30' };
 const erroHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+
+interface TrelloLabel {
+    id: string;
+    name: string;
+    color: string | null;
+}
+
+interface TrelloBadges {
+    checkItems: number;
+    checkItemsChecked: number;
+    comments: number;
+    attachments: number;
+    description: boolean;
+}
 
 interface TrelloMemberCard {
     id: string;
@@ -31,6 +54,9 @@ interface TrelloMemberCard {
     idList: string;
     shortUrl: string;
     closed: boolean;
+    labels: TrelloLabel[];
+    idMembers: string[];
+    badges: TrelloBadges;
 }
 
 interface TrelloBoardRef {
@@ -38,10 +64,17 @@ interface TrelloBoardRef {
     name: string;
 }
 
-interface TrelloListRef {
+interface TrelloMemberRef {
     id: string;
-    name: string;
-    closed: boolean;
+    fullName: string;
+    initials: string;
+    avatarUrl: string | null;
+}
+
+interface TrelloBoardComListasEMembros {
+    id: string;
+    lists: { id: string; name: string; closed: boolean }[];
+    members: TrelloMemberRef[];
 }
 
 export const handler: Handler = async (event) => {
@@ -75,25 +108,47 @@ export const handler: Handler = async (event) => {
         // filter=all: traz também cards arquivados — o front decide se mostra,
         // por padrão eles ficam ocultos (ver TrelloView).
         const cards = await trelloFetch<TrelloMemberCard[]>('/members/me/cards', key!, token!, {
-            fields: 'name,due,dueComplete,idBoard,idList,shortUrl,closed',
+            fields: 'name,due,dueComplete,idBoard,idList,shortUrl,closed,labels,idMembers,badges',
             filter: 'all',
         });
 
         const idsDosBoards = [...new Set(cards.map(c => c.idBoard))];
 
-        const [boards, listasPorBoard] = await Promise.all([
+        const [boards, boardsComListasEMembros] = await Promise.all([
             trelloFetch<TrelloBoardRef[]>('/members/me/boards', key!, token!, { fields: 'name' }),
             Promise.all(idsDosBoards.map(id =>
-                // filter=all: um card aberto pode estar numa lista arquivada
-                // (lista fechada sem que o card em si tenha sido arquivado) —
-                // e nesse caso o Trello já trata o card como "arquivado" pra
-                // quem tá olhando o board, mesmo com card.closed = false.
-                trelloFetch<TrelloListRef[]>(`/boards/${id}/lists`, key!, token!, { fields: 'name,closed', filter: 'all' }),
+                // Uma chamada só por board: lista + membros juntos.
+                // lists=all (não só "open"): um card aberto pode estar numa lista
+                // arquivada (lista fechada sem que o card em si tenha sido
+                // arquivado) — e nesse caso o Trello já trata o card como
+                // "arquivado" pra quem tá olhando o board, mesmo com
+                // card.closed = false.
+                trelloFetch<TrelloBoardComListasEMembros>(`/boards/${id}`, key!, token!, {
+                    fields: 'id',
+                    lists: 'all',
+                    list_fields: 'name,closed',
+                    members: 'all',
+                    member_fields: 'fullName,initials,avatarUrl',
+                }),
             )),
         ]);
 
         const nomeDoBoard = new Map(boards.map(b => [b.id, b.name]));
-        const listasPorId = new Map(listasPorBoard.flat().map(l => [l.id, l]));
+
+        // listaOrdem preserva a ordem real das colunas no board (a API já
+        // devolve as listas em ordem de posição) — usada pra ordenar as
+        // colunas do "Quadro" igual ao board de verdade, em vez de alfabética.
+        const listasPorId = new Map<string, { name: string; closed: boolean; ordem: number }>();
+        const membrosPorId = new Map<string, TrelloMemberRef>();
+        let ordemGlobal = 0;
+        for (const b of boardsComListasEMembros) {
+            for (const lista of b.lists) {
+                listasPorId.set(lista.id, { name: lista.name, closed: lista.closed, ordem: ordemGlobal++ });
+            }
+            for (const membro of b.members) {
+                membrosPorId.set(membro.id, membro);
+            }
+        }
 
         const tarefas = cards.map(card => {
             const lista = listasPorId.get(card.idList);
@@ -106,10 +161,22 @@ export const handler: Handler = async (event) => {
                 board: nomeDoBoard.get(card.idBoard) ?? 'Board desconhecido',
                 listId: card.idList,
                 lista: lista?.name ?? 'Lista desconhecida',
+                listaOrdem: lista?.ordem ?? 0,
                 cardUrl: card.shortUrl,
                 // "Arquivado" pro usuário é card fechado OU lista fechada —
                 // ver comentário acima sobre lista arquivada com card aberto.
                 closed: card.closed || (lista?.closed ?? false),
+                labels: card.labels.map(l => ({ id: l.id, nome: l.name, cor: l.color })),
+                membros: card.idMembers
+                    .map(id => membrosPorId.get(id))
+                    .filter((m): m is TrelloMemberRef => m != null)
+                    .map(m => ({ id: m.id, nome: m.fullName, iniciais: m.initials, avatarUrl: m.avatarUrl })),
+                checklist: card.badges.checkItems > 0
+                    ? { total: card.badges.checkItems, feitos: card.badges.checkItemsChecked }
+                    : null,
+                comentarios: card.badges.comments,
+                anexos: card.badges.attachments,
+                temDescricao: card.badges.description,
             };
         });
 
