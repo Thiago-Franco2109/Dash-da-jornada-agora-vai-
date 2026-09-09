@@ -13,12 +13,14 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import OnboardingView from './components/OnboardingView';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
+import { useOnboardingTrello } from './hooks/useOnboardingTrello';
 import './index.css';
 
 export function PreviewOnboarding() {
     const fonte = new URLSearchParams(window.location.search).get('fonte');
     const produto = fonte === 'cd' ? 'cd' : undefined;
     const { pendentes, isLoading, isRefreshing, error, lastSyncTime, refreshData } = useOnboardingPendente({ produto });
+    const { etapasPorEstabId, cards, listas, refreshTrello } = useOnboardingTrello();
 
     return (
         <div className="h-screen flex bg-white dark:bg-slate-900">
@@ -28,8 +30,11 @@ export function PreviewOnboarding() {
                 isRefreshing={isRefreshing}
                 error={error}
                 lastSyncTime={lastSyncTime}
-                onRefresh={refreshData}
+                onRefresh={() => { refreshData(); refreshTrello(); }}
                 mode={produto === 'cd' ? 'cardapio_digital' : 'marketplace'}
+                etapasTrello={etapasPorEstabId}
+                cardsTrello={cards}
+                listasTrello={listas}
             />
         </div>
     );

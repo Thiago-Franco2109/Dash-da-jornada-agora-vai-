@@ -1,6 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { checkOrigin } from './_shared/auth';
-import { trelloFetch } from './_shared/trello';
+import { trelloFetch, mapLabels, mapMembros, mapBadges, type TrelloLabelBruto, type TrelloMemberBruto, type TrelloBadgesBruto } from './_shared/trello';
 
 /**
  * Todos os cards do Trello atribuídos ao dono do token (TRELLO_TOKEN), em
@@ -31,20 +31,6 @@ import { trelloFetch } from './_shared/trello';
 const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'private, max-age=30' };
 const erroHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 
-interface TrelloLabel {
-    id: string;
-    name: string;
-    color: string | null;
-}
-
-interface TrelloBadges {
-    checkItems: number;
-    checkItemsChecked: number;
-    comments: number;
-    attachments: number;
-    description: boolean;
-}
-
 interface TrelloMemberCard {
     id: string;
     name: string;
@@ -54,9 +40,9 @@ interface TrelloMemberCard {
     idList: string;
     shortUrl: string;
     closed: boolean;
-    labels: TrelloLabel[];
+    labels: TrelloLabelBruto[];
     idMembers: string[];
-    badges: TrelloBadges;
+    badges: TrelloBadgesBruto;
 }
 
 interface TrelloBoardRef {
@@ -64,17 +50,10 @@ interface TrelloBoardRef {
     name: string;
 }
 
-interface TrelloMemberRef {
-    id: string;
-    fullName: string;
-    initials: string;
-    avatarUrl: string | null;
-}
-
 interface TrelloBoardComListasEMembros {
     id: string;
     lists: { id: string; name: string; closed: boolean }[];
-    members: TrelloMemberRef[];
+    members: TrelloMemberBruto[];
 }
 
 export const handler: Handler = async (event) => {
@@ -139,7 +118,7 @@ export const handler: Handler = async (event) => {
         // devolve as listas em ordem de posição) — usada pra ordenar as
         // colunas do "Quadro" igual ao board de verdade, em vez de alfabética.
         const listasPorId = new Map<string, { name: string; closed: boolean; ordem: number }>();
-        const membrosPorId = new Map<string, TrelloMemberRef>();
+        const membrosPorId = new Map<string, TrelloMemberBruto>();
         let ordemGlobal = 0;
         for (const b of boardsComListasEMembros) {
             for (const lista of b.lists) {
@@ -166,17 +145,9 @@ export const handler: Handler = async (event) => {
                 // "Arquivado" pro usuário é card fechado OU lista fechada —
                 // ver comentário acima sobre lista arquivada com card aberto.
                 closed: card.closed || (lista?.closed ?? false),
-                labels: card.labels.map(l => ({ id: l.id, nome: l.name, cor: l.color })),
-                membros: card.idMembers
-                    .map(id => membrosPorId.get(id))
-                    .filter((m): m is TrelloMemberRef => m != null)
-                    .map(m => ({ id: m.id, nome: m.fullName, iniciais: m.initials, avatarUrl: m.avatarUrl })),
-                checklist: card.badges.checkItems > 0
-                    ? { total: card.badges.checkItems, feitos: card.badges.checkItemsChecked }
-                    : null,
-                comentarios: card.badges.comments,
-                anexos: card.badges.attachments,
-                temDescricao: card.badges.description,
+                labels: mapLabels(card.labels),
+                membros: mapMembros(card.idMembers, membrosPorId),
+                ...mapBadges(card.badges),
             };
         });
 

@@ -1,86 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { differenceInCalendarDays, format, isPast, isToday, parseISO, startOfDay } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
-import { useTrelloTarefas, type TarefaTrello, type LabelTrello, type MembroTrello } from '../hooks/useTrelloTarefas';
+import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
 import { useTrelloAtividadeHoje, type AtividadeTrelloHoje, type MovimentacaoTrello } from '../hooks/useTrelloAtividadeHoje';
-
-// Paleta de cores de label do Trello (aproximação visual dos tokens atuais
-// do produto — não crítico ser pixel-perfect, só "parecido").
-const TRELLO_LABEL_COLORS: Record<string, string> = {
-    green: '#4BCE97', green_dark: '#1F845A', green_light: '#BAF3DB',
-    yellow: '#F5CD47', yellow_dark: '#946F00', yellow_light: '#F8E6A0',
-    orange: '#FEA362', orange_dark: '#C25100', orange_light: '#FFDCC7',
-    red: '#F87168', red_dark: '#C9372C', red_light: '#FFD5D2',
-    purple: '#9F8FEF', purple_dark: '#6E5DC6', purple_light: '#DFD8FD',
-    blue: '#579DFF', blue_dark: '#0C66E4', blue_light: '#CCE0FF',
-    sky: '#6CC3E0', sky_dark: '#227D9B', sky_light: '#C6EDFB',
-    lime: '#94C748', lime_dark: '#4C6B1F', lime_light: '#D3F1A7',
-    pink: '#E774BB', pink_dark: '#AE4787', pink_light: '#FDD0EC',
-    black: '#8590A2', black_dark: '#626F86', black_light: '#DCDFE4',
-};
-
-function corDoLabel(cor: string | null): string {
-    return (cor && TRELLO_LABEL_COLORS[cor]) || '#94A3B8';
-}
-
-/** Cor de texto legível sobre os tons "_light" (claros) — os demais já são escuros o bastante pra texto branco. */
-function corDoTextoDoLabel(cor: string | null): string {
-    return cor?.endsWith('_light') ? '#1F2937' : '#FFFFFF';
-}
-
-type Nivel = 'overdue' | 'today' | 'upcoming' | 'sem_prazo';
-
-const NIVEL_META: Record<Nivel, { label: string; icon: string; header: string; badge: string }> = {
-    overdue: {
-        label: 'Atrasados',
-        icon: 'error',
-        header: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50 text-red-800 dark:text-red-300',
-        badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-    },
-    today: {
-        label: 'Hoje',
-        icon: 'today',
-        header: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200',
-        badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-    },
-    upcoming: {
-        label: 'Próximos dias',
-        icon: 'schedule',
-        header: 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-900/50 text-sky-900 dark:text-sky-200',
-        badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-    },
-    sem_prazo: {
-        label: 'Sem prazo',
-        icon: 'inbox',
-        header: 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300',
-        badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    },
-};
-
-const NIVEL_ORDEM: Nivel[] = ['overdue', 'today', 'upcoming', 'sem_prazo'];
-const NIVEL_INDICE: Record<Nivel, number> = { overdue: 0, today: 1, upcoming: 2, sem_prazo: 3 };
-
-// Tarja colorida na 1ª coluna da tabela — mesmo código de cor do NIVEL_META,
-// só que como borda em vez de fundo (a tabela não tem mais um bloco por nível).
-const NIVEL_BORDA: Record<Nivel, string> = {
-    overdue: 'border-l-red-400 dark:border-l-red-600',
-    today: 'border-l-amber-400 dark:border-l-amber-600',
-    upcoming: 'border-l-sky-400 dark:border-l-sky-600',
-    sem_prazo: 'border-l-slate-300 dark:border-l-slate-700',
-};
-
-function nivelDaTarefa(due: string | null): { nivel: Nivel; data: Date | null } {
-    if (!due) return { nivel: 'sem_prazo', data: null };
-    let data: Date;
-    try {
-        data = startOfDay(parseISO(due));
-    } catch {
-        return { nivel: 'sem_prazo', data: null };
-    }
-    if (isToday(data)) return { nivel: 'today', data };
-    if (isPast(data)) return { nivel: 'overdue', data };
-    return { nivel: 'upcoming', data };
-}
+import { CardLabels, CardMetaBadges, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { NIVEL_META, NIVEL_ORDEM, NIVEL_INDICE, NIVEL_BORDA, nivelDaTarefa, type Nivel } from '../utils/trelloNivel';
 
 const listaKey = (board: string, lista: string) => `${board}::${lista}`;
 
@@ -271,6 +195,23 @@ export default function TrelloView() {
     const totalFiltrosAtivos = boardsOcultos.size + listasOcultas.size
         + (arquivadoFiltro !== 'ocultar' ? 1 : 0)
         + (concluidoFiltro !== 'todos' ? 1 : 0);
+
+    // Colunas do Quadro: uma por lista (board+lista), na ordem de `listas`
+    // (já ordenada por posição real — ver useMemo acima).
+    const colunasQuadro: ColunaQuadro<TarefaTrello>[] = useMemo(() => {
+        const porColuna = new Map<string, typeof linhas>();
+        for (const linha of linhas) {
+            const key = listaKey(linha.tarefa.board, linha.tarefa.lista);
+            const atual = porColuna.get(key);
+            if (atual) atual.push(linha); else porColuna.set(key, [linha]);
+        }
+        return listas.map(l => ({
+            key: listaKey(l.board, l.lista),
+            titulo: l.lista,
+            subtitulo: l.board,
+            itens: porColuna.get(listaKey(l.board, l.lista)) ?? [],
+        }));
+    }, [linhas, listas]);
 
     return (
         <div className={`flex-1 min-h-0 flex flex-col p-4 md:p-8 mx-auto w-full ${modo === 'quadro' ? 'max-w-full' : 'max-w-6xl'}`}>
@@ -477,7 +418,7 @@ export default function TrelloView() {
                             </table>
                         </div>
                     ) : (
-                        <QuadroBoard linhas={linhas} listas={listas} />
+                        <QuadroBoard colunas={colunasQuadro} itemVazioLabel="Nenhum card seu aqui" />
                     )}
                 </>
             )}
@@ -649,172 +590,5 @@ function TarefaLinha({ tarefa, nivel, daysOffset }: { tarefa: TarefaTrello; nive
                 <span className="material-symbols-outlined text-[16px] text-slate-400">open_in_new</span>
             </td>
         </tr>
-    );
-}
-
-function CardLabels({ labels, compact = false }: { labels: LabelTrello[]; compact?: boolean }) {
-    return (
-        <div className={`flex flex-wrap gap-1 ${compact ? 'mb-1' : 'mb-1.5'}`}>
-            {labels.map(l => (
-                <span
-                    key={l.id}
-                    className={`inline-flex items-center rounded font-bold ${compact ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]'}`}
-                    style={{ backgroundColor: corDoLabel(l.cor), color: corDoTextoDoLabel(l.cor) }}
-                    title={l.nome}
-                >
-                    {l.nome}
-                </span>
-            ))}
-        </div>
-    );
-}
-
-function MemberAvatars({ membros }: { membros: MembroTrello[] }) {
-    if (membros.length === 0) return null;
-    const visiveis = membros.slice(0, 3);
-    const resto = membros.length - visiveis.length;
-    return (
-        <div className="flex items-center -space-x-1.5 shrink-0">
-            {visiveis.map(m => (
-                m.avatarUrl ? (
-                    <img
-                        key={m.id}
-                        src={`${m.avatarUrl}/30.png`}
-                        alt={m.nome}
-                        title={m.nome}
-                        className="w-5 h-5 rounded-full ring-2 ring-white dark:ring-slate-900 object-cover"
-                    />
-                ) : (
-                    <span
-                        key={m.id}
-                        title={m.nome}
-                        className="w-5 h-5 rounded-full ring-2 ring-white dark:ring-slate-900 bg-slate-400 text-white text-[9px] font-bold flex items-center justify-center"
-                    >
-                        {m.iniciais}
-                    </span>
-                )
-            ))}
-            {resto > 0 && (
-                <span className="w-5 h-5 rounded-full ring-2 ring-white dark:ring-slate-900 bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-[9px] font-bold flex items-center justify-center">
-                    +{resto}
-                </span>
-            )}
-        </div>
-    );
-}
-
-/** Descrição / checklist / comentários / anexos / avatares — os "badges" do card, igual ao Trello real. */
-function CardMetaBadges({ tarefa, className = '' }: { tarefa: TarefaTrello; className?: string }) {
-    const nada = !tarefa.temDescricao && !tarefa.checklist && tarefa.comentarios === 0 && tarefa.anexos === 0 && tarefa.membros.length === 0;
-    if (nada) return null;
-    return (
-        <div className={`flex items-center flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500 ${className}`}>
-            {tarefa.temDescricao && (
-                <span className="material-symbols-outlined text-[14px]" title="Tem descrição">subject</span>
-            )}
-            {tarefa.checklist && (
-                <span
-                    className={`inline-flex items-center gap-0.5 ${tarefa.checklist.feitos === tarefa.checklist.total ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
-                    title="Checklist"
-                >
-                    <span className="material-symbols-outlined text-[14px]">check_box</span>
-                    {tarefa.checklist.feitos}/{tarefa.checklist.total}
-                </span>
-            )}
-            {tarefa.comentarios > 0 && (
-                <span className="inline-flex items-center gap-0.5" title="Comentários">
-                    <span className="material-symbols-outlined text-[14px]">chat_bubble</span>
-                    {tarefa.comentarios}
-                </span>
-            )}
-            {tarefa.anexos > 0 && (
-                <span className="inline-flex items-center gap-0.5" title="Anexos">
-                    <span className="material-symbols-outlined text-[14px]">attach_file</span>
-                    {tarefa.anexos}
-                </span>
-            )}
-            {tarefa.membros.length > 0 && <MemberAvatars membros={tarefa.membros} />}
-        </div>
-    );
-}
-
-type LinhaTarefa = { tarefa: TarefaTrello; nivel: Nivel; daysOffset: number | null };
-
-/** Réplica do quadro do Trello: uma coluna por lista (board+lista), na mesma ordem visual do board real. */
-function QuadroBoard({ linhas, listas }: {
-    linhas: LinhaTarefa[];
-    listas: { board: string; lista: string; count: number; ordem: number }[];
-}) {
-    const porColuna = useMemo(() => {
-        const map = new Map<string, LinhaTarefa[]>();
-        for (const linha of linhas) {
-            const key = listaKey(linha.tarefa.board, linha.tarefa.lista);
-            const atual = map.get(key);
-            if (atual) atual.push(linha); else map.set(key, [linha]);
-        }
-        return map;
-    }, [linhas]);
-
-    return (
-        <div className="flex-1 min-h-0 overflow-auto rounded-2xl">
-            <div className="flex items-start gap-3 h-full pb-2">
-                {listas.map(l => {
-                    const key = listaKey(l.board, l.lista);
-                    const itens = porColuna.get(key) ?? [];
-                    return (
-                        <div key={key} className="w-72 shrink-0 flex flex-col rounded-xl bg-slate-100 dark:bg-slate-800/60 max-h-full">
-                            <div className="px-3 py-2.5 shrink-0">
-                                <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 truncate">{l.board}</p>
-                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate" title={l.lista}>
-                                    {l.lista} <span className="font-normal text-slate-400">({itens.length})</span>
-                                </p>
-                            </div>
-                            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-2">
-                                {itens.length === 0 ? (
-                                    <p className="px-1 py-2 text-xs text-slate-400 italic">Nenhum card seu aqui</p>
-                                ) : (
-                                    itens.map(({ tarefa, nivel, daysOffset }) => (
-                                        <QuadroCard key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} />
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-function QuadroCard({ tarefa, nivel, daysOffset }: { tarefa: TarefaTrello; nivel: Nivel; daysOffset: number | null }) {
-    const abrirCard = () => window.open(tarefa.cardUrl, '_blank', 'noopener,noreferrer');
-    return (
-        <div
-            onClick={abrirCard}
-            className={`cursor-pointer rounded-lg bg-white dark:bg-slate-900 shadow-sm hover:shadow-md ring-1 ring-slate-200 dark:ring-slate-700 px-3 py-2.5 transition-shadow ${tarefa.closed ? 'opacity-60' : ''}`}
-        >
-            {tarefa.labels.length > 0 && <CardLabels labels={tarefa.labels} />}
-            <p className={`text-sm font-semibold text-slate-800 dark:text-slate-100 ${tarefa.dueComplete ? 'line-through opacity-60' : ''}`}>
-                {tarefa.nome}
-            </p>
-            {(tarefa.due || tarefa.closed || tarefa.dueComplete) && (
-                <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
-                    {tarefa.due && (
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${NIVEL_META[nivel].badge}`}>
-                            <span className="material-symbols-outlined text-[12px]">schedule</span>
-                            {format(parseISO(tarefa.due), 'dd/MM', { locale: ptBR })}
-                            {nivel === 'overdue' && daysOffset != null && ` · ${Math.abs(daysOffset)}d atraso`}
-                        </span>
-                    )}
-                    {tarefa.closed && (
-                        <span className="material-symbols-outlined text-[14px] text-slate-400" title="Card arquivado no Trello">archive</span>
-                    )}
-                    {tarefa.dueComplete && (
-                        <span className="material-symbols-outlined text-[14px] text-emerald-600" title="Marcado como concluído no Trello">check_circle</span>
-                    )}
-                </div>
-            )}
-            <CardMetaBadges tarefa={tarefa} className="mt-2 justify-between" />
-        </div>
     );
 }

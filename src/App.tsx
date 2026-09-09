@@ -65,7 +65,7 @@ import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
-import { buildNoCityIndexMap } from './config/managerMapping';
+import { buildNoCityIndexMap, getCitiesForManager } from './config/managerMapping';
 import { CACHE_KEYS } from './utils/dataSync';
 import { type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
@@ -78,7 +78,7 @@ import PartnerSearchPalette from './components/PartnerSearchPalette';
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
-  const { managerFilter, setManagerFilter } = useManagerSession();
+  const { managerFilter, setManagerFilter, profile } = useManagerSession();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
@@ -243,7 +243,12 @@ function App() {
     refreshData: refreshOnboarding,
   } = useOnboardingPendente({ enabled: onboardingTabActive, produto: isCD ? 'cd' : undefined });
 
-  const { etapasPorEstabId: onboardingEtapasTrello, refreshTrello: refreshOnboardingTrello } = useOnboardingTrello({
+  const {
+    etapasPorEstabId: onboardingEtapasTrello,
+    cards: onboardingCardsTrello,
+    listas: onboardingListasTrello,
+    refreshTrello: refreshOnboardingTrello,
+  } = useOnboardingTrello({
     enabled: onboardingTabActive,
   });
 
@@ -471,7 +476,14 @@ function App() {
   }, [desempenhoRawRows, mappingVersion, mode, isCD]);
 
   // Extract unique cities and managers
-  const uniqueCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
+  //
+  // O filtro de cidade só mostra a carteira de quem está logado: Thiago e
+  // Laís veem só as próprias cidades, Ulysses (CEO, sem carteira própria) vê
+  // todas.
+  const allCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
+  const uniqueCities = (profile === 'THIAGO' || profile === 'LAÍS')
+    ? allCities.filter(city => getCitiesForManager(profile, mode).includes(city))
+    : allCities;
   const uniqueManagers = Array.from(new Set(enrichedData.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
   /**
@@ -805,6 +817,8 @@ function App() {
             managerFilter={managerFilter}
             mode={mode}
             etapasTrello={onboardingEtapasTrello}
+            cardsTrello={onboardingCardsTrello}
+            listasTrello={onboardingListasTrello}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (

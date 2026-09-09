@@ -17,3 +17,51 @@ export async function trelloFetch<T>(
     }
     return res.json();
 }
+
+/**
+ * Mapeamento de campos brutos da API do Trello pro formato que o front
+ * consome (ver src/types/trello.ts) — compartilhado entre trello-tarefas.ts
+ * e onboarding-trello.ts, que buscam cards enriquecidos da mesma forma.
+ */
+export interface TrelloLabelBruto {
+    id: string;
+    name: string;
+    color: string | null;
+}
+
+export interface TrelloMemberBruto {
+    id: string;
+    fullName: string;
+    initials: string;
+    avatarUrl: string | null;
+}
+
+export interface TrelloBadgesBruto {
+    checkItems: number;
+    checkItemsChecked: number;
+    comments: number;
+    attachments: number;
+    description: boolean;
+}
+
+export function mapLabels(labels: TrelloLabelBruto[]) {
+    return labels.map(l => ({ id: l.id, nome: l.name, cor: l.color }));
+}
+
+export function mapMembros(idMembers: string[], membrosPorId: Map<string, TrelloMemberBruto>) {
+    return idMembers
+        .map(id => membrosPorId.get(id))
+        .filter((m): m is TrelloMemberBruto => m != null)
+        .map(m => ({ id: m.id, nome: m.fullName, iniciais: m.initials, avatarUrl: m.avatarUrl }));
+}
+
+export function mapBadges(badges: TrelloBadgesBruto) {
+    return {
+        checklist: badges.checkItems > 0
+            ? { total: badges.checkItems, feitos: badges.checkItemsChecked }
+            : null,
+        comentarios: badges.comments,
+        anexos: badges.attachments,
+        temDescricao: badges.description,
+    };
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { CartaoTrelloVisual } from '../types/trello';
 
 /**
  * Cards do Trello atribuídos a mim (dono do token), em todos os boards —
@@ -7,42 +8,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const FN_URL = '/.netlify/functions/trello-tarefas';
 
-export interface LabelTrello {
-    id: string;
-    nome: string;
-    cor: string | null;
-}
+export type { LabelTrello, MembroTrello, ChecklistTrello } from '../types/trello';
 
-export interface MembroTrello {
-    id: string;
-    nome: string;
-    iniciais: string;
-    avatarUrl: string | null;
-}
-
-export interface ChecklistTrello {
-    total: number;
-    feitos: number;
-}
-
-export interface TarefaTrello {
-    id: string;
-    nome: string;
-    due: string | null;
-    dueComplete: boolean;
+export interface TarefaTrello extends CartaoTrelloVisual {
     boardId: string;
     board: string;
     listId: string;
     lista: string;
     listaOrdem: number;
-    cardUrl: string;
-    closed: boolean;
-    labels: LabelTrello[];
-    membros: MembroTrello[];
-    checklist: ChecklistTrello | null;
-    comentarios: number;
-    anexos: number;
-    temDescricao: boolean;
 }
 
 async function fetchTarefasTrello(): Promise<TarefaTrello[]> {

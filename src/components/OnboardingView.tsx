@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { cityBelongsToManager, type Manager, type ProductModeKey } from '../config/managerMapping';
 import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
-import type { EtapaTrello } from '../hooks/useOnboardingTrello';
+import type { EtapaTrello, CardTrelloOnboarding, ListaTrelloOnboarding } from '../hooks/useOnboardingTrello';
+import { QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { nivelDaTarefa } from '../utils/trelloNivel';
 
 interface OnboardingViewProps {
     pendentes: ParceiroPendente[];
@@ -17,6 +19,26 @@ interface OnboardingViewProps {
     mode?: ProductModeKey;
     /** Etapa atual no board do Trello, casada por estabId — ver useOnboardingTrello. */
     etapasTrello?: Map<string, EtapaTrello>;
+    /** Todos os cards + listas do board de onboarding — alimenta o modo "Quadro". */
+    cardsTrello?: CardTrelloOnboarding[];
+    listasTrello?: ListaTrelloOnboarding[];
+}
+
+type ModoVisualizacao = 'tabela' | 'quadro';
+const STORAGE_KEY_MODO = 'onboarding_view_modo_v1';
+
+function loadModo(): ModoVisualizacao {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_MODO);
+        if (raw === 'tabela' || raw === 'quadro') return raw;
+    } catch { /* ignore */ }
+    return 'tabela';
+}
+
+function saveModo(modo: ModoVisualizacao) {
+    try {
+        localStorage.setItem(STORAGE_KEY_MODO, modo);
+    } catch { /* ignore */ }
 }
 
 /** Sem cor de alarme antes de uma semana — atraso de verdade só começa depois disso. */
@@ -36,8 +58,13 @@ export default function OnboardingView({
     managerFilter = '',
     mode = 'marketplace',
     etapasTrello,
+    cardsTrello = [],
+    listasTrello = [],
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
+    const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
+
+    const mudarModo = (v: ModoVisualizacao) => { setModo(v); saveModo(v); };
 
     const filtrados = useMemo(() => {
         const termo = busca.trim().toLowerCase();
@@ -51,8 +78,27 @@ export default function OnboardingView({
     const atrasados7 = filtrados.filter(p => p.diasPendente >= 7).length;
     const atrasados14 = filtrados.filter(p => p.diasPendente >= 14).length;
 
+    // Colunas do Quadro: TODAS as listas do board (mesmo vazias), na ordem
+    // real das colunas — espelha o board de onboarding inteiro, não só os
+    // parceiros que já viraram linha na tabela de pendentes.
+    const colunasQuadro: ColunaQuadro<CardTrelloOnboarding>[] = useMemo(() => {
+        const hoje = startOfDay(new Date());
+        const porLista = new Map<string, { tarefa: CardTrelloOnboarding; nivel: ReturnType<typeof nivelDaTarefa>['nivel']; daysOffset: number | null }[]>();
+        for (const card of cardsTrello) {
+            const { nivel, data } = nivelDaTarefa(card.due);
+            const item = { tarefa: card, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
+            const atual = porLista.get(card.listId);
+            if (atual) atual.push(item); else porLista.set(card.listId, [item]);
+        }
+        return listasTrello.map(l => ({
+            key: l.id,
+            titulo: l.nome,
+            itens: porLista.get(l.id) ?? [],
+        }));
+    }, [cardsTrello, listasTrello]);
+
     return (
-        <div className="flex-1 min-h-0 flex flex-col p-4 md:p-8 max-w-6xl mx-auto w-full">
+        <div className={`flex-1 min-h-0 flex flex-col p-4 md:p-8 mx-auto w-full ${modo === 'quadro' ? 'max-w-full' : 'max-w-6xl'}`}>
             <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Acompanhar Onboarding</h1>
@@ -61,15 +107,43 @@ export default function OnboardingView({
                     </p>
                 </div>
                 <div className="flex flex-col items-start sm:items-end gap-1">
-                    <button
-                        type="button"
-                        onClick={onRefresh}
-                        disabled={isLoading || isRefreshing}
-                        className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
-                    >
-                        <span className={`material-symbols-outlined text-[18px] ${isRefreshing ? 'animate-spin' : ''}`}>sync</span>
-                        {isRefreshing ? 'Atualizando…' : 'Atualizar'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => mudarModo('quadro')}
+                                title="Visualização em quadro"
+                                className={`flex items-center justify-center w-9 h-[34px] transition-colors ${
+                                    modo === 'quadro'
+                                        ? 'bg-primary text-white'
+                                        : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">view_column</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => mudarModo('tabela')}
+                                title="Visualização em tabela"
+                                className={`flex items-center justify-center w-9 h-[34px] border-l border-slate-200 dark:border-slate-700 transition-colors ${
+                                    modo === 'tabela'
+                                        ? 'bg-primary text-white'
+                                        : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">table_rows</span>
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onRefresh}
+                            disabled={isLoading || isRefreshing}
+                            className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                        >
+                            <span className={`material-symbols-outlined text-[18px] ${isRefreshing ? 'animate-spin' : ''}`}>sync</span>
+                            {isRefreshing ? 'Atualizando…' : 'Atualizar'}
+                        </button>
+                    </div>
                     {lastSyncTime && (
                         <span className="text-xs text-slate-400">
                             {format(lastSyncTime, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
@@ -84,30 +158,36 @@ export default function OnboardingView({
                 </div>
             )}
 
-            <div className="mb-4 flex flex-wrap gap-3 text-sm">
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-medium">
-                    Total pendente: <strong>{filtrados.length}</strong>
-                </span>
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 font-medium">
-                    7+ dias: <strong>{atrasados7}</strong>
-                </span>
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 font-medium">
-                    14+ dias: <strong>{atrasados14}</strong>
-                </span>
-            </div>
+            {modo === 'tabela' && (
+                <>
+                    <div className="mb-4 flex flex-wrap gap-3 text-sm">
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-medium">
+                            Total pendente: <strong>{filtrados.length}</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 font-medium">
+                            7+ dias: <strong>{atrasados7}</strong>
+                        </span>
+                        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 font-medium">
+                            14+ dias: <strong>{atrasados14}</strong>
+                        </span>
+                    </div>
 
-            <div className="relative max-w-md mb-4">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-                <input
-                    type="text"
-                    placeholder="Buscar loja ou cidade..."
-                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                    value={busca}
-                    onChange={(e) => setBusca(e.target.value)}
-                />
-            </div>
+                    <div className="relative max-w-md mb-4">
+                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                        <input
+                            type="text"
+                            placeholder="Buscar loja ou cidade..."
+                            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                            value={busca}
+                            onChange={(e) => setBusca(e.target.value)}
+                        />
+                    </div>
+                </>
+            )}
 
-            {isLoading ? (
+            {modo === 'quadro' ? (
+                <QuadroBoard colunas={colunasQuadro} itemVazioLabel="Nenhum card nessa lista" />
+            ) : isLoading ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">Carregando pendentes…</div>
             ) : (
                 <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
