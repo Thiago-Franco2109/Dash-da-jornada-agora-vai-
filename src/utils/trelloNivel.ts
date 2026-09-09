@@ -54,3 +54,39 @@ export function nivelDaTarefa(due: string | null): { nivel: Nivel; data: Date | 
     if (isPast(data)) return { nivel: 'overdue', data };
     return { nivel: 'upcoming', data };
 }
+
+/** Critério de ordenação dos cards — compartilhado entre a aba Trello e o Quadro da Acompanhar Onboarding. */
+export type ModoOrdenacao = 'urgencia' | 'prazo_asc' | 'prazo_desc';
+
+export const OPCOES_ORDENACAO: { valor: ModoOrdenacao; label: string }[] = [
+    { valor: 'urgencia', label: 'Urgência' },
+    { valor: 'prazo_asc', label: 'Prazo — mais próximo primeiro' },
+    { valor: 'prazo_desc', label: 'Prazo — mais distante primeiro' },
+];
+
+interface ItemOrdenavel {
+    nivel: Nivel;
+    daysOffset: number | null;
+    due?: string | null;
+}
+
+/**
+ * "Urgência" prioriza atrasado > hoje > próximos > sem prazo, e dentro de
+ * cada balde ordena pelo prazo — na prática já coincide com ordenar só pelo
+ * prazo (cru) pra cards COM data, porque atrasado sempre vem antes de
+ * próximos cronologicamente também. A diferença real aparece só ao inverter
+ * ("mais distante primeiro") ou nos cards sem prazo, que ficam sempre por
+ * último nos três modos.
+ */
+export function compararPorModo(a: ItemOrdenavel, b: ItemOrdenavel, modo: ModoOrdenacao): number {
+    if (modo === 'urgencia') {
+        return NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel] || (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+    }
+    const semPrazoA = a.due == null;
+    const semPrazoB = b.due == null;
+    if (semPrazoA && semPrazoB) return 0;
+    if (semPrazoA) return 1;
+    if (semPrazoB) return -1;
+    const diff = new Date(a.due!).getTime() - new Date(b.due!).getTime();
+    return modo === 'prazo_asc' ? diff : -diff;
+}

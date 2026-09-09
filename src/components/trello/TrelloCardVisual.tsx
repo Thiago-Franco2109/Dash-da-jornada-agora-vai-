@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CartaoTrelloVisual, LabelTrello, MembroTrello } from '../../types/trello';
-import { NIVEL_META, type Nivel } from '../../utils/trelloNivel';
+import { NIVEL_META, OPCOES_ORDENACAO, type Nivel, type ModoOrdenacao } from '../../utils/trelloNivel';
 import { useDragScroll } from '../../hooks/useDragScroll';
 import { CORES_COLUNA } from '../../hooks/useCoresColuna';
 
@@ -155,6 +155,25 @@ export function FiltroMembros({ membros, selecionado, onSelecionar }: {
                     </button>
                 );
             })}
+        </div>
+    );
+}
+
+export function SeletorOrdenacao({ valor, onChange }: { valor: ModoOrdenacao; onChange: (v: ModoOrdenacao) => void }) {
+    return (
+        <div className="relative flex shrink-0 items-center h-[34px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary">
+            <span className="material-symbols-outlined text-[16px] text-slate-400 mr-1.5">sort</span>
+            <select
+                value={valor}
+                onChange={e => onChange(e.target.value as ModoOrdenacao)}
+                className="bg-none border-none focus:ring-0 bg-transparent text-sm py-0 pl-0 pr-6 text-slate-700 dark:text-slate-300 outline-none cursor-pointer appearance-none"
+                title="Ordenar por"
+            >
+                {OPCOES_ORDENACAO.map(op => (
+                    <option key={op.valor} value={op.valor}>{op.label}</option>
+                ))}
+            </select>
+            <span className="material-symbols-outlined absolute right-2 pointer-events-none text-slate-400 text-[16px]">expand_more</span>
         </div>
     );
 }

@@ -6,9 +6,9 @@ import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
 import type { EtapaTrello, CardTrelloOnboarding, ListaTrelloOnboarding } from '../hooks/useOnboardingTrello';
 import { useCoresColuna } from '../hooks/useCoresColuna';
 import { useTrelloCardDetalhe } from '../hooks/useTrelloCardDetalhe';
-import { FiltroMembros, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { FiltroMembros, SeletorOrdenacao, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
 import CardDetalheModal from './trello/CardDetalheModal';
-import { nivelDaTarefa } from '../utils/trelloNivel';
+import { nivelDaTarefa, compararPorModo, type ModoOrdenacao } from '../utils/trelloNivel';
 import type { MembroTrello } from '../types/trello';
 
 interface OnboardingViewProps {
@@ -48,6 +48,7 @@ function saveModo(modo: ModoVisualizacao) {
 const STORAGE_KEY_LISTAS_OCULTAS = 'onboarding_view_listas_ocultas_v1';
 const STORAGE_KEY_MEMBRO = 'onboarding_view_filtro_membro_v1';
 const STORAGE_KEY_CORES = 'onboarding_view_cores_coluna_v1';
+const STORAGE_KEY_ORDENACAO = 'onboarding_view_ordenacao_v1';
 
 function loadListasOcultas(): Set<string> {
     try {
@@ -76,6 +77,20 @@ function saveMembroFiltro(id: string | null) {
     } catch { /* ignore */ }
 }
 
+function loadOrdenacao(): ModoOrdenacao {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_ORDENACAO);
+        if (raw === 'urgencia' || raw === 'prazo_asc' || raw === 'prazo_desc') return raw;
+    } catch { /* ignore */ }
+    return 'urgencia';
+}
+
+function saveOrdenacao(modo: ModoOrdenacao) {
+    try {
+        localStorage.setItem(STORAGE_KEY_ORDENACAO, modo);
+    } catch { /* ignore */ }
+}
+
 /** Sem cor de alarme antes de uma semana — atraso de verdade só começa depois disso. */
 function urgenciaClasse(dias: number): string {
     if (dias >= 14) return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
@@ -101,11 +116,13 @@ export default function OnboardingView({
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(loadListasOcultas);
     const [membroFiltro, setMembroFiltro] = useState<string | null>(loadMembroFiltro);
+    const [ordenacao, setOrdenacao] = useState<ModoOrdenacao>(loadOrdenacao);
     const { coresPorColuna, onCorChange } = useCoresColuna(STORAGE_KEY_CORES);
     const cardDetalhe = useTrelloCardDetalhe();
 
     const mudarModo = (v: ModoVisualizacao) => { setModo(v); saveModo(v); };
     const mudarMembroFiltro = (id: string | null) => { setMembroFiltro(id); saveMembroFiltro(id); };
+    const mudarOrdenacao = (v: ModoOrdenacao) => { setOrdenacao(v); saveOrdenacao(v); };
     const toggleLista = (id: string) => {
         setListasOcultas(prev => {
             const next = new Set(prev);
@@ -148,6 +165,9 @@ export default function OnboardingView({
             const atual = porLista.get(card.listId);
             if (atual) atual.push(item); else porLista.set(card.listId, [item]);
         }
+        for (const itens of porLista.values()) {
+            itens.sort((a, b) => compararPorModo({ ...a, due: a.tarefa.due }, { ...b, due: b.tarefa.due }, ordenacao));
+        }
         return listasTrello
             .filter(l => !listasOcultas.has(l.id))
             .map(l => ({
@@ -155,7 +175,7 @@ export default function OnboardingView({
                 titulo: l.nome,
                 itens: porLista.get(l.id) ?? [],
             }));
-    }, [cardsTrello, listasTrello, membroFiltro, listasOcultas]);
+    }, [cardsTrello, listasTrello, membroFiltro, listasOcultas, ordenacao]);
 
     const totalFiltrosAtivos = listasOcultas.size + (membroFiltro ? 1 : 0);
 
@@ -196,6 +216,7 @@ export default function OnboardingView({
                                 <span className="material-symbols-outlined text-[18px]">table_rows</span>
                             </button>
                         </div>
+                        {modo === 'quadro' && <SeletorOrdenacao valor={ordenacao} onChange={mudarOrdenacao} />}
                         {modo === 'quadro' && (
                             <button
                                 type="button"

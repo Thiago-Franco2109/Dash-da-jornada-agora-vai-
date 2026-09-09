@@ -5,9 +5,9 @@ import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
 import { useTrelloAtividadeHoje, type AtividadeTrelloHoje, type MovimentacaoTrello } from '../hooks/useTrelloAtividadeHoje';
 import { useCoresColuna } from '../hooks/useCoresColuna';
 import { useTrelloCardDetalhe } from '../hooks/useTrelloCardDetalhe';
-import { CardLabels, CardMetaBadges, FiltroMembros, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { CardLabels, CardMetaBadges, FiltroMembros, SeletorOrdenacao, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
 import CardDetalheModal from './trello/CardDetalheModal';
-import { NIVEL_META, NIVEL_ORDEM, NIVEL_INDICE, NIVEL_BORDA, nivelDaTarefa, type Nivel } from '../utils/trelloNivel';
+import { NIVEL_META, NIVEL_ORDEM, NIVEL_BORDA, nivelDaTarefa, compararPorModo, type Nivel, type ModoOrdenacao } from '../utils/trelloNivel';
 import type { MembroTrello } from '../types/trello';
 
 const listaKey = (board: string, lista: string) => `${board}::${lista}`;
@@ -20,6 +20,7 @@ const STORAGE_KEY_CONCLUIDO = 'trello_view_filtro_concluido_v1';
 const STORAGE_KEY_MODO = 'trello_view_modo_v1';
 const STORAGE_KEY_MEMBRO = 'trello_view_filtro_membro_v1';
 const STORAGE_KEY_CORES = 'trello_view_cores_coluna_v1';
+const STORAGE_KEY_ORDENACAO = 'trello_view_ordenacao_v1';
 
 function loadMembroFiltro(): string | null {
     try {
@@ -31,6 +32,20 @@ function saveMembroFiltro(id: string | null) {
     try {
         if (id) localStorage.setItem(STORAGE_KEY_MEMBRO, id);
         else localStorage.removeItem(STORAGE_KEY_MEMBRO);
+    } catch { /* ignore */ }
+}
+
+function loadOrdenacao(): ModoOrdenacao {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_ORDENACAO);
+        if (raw === 'urgencia' || raw === 'prazo_asc' || raw === 'prazo_desc') return raw;
+    } catch { /* ignore */ }
+    return 'urgencia';
+}
+
+function saveOrdenacao(modo: ModoOrdenacao) {
+    try {
+        localStorage.setItem(STORAGE_KEY_ORDENACAO, modo);
     } catch { /* ignore */ }
 }
 
@@ -131,10 +146,12 @@ export default function TrelloView() {
     const [concluidoFiltro, setConcluidoFiltro] = useState<Estado3>(() => loadEstado3(STORAGE_KEY_CONCLUIDO, 'todos'));
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
     const [membroFiltro, setMembroFiltro] = useState<string | null>(loadMembroFiltro);
+    const [ordenacao, setOrdenacao] = useState<ModoOrdenacao>(loadOrdenacao);
     const { coresPorColuna, onCorChange } = useCoresColuna(STORAGE_KEY_CORES);
     const cardDetalhe = useTrelloCardDetalhe();
 
     const mudarModo = (v: ModoVisualizacao) => { setModo(v); saveModo(v); };
+    const mudarOrdenacao = (v: ModoOrdenacao) => { setOrdenacao(v); saveOrdenacao(v); };
     const mudarMembroFiltro = (id: string | null) => { setMembroFiltro(id); saveMembroFiltro(id); };
 
     const mudarArquivadoFiltro = (v: Estado3) => { setArquivadoFiltro(v); saveEstado3(STORAGE_KEY_ARQUIVADO, v); };
@@ -215,9 +232,8 @@ export default function TrelloView() {
             const { nivel, data } = nivelDaTarefa(t.due);
             return { tarefa: t, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
         });
-        return comNivel.sort((a, b) =>
-            NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel] || (a.daysOffset ?? 0) - (b.daysOffset ?? 0));
-    }, [tarefasFiltradas]);
+        return comNivel.sort((a, b) => compararPorModo({ ...a, due: a.tarefa.due }, { ...b, due: b.tarefa.due }, ordenacao));
+    }, [tarefasFiltradas, ordenacao]);
 
     const contagensPorNivel = useMemo(() => {
         const counts: Record<Nivel, number> = { overdue: 0, today: 0, upcoming: 0, sem_prazo: 0 };
@@ -285,6 +301,7 @@ export default function TrelloView() {
                                 <span className="material-symbols-outlined text-[18px]">table_rows</span>
                             </button>
                         </div>
+                        <SeletorOrdenacao valor={ordenacao} onChange={mudarOrdenacao} />
                         <button
                             type="button"
                             onClick={() => setFiltrosAbertos(v => !v)}
