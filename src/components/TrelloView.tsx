@@ -3,8 +3,12 @@ import { differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
 import { useTrelloAtividadeHoje, type AtividadeTrelloHoje, type MovimentacaoTrello } from '../hooks/useTrelloAtividadeHoje';
-import { CardLabels, CardMetaBadges, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { useCoresColuna } from '../hooks/useCoresColuna';
+import { useTrelloCardDetalhe } from '../hooks/useTrelloCardDetalhe';
+import { CardLabels, CardMetaBadges, FiltroMembros, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import CardDetalheModal from './trello/CardDetalheModal';
 import { NIVEL_META, NIVEL_ORDEM, NIVEL_INDICE, NIVEL_BORDA, nivelDaTarefa, type Nivel } from '../utils/trelloNivel';
+import type { MembroTrello } from '../types/trello';
 
 const listaKey = (board: string, lista: string) => `${board}::${lista}`;
 
@@ -14,6 +18,21 @@ const STORAGE_KEY_LISTAS = 'trello_view_listas_ocultas_v1';
 const STORAGE_KEY_ARQUIVADO = 'trello_view_filtro_arquivado_v1';
 const STORAGE_KEY_CONCLUIDO = 'trello_view_filtro_concluido_v1';
 const STORAGE_KEY_MODO = 'trello_view_modo_v1';
+const STORAGE_KEY_MEMBRO = 'trello_view_filtro_membro_v1';
+const STORAGE_KEY_CORES = 'trello_view_cores_coluna_v1';
+
+function loadMembroFiltro(): string | null {
+    try {
+        return localStorage.getItem(STORAGE_KEY_MEMBRO) || null;
+    } catch { return null; }
+}
+
+function saveMembroFiltro(id: string | null) {
+    try {
+        if (id) localStorage.setItem(STORAGE_KEY_MEMBRO, id);
+        else localStorage.removeItem(STORAGE_KEY_MEMBRO);
+    } catch { /* ignore */ }
+}
 
 type ModoVisualizacao = 'tabela' | 'quadro';
 
@@ -111,8 +130,12 @@ export default function TrelloView() {
     const [arquivadoFiltro, setArquivadoFiltro] = useState<Estado3>(() => loadEstado3(STORAGE_KEY_ARQUIVADO, 'ocultar'));
     const [concluidoFiltro, setConcluidoFiltro] = useState<Estado3>(() => loadEstado3(STORAGE_KEY_CONCLUIDO, 'todos'));
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
+    const [membroFiltro, setMembroFiltro] = useState<string | null>(loadMembroFiltro);
+    const { coresPorColuna, onCorChange } = useCoresColuna(STORAGE_KEY_CORES);
+    const cardDetalhe = useTrelloCardDetalhe();
 
     const mudarModo = (v: ModoVisualizacao) => { setModo(v); saveModo(v); };
+    const mudarMembroFiltro = (id: string | null) => { setMembroFiltro(id); saveMembroFiltro(id); };
 
     const mudarArquivadoFiltro = (v: Estado3) => { setArquivadoFiltro(v); saveEstado3(STORAGE_KEY_ARQUIVADO, v); };
     const mudarConcluidoFiltro = (v: Estado3) => { setConcluidoFiltro(v); saveEstado3(STORAGE_KEY_CONCLUIDO, v); };
@@ -169,9 +192,19 @@ export default function TrelloView() {
         return [...counts.values()].sort((a, b) => a.ordem - b.ordem);
     }, [tarefasBase, boardsOcultos]);
 
+    const membrosDisponiveis = useMemo(() => {
+        const porId = new Map<string, MembroTrello>();
+        for (const t of tarefasBase) for (const m of t.membros) porId.set(m.id, m);
+        return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    }, [tarefasBase]);
+
     const tarefasFiltradas = useMemo(
-        () => tarefasBase.filter(t => !boardsOcultos.has(t.board) && !listasOcultas.has(listaKey(t.board, t.lista))),
-        [tarefasBase, boardsOcultos, listasOcultas],
+        () => tarefasBase.filter(t =>
+            !boardsOcultos.has(t.board)
+            && !listasOcultas.has(listaKey(t.board, t.lista))
+            && (!membroFiltro || t.membros.some(m => m.id === membroFiltro)),
+        ),
+        [tarefasBase, boardsOcultos, listasOcultas, membroFiltro],
     );
 
     // Uma tabela só (estilo Pipedrive/Notion), ordenada por urgência e depois
@@ -194,7 +227,8 @@ export default function TrelloView() {
 
     const totalFiltrosAtivos = boardsOcultos.size + listasOcultas.size
         + (arquivadoFiltro !== 'ocultar' ? 1 : 0)
-        + (concluidoFiltro !== 'todos' ? 1 : 0);
+        + (concluidoFiltro !== 'todos' ? 1 : 0)
+        + (membroFiltro ? 1 : 0);
 
     // Colunas do Quadro: uma por lista (board+lista), na ordem de `listas`
     // (já ordenada por posição real — ver useMemo acima).
@@ -299,6 +333,20 @@ export default function TrelloView() {
                             labelOcultar="Ocultar concluídos"
                         />
                     </div>
+
+                    {membrosDisponiveis.length > 0 && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Membro</span>
+                                {membroFiltro && (
+                                    <button type="button" onClick={() => mudarMembroFiltro(null)} className="text-xs font-medium text-primary hover:underline">
+                                        Limpar
+                                    </button>
+                                )}
+                            </div>
+                            <FiltroMembros membros={membrosDisponiveis} selecionado={membroFiltro} onSelecionar={mudarMembroFiltro} />
+                        </div>
+                    )}
 
                     <div>
                         <div className="flex items-center justify-between mb-2">
@@ -412,16 +460,34 @@ export default function TrelloView() {
                                 </thead>
                                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
                                     {linhas.map(({ tarefa, nivel, daysOffset }) => (
-                                        <TarefaLinha key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} />
+                                        <TarefaLinha key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} onAbrir={() => cardDetalhe.abrir(tarefa.id)} />
                                     ))}
                                 </tbody>
                             </table>
                         </div>
                     ) : (
-                        <QuadroBoard colunas={colunasQuadro} itemVazioLabel="Nenhum card seu aqui" />
+                        <QuadroBoard
+                            colunas={colunasQuadro}
+                            itemVazioLabel="Nenhum card seu aqui"
+                            coresPorColuna={coresPorColuna}
+                            onCorChange={onCorChange}
+                            onAbrirCard={tarefa => cardDetalhe.abrir(tarefa.id)}
+                        />
                     )}
                 </>
             )}
+
+            <CardDetalheModal
+                key={cardDetalhe.cardIdAberto ?? 'fechado'}
+                aberto={cardDetalhe.aberto}
+                card={cardDetalhe.card}
+                isLoading={cardDetalhe.isLoading}
+                error={cardDetalhe.error}
+                onFechar={cardDetalhe.fechar}
+                onComentar={cardDetalhe.comentar}
+                enviandoComentario={cardDetalhe.enviandoComentario}
+                erroComentario={cardDetalhe.erroComentario}
+            />
         </div>
     );
 }
@@ -541,11 +607,10 @@ function MovimentacaoItem({ movimentacao: m }: { movimentacao: MovimentacaoTrell
     );
 }
 
-function TarefaLinha({ tarefa, nivel, daysOffset }: { tarefa: TarefaTrello; nivel: Nivel; daysOffset: number | null }) {
-    const abrirCard = () => window.open(tarefa.cardUrl, '_blank', 'noopener,noreferrer');
+function TarefaLinha({ tarefa, nivel, daysOffset, onAbrir }: { tarefa: TarefaTrello; nivel: Nivel; daysOffset: number | null; onAbrir?: () => void }) {
     return (
         <tr
-            onClick={abrirCard}
+            onClick={onAbrir}
             className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${tarefa.closed ? 'opacity-60' : ''}`}
         >
             <td className={`px-4 py-2.5 border-l-4 ${NIVEL_BORDA[nivel]}`}>
@@ -587,7 +652,7 @@ function TarefaLinha({ tarefa, nivel, daysOffset }: { tarefa: TarefaTrello; nive
                 )}
             </td>
             <td className="px-3 py-2.5">
-                <span className="material-symbols-outlined text-[16px] text-slate-400">open_in_new</span>
+                <span className="material-symbols-outlined text-[16px] text-slate-400">open_in_full</span>
             </td>
         </tr>
     );

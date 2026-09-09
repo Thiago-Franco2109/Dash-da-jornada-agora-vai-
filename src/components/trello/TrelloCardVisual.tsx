@@ -1,7 +1,10 @@
+import { useEffect, useRef, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CartaoTrelloVisual, LabelTrello, MembroTrello } from '../../types/trello';
 import { NIVEL_META, type Nivel } from '../../utils/trelloNivel';
+import { useDragScroll } from '../../hooks/useDragScroll';
+import { CORES_COLUNA } from '../../hooks/useCoresColuna';
 
 /**
  * Peças visuais de card do Trello (labels, avatares, badges de checklist/
@@ -120,6 +123,42 @@ export function CardMetaBadges({ tarefa, className = '' }: { tarefa: CartaoTrell
     );
 }
 
+/** Chips de membro pra filtrar — clique de novo no mesmo pra limpar (só 1 selecionado por vez). */
+export function FiltroMembros({ membros, selecionado, onSelecionar }: {
+    membros: MembroTrello[];
+    selecionado: string | null;
+    onSelecionar: (id: string | null) => void;
+}) {
+    if (membros.length === 0) return null;
+    return (
+        <div className="flex flex-wrap gap-1.5">
+            {membros.map(m => {
+                const ativo = selecionado === m.id;
+                return (
+                    <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => onSelecionar(ativo ? null : m.id)}
+                        title={m.nome}
+                        className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
+                            ativo
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                    >
+                        {m.avatarUrl ? (
+                            <img src={`${m.avatarUrl}/30.png`} alt="" className="w-5 h-5 rounded-full object-cover" />
+                        ) : (
+                            <span className="w-5 h-5 rounded-full bg-slate-400 text-white text-[9px] font-bold flex items-center justify-center">{m.iniciais}</span>
+                        )}
+                        {m.nome}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export interface ColunaQuadro<T extends CartaoTrelloVisual> {
     key: string;
     titulo: string;
@@ -128,39 +167,122 @@ export interface ColunaQuadro<T extends CartaoTrelloVisual> {
 }
 
 /** Réplica do quadro do Trello: uma coluna por lista, na mesma ordem visual do board real. */
-export function QuadroBoard<T extends CartaoTrelloVisual>({ colunas, itemVazioLabel = 'Nenhum card aqui' }: {
+export function QuadroBoard<T extends CartaoTrelloVisual>({
+    colunas,
+    itemVazioLabel = 'Nenhum card aqui',
+    coresPorColuna,
+    onCorChange,
+    onAbrirCard,
+}: {
     colunas: ColunaQuadro<T>[];
     itemVazioLabel?: string;
+    /** Cor customizada por coluna (chave = ColunaQuadro.key). Omitir esconde o seletor de cor. */
+    coresPorColuna?: Record<string, string>;
+    onCorChange?: (chave: string, cor: string | null) => void;
+    /** Se fornecido, clicar no card chama isso em vez de abrir o link do Trello numa aba nova. */
+    onAbrirCard?: (tarefa: T) => void;
 }) {
+    const { ref, arrastavel } = useDragScroll<HTMLDivElement>();
     return (
-        <div className="flex-1 min-h-0 overflow-auto rounded-2xl">
+        <div
+            ref={ref}
+            className="flex-1 min-h-0 overflow-auto rounded-2xl cursor-grab active:cursor-grabbing select-none"
+            {...arrastavel}
+        >
             <div className="flex items-start gap-3 h-full pb-2">
-                {colunas.map(c => (
-                    <div key={c.key} className="w-72 shrink-0 flex flex-col rounded-xl bg-slate-100 dark:bg-slate-800/60 max-h-full">
-                        <div className="px-3 py-2.5 shrink-0">
-                            {c.subtitulo && <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 truncate">{c.subtitulo}</p>}
-                            <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate" title={c.titulo}>
-                                {c.titulo} <span className="font-normal text-slate-400">({c.itens.length})</span>
-                            </p>
+                {colunas.map(c => {
+                    const cor = coresPorColuna?.[c.key];
+                    return (
+                        <div
+                            key={c.key}
+                            className="w-72 shrink-0 flex flex-col rounded-xl bg-slate-100 dark:bg-slate-800/60 max-h-full overflow-hidden"
+                            style={cor ? { borderTop: `3px solid ${cor}` } : undefined}
+                        >
+                            <div className="px-3 py-2.5 shrink-0 flex items-start justify-between gap-1">
+                                <div className="min-w-0">
+                                    {c.subtitulo && <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 truncate">{c.subtitulo}</p>}
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate" title={c.titulo}>
+                                        {c.titulo} <span className="font-normal text-slate-400">({c.itens.length})</span>
+                                    </p>
+                                </div>
+                                {onCorChange && (
+                                    <SeletorCorColuna cor={cor ?? null} onChange={novaCor => onCorChange(c.key, novaCor)} />
+                                )}
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-2">
+                                {c.itens.length === 0 ? (
+                                    <p className="px-1 py-2 text-xs text-slate-400 italic">{itemVazioLabel}</p>
+                                ) : (
+                                    c.itens.map(({ tarefa, nivel, daysOffset }) => (
+                                        <QuadroCard key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} onAbrir={onAbrirCard} />
+                                    ))
+                                )}
+                            </div>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-2">
-                            {c.itens.length === 0 ? (
-                                <p className="px-1 py-2 text-xs text-slate-400 italic">{itemVazioLabel}</p>
-                            ) : (
-                                c.itens.map(({ tarefa, nivel, daysOffset }) => (
-                                    <QuadroCard key={tarefa.id} tarefa={tarefa} nivel={nivel} daysOffset={daysOffset} />
-                                ))
-                            )}
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
 }
 
-function QuadroCard<T extends CartaoTrelloVisual>({ tarefa, nivel, daysOffset }: { tarefa: T; nivel: Nivel; daysOffset: number | null }) {
-    const abrirCard = () => window.open(tarefa.cardUrl, '_blank', 'noopener,noreferrer');
+function SeletorCorColuna({ cor, onChange }: { cor: string | null; onChange: (cor: string | null) => void }) {
+    const [aberto, setAberto] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!aberto) return;
+        const fechar = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+        };
+        document.addEventListener('mousedown', fechar);
+        return () => document.removeEventListener('mousedown', fechar);
+    }, [aberto]);
+
+    return (
+        <div ref={ref} className="relative shrink-0">
+            <button
+                type="button"
+                onClick={() => setAberto(v => !v)}
+                title="Cor da lista"
+                className="w-5 h-5 rounded-full ring-1 ring-inset ring-slate-300 dark:ring-slate-600 flex items-center justify-center shrink-0 hover:ring-slate-400 dark:hover:ring-slate-500"
+                style={{ backgroundColor: cor ?? 'transparent' }}
+            >
+                {!cor && <span className="material-symbols-outlined text-[13px] text-slate-400">palette</span>}
+            </button>
+            {aberto && (
+                <div className="absolute right-0 top-full mt-1 z-20 p-2 rounded-lg bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 grid grid-cols-5 gap-1.5 w-[132px]">
+                    {CORES_COLUNA.map(c => (
+                        <button
+                            key={c}
+                            type="button"
+                            title={c}
+                            onClick={() => { onChange(c); setAberto(false); }}
+                            className={`w-5 h-5 rounded-full ${cor === c ? 'ring-2 ring-offset-1 ring-slate-500 dark:ring-offset-slate-800' : ''}`}
+                            style={{ backgroundColor: c }}
+                        />
+                    ))}
+                    <button
+                        type="button"
+                        title="Sem cor"
+                        onClick={() => { onChange(null); setAberto(false); }}
+                        className="w-5 h-5 rounded-full ring-1 ring-inset ring-slate-300 dark:ring-slate-600 flex items-center justify-center"
+                    >
+                        <span className="material-symbols-outlined text-[12px] text-slate-400">close</span>
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function QuadroCard<T extends CartaoTrelloVisual>({ tarefa, nivel, daysOffset, onAbrir }: {
+    tarefa: T;
+    nivel: Nivel;
+    daysOffset: number | null;
+    onAbrir?: (tarefa: T) => void;
+}) {
+    const abrirCard = () => (onAbrir ? onAbrir(tarefa) : window.open(tarefa.cardUrl, '_blank', 'noopener,noreferrer'));
     return (
         <div
             onClick={abrirCard}

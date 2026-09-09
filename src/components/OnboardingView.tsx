@@ -4,8 +4,12 @@ import { ptBR } from 'date-fns/locale/pt-BR';
 import { cityBelongsToManager, type Manager, type ProductModeKey } from '../config/managerMapping';
 import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
 import type { EtapaTrello, CardTrelloOnboarding, ListaTrelloOnboarding } from '../hooks/useOnboardingTrello';
-import { QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import { useCoresColuna } from '../hooks/useCoresColuna';
+import { useTrelloCardDetalhe } from '../hooks/useTrelloCardDetalhe';
+import { FiltroMembros, QuadroBoard, type ColunaQuadro } from './trello/TrelloCardVisual';
+import CardDetalheModal from './trello/CardDetalheModal';
 import { nivelDaTarefa } from '../utils/trelloNivel';
+import type { MembroTrello } from '../types/trello';
 
 interface OnboardingViewProps {
     pendentes: ParceiroPendente[];
@@ -41,6 +45,37 @@ function saveModo(modo: ModoVisualizacao) {
     } catch { /* ignore */ }
 }
 
+const STORAGE_KEY_LISTAS_OCULTAS = 'onboarding_view_listas_ocultas_v1';
+const STORAGE_KEY_MEMBRO = 'onboarding_view_filtro_membro_v1';
+const STORAGE_KEY_CORES = 'onboarding_view_cores_coluna_v1';
+
+function loadListasOcultas(): Set<string> {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_LISTAS_OCULTAS);
+        if (raw) return new Set(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set();
+}
+
+function saveListasOcultas(set: Set<string>) {
+    try {
+        localStorage.setItem(STORAGE_KEY_LISTAS_OCULTAS, JSON.stringify([...set]));
+    } catch { /* ignore */ }
+}
+
+function loadMembroFiltro(): string | null {
+    try {
+        return localStorage.getItem(STORAGE_KEY_MEMBRO) || null;
+    } catch { return null; }
+}
+
+function saveMembroFiltro(id: string | null) {
+    try {
+        if (id) localStorage.setItem(STORAGE_KEY_MEMBRO, id);
+        else localStorage.removeItem(STORAGE_KEY_MEMBRO);
+    } catch { /* ignore */ }
+}
+
 /** Sem cor de alarme antes de uma semana — atraso de verdade só começa depois disso. */
 function urgenciaClasse(dias: number): string {
     if (dias >= 14) return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
@@ -63,8 +98,23 @@ export default function OnboardingView({
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
+    const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+    const [listasOcultas, setListasOcultas] = useState<Set<string>>(loadListasOcultas);
+    const [membroFiltro, setMembroFiltro] = useState<string | null>(loadMembroFiltro);
+    const { coresPorColuna, onCorChange } = useCoresColuna(STORAGE_KEY_CORES);
+    const cardDetalhe = useTrelloCardDetalhe();
 
     const mudarModo = (v: ModoVisualizacao) => { setModo(v); saveModo(v); };
+    const mudarMembroFiltro = (id: string | null) => { setMembroFiltro(id); saveMembroFiltro(id); };
+    const toggleLista = (id: string) => {
+        setListasOcultas(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            saveListasOcultas(next);
+            return next;
+        });
+    };
+    const mostrarTodasListas = () => { setListasOcultas(new Set()); saveListasOcultas(new Set()); };
 
     const filtrados = useMemo(() => {
         const termo = busca.trim().toLowerCase();
@@ -78,24 +128,36 @@ export default function OnboardingView({
     const atrasados7 = filtrados.filter(p => p.diasPendente >= 7).length;
     const atrasados14 = filtrados.filter(p => p.diasPendente >= 14).length;
 
-    // Colunas do Quadro: TODAS as listas do board (mesmo vazias), na ordem
-    // real das colunas — espelha o board de onboarding inteiro, não só os
-    // parceiros que já viraram linha na tabela de pendentes.
+    const membrosDisponiveis = useMemo(() => {
+        const porId = new Map<string, MembroTrello>();
+        for (const c of cardsTrello) for (const m of c.membros) porId.set(m.id, m);
+        return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    }, [cardsTrello]);
+
+    // Colunas do Quadro: TODAS as listas do board (mesmo vazias, menos as
+    // que o usuário escondeu), na ordem real das colunas — espelha o board
+    // de onboarding inteiro, não só os parceiros que já viraram linha na
+    // tabela de pendentes.
     const colunasQuadro: ColunaQuadro<CardTrelloOnboarding>[] = useMemo(() => {
         const hoje = startOfDay(new Date());
         const porLista = new Map<string, { tarefa: CardTrelloOnboarding; nivel: ReturnType<typeof nivelDaTarefa>['nivel']; daysOffset: number | null }[]>();
         for (const card of cardsTrello) {
+            if (membroFiltro && !card.membros.some(m => m.id === membroFiltro)) continue;
             const { nivel, data } = nivelDaTarefa(card.due);
             const item = { tarefa: card, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
             const atual = porLista.get(card.listId);
             if (atual) atual.push(item); else porLista.set(card.listId, [item]);
         }
-        return listasTrello.map(l => ({
-            key: l.id,
-            titulo: l.nome,
-            itens: porLista.get(l.id) ?? [],
-        }));
-    }, [cardsTrello, listasTrello]);
+        return listasTrello
+            .filter(l => !listasOcultas.has(l.id))
+            .map(l => ({
+                key: l.id,
+                titulo: l.nome,
+                itens: porLista.get(l.id) ?? [],
+            }));
+    }, [cardsTrello, listasTrello, membroFiltro, listasOcultas]);
+
+    const totalFiltrosAtivos = listasOcultas.size + (membroFiltro ? 1 : 0);
 
     return (
         <div className={`flex-1 min-h-0 flex flex-col p-4 md:p-8 mx-auto w-full ${modo === 'quadro' ? 'max-w-full' : 'max-w-6xl'}`}>
@@ -134,6 +196,25 @@ export default function OnboardingView({
                                 <span className="material-symbols-outlined text-[18px]">table_rows</span>
                             </button>
                         </div>
+                        {modo === 'quadro' && (
+                            <button
+                                type="button"
+                                onClick={() => setFiltrosAbertos(v => !v)}
+                                className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                                    filtrosAbertos
+                                        ? 'border-primary bg-primary/10 text-primary'
+                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">filter_list</span>
+                                Filtros
+                                {totalFiltrosAtivos > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold leading-none">
+                                        {totalFiltrosAtivos}
+                                    </span>
+                                )}
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={onRefresh}
@@ -151,6 +232,55 @@ export default function OnboardingView({
                     )}
                 </div>
             </header>
+
+            {modo === 'quadro' && filtrosAbertos && (
+                <div className="mb-4 shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-4">
+                    {membrosDisponiveis.length > 0 && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Membro</span>
+                                {membroFiltro && (
+                                    <button type="button" onClick={() => mudarMembroFiltro(null)} className="text-xs font-medium text-primary hover:underline">
+                                        Limpar
+                                    </button>
+                                )}
+                            </div>
+                            <FiltroMembros membros={membrosDisponiveis} selecionado={membroFiltro} onSelecionar={mudarMembroFiltro} />
+                        </div>
+                    )}
+
+                    {listasTrello.length > 0 && (
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                                    Listas ({listasTrello.length - listasOcultas.size}/{listasTrello.length})
+                                </span>
+                                {listasOcultas.size > 0 && (
+                                    <button type="button" onClick={mostrarTodasListas} className="text-xs font-medium text-primary hover:underline">
+                                        Mostrar todas
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
+                                {listasTrello.map(l => {
+                                    const oculta = listasOcultas.has(l.id);
+                                    return (
+                                        <label key={l.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={!oculta}
+                                                onChange={() => toggleLista(l.id)}
+                                                className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary/40"
+                                            />
+                                            <span className={oculta ? 'text-slate-400 dark:text-slate-600 line-through' : 'text-slate-700 dark:text-slate-200'}>{l.nome}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {error && (
                 <div className="mb-4 p-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-500/10 text-sm text-red-700 dark:text-red-300">
@@ -186,7 +316,13 @@ export default function OnboardingView({
             )}
 
             {modo === 'quadro' ? (
-                <QuadroBoard colunas={colunasQuadro} itemVazioLabel="Nenhum card nessa lista" />
+                <QuadroBoard
+                    colunas={colunasQuadro}
+                    itemVazioLabel="Nenhum card nessa lista"
+                    coresPorColuna={coresPorColuna}
+                    onCorChange={onCorChange}
+                    onAbrirCard={card => cardDetalhe.abrir(card.id)}
+                />
             ) : isLoading ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 text-sm">Carregando pendentes…</div>
             ) : (
@@ -226,12 +362,11 @@ export default function OnboardingView({
                                                 return <span className="text-xs italic text-slate-300 dark:text-slate-600">sem card</span>;
                                             }
                                             return (
-                                                <a
-                                                    href={etapa.cardUrl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
+                                                <button
+                                                    type="button"
+                                                    onClick={() => cardDetalhe.abrir(etapa.cardId)}
                                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400 hover:underline"
-                                                    title="Abrir card no Trello"
+                                                    title="Abrir card"
                                                 >
                                                     {etapa.etapa}
                                                     {etapa.diasNaEtapa != null && (
@@ -239,7 +374,7 @@ export default function OnboardingView({
                                                             · {etapa.diasNaEtapa === 0 ? 'hoje' : `${etapa.diasNaEtapa}d`}
                                                         </span>
                                                     )}
-                                                </a>
+                                                </button>
                                             );
                                         })()}
                                     </td>
@@ -267,6 +402,18 @@ export default function OnboardingView({
                     </table>
                 </div>
             )}
+
+            <CardDetalheModal
+                key={cardDetalhe.cardIdAberto ?? 'fechado'}
+                aberto={cardDetalhe.aberto}
+                card={cardDetalhe.card}
+                isLoading={cardDetalhe.isLoading}
+                error={cardDetalhe.error}
+                onFechar={cardDetalhe.fechar}
+                onComentar={cardDetalhe.comentar}
+                enviandoComentario={cardDetalhe.enviandoComentario}
+                erroComentario={cardDetalhe.erroComentario}
+            />
         </div>
     );
 }

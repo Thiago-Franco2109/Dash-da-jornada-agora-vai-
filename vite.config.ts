@@ -133,7 +133,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'ativacoes-diarias', 'campanhas',
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
-    'trello-tarefas', 'loja-link', 'trello-atividade-hoje',
+    'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar',
   ])
   return {
     name: 'db-functions-dev',
@@ -148,11 +148,21 @@ function dbFunctionsDevPlugin(): Plugin {
         try {
           const mod = await server.ssrLoadModule(`/netlify/functions/${fnName}.ts`)
           const queryStringParameters = Object.fromEntries(parsed.searchParams.entries())
+          // POST/PUT precisam do corpo — o Vite dev server não faz parsing
+          // automático, então lemos o stream cru (só usado pelas functions
+          // de escrita, ex.: trello-card-comentar).
+          let body: string | undefined
+          if (req.method === 'POST' || req.method === 'PUT') {
+            const chunks: Buffer[] = []
+            for await (const chunk of req) chunks.push(chunk as Buffer)
+            body = Buffer.concat(chunks).toString('utf-8')
+          }
           const result = await mod.handler(
             {
               httpMethod: req.method || 'GET',
               queryStringParameters,
               headers: { origin: 'http://localhost' },
+              body,
             },
             {},
           )

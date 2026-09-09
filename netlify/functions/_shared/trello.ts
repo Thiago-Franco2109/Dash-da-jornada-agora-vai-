@@ -9,9 +9,10 @@ export async function trelloFetch<T>(
     key: string,
     token: string,
     params: Record<string, string> = {},
+    method: 'GET' | 'POST' = 'GET',
 ): Promise<T> {
     const query = new URLSearchParams({ key, token, ...params }).toString();
-    const res = await fetch(`https://api.trello.com/1${path}?${query}`);
+    const res = await fetch(`https://api.trello.com/1${path}?${query}`, { method });
     if (!res.ok) {
         throw new Error(`Trello API ${res.status}: ${res.statusText}`);
     }
