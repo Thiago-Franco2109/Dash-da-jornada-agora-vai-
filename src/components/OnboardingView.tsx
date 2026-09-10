@@ -434,6 +434,9 @@ export default function OnboardingView({
                 onComentar={cardDetalhe.comentar}
                 enviandoComentario={cardDetalhe.enviandoComentario}
                 erroComentario={cardDetalhe.erroComentario}
+                onEditarPrazo={cardDetalhe.editarPrazo}
+                salvandoPrazo={cardDetalhe.salvandoPrazo}
+                erroPrazo={cardDetalhe.erroPrazo}
             />
         </div>
     );

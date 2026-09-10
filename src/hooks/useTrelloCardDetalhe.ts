@@ -82,6 +82,20 @@ async function postComentario(cardId: string, texto: string): Promise<Comentario
     return json.comentario as ComentarioDetalhe;
 }
 
+async function putPrazo(cardId: string, due: string | null): Promise<{ due: string | null; dueComplete: boolean }> {
+    const res = await fetch('/.netlify/functions/trello-card-editar', {
+        method: 'POST',
+        credentials: 'include' as RequestCredentials,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId, due }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+        throw new Error(json?.error || `Erro ${res.status} ao alterar o prazo.`);
+    }
+    return { due: json.due, dueComplete: json.dueComplete };
+}
+
 export function useTrelloCardDetalhe() {
     const [cardIdAberto, setCardIdAberto] = useState<string | null>(null);
     const [card, setCard] = useState<CardDetalhe | null>(null);
@@ -89,6 +103,8 @@ export function useTrelloCardDetalhe() {
     const [error, setError] = useState<string | null>(null);
     const [enviandoComentario, setEnviandoComentario] = useState(false);
     const [erroComentario, setErroComentario] = useState<string | null>(null);
+    const [salvandoPrazo, setSalvandoPrazo] = useState(false);
+    const [erroPrazo, setErroPrazo] = useState<string | null>(null);
 
     const abrir = useCallback(async (cardId: string) => {
         setCardIdAberto(cardId);
@@ -111,6 +127,7 @@ export function useTrelloCardDetalhe() {
         setCard(null);
         setError(null);
         setErroComentario(null);
+        setErroPrazo(null);
     }, []);
 
     const comentar = useCallback(async (texto: string) => {
@@ -128,6 +145,21 @@ export function useTrelloCardDetalhe() {
         }
     }, [cardIdAberto]);
 
+    const editarPrazo = useCallback(async (due: string | null) => {
+        if (!cardIdAberto) return;
+        setSalvandoPrazo(true);
+        setErroPrazo(null);
+        try {
+            const atualizado = await putPrazo(cardIdAberto, due);
+            setCard(prev => (prev ? { ...prev, ...atualizado } : prev));
+        } catch (err) {
+            setErroPrazo(err instanceof Error ? err.message : 'Falha ao alterar o prazo');
+            throw err;
+        } finally {
+            setSalvandoPrazo(false);
+        }
+    }, [cardIdAberto]);
+
     return {
         aberto: cardIdAberto != null,
         cardIdAberto,
@@ -139,5 +171,8 @@ export function useTrelloCardDetalhe() {
         comentar,
         enviandoComentario,
         erroComentario,
+        editarPrazo,
+        salvandoPrazo,
+        erroPrazo,
     };
 }

@@ -504,6 +504,9 @@ export default function TrelloView() {
                 onComentar={cardDetalhe.comentar}
                 enviandoComentario={cardDetalhe.enviandoComentario}
                 erroComentario={cardDetalhe.erroComentario}
+                onEditarPrazo={cardDetalhe.editarPrazo}
+                salvandoPrazo={cardDetalhe.salvandoPrazo}
+                erroPrazo={cardDetalhe.erroPrazo}
             />
         </div>
     );

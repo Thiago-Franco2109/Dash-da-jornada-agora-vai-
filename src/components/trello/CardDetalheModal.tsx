@@ -51,6 +51,13 @@ function Avatar({ nome, iniciais, avatarUrl }: { nome: string; iniciais: string;
     );
 }
 
+/** "2026-09-10T08:00:00.000Z" -> "2026-09-10T08:00" (formato de <input type="datetime-local">). */
+function paraDatetimeLocal(iso: string): string {
+    const d = parseISO(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface CardDetalheModalProps {
     aberto: boolean;
     card: CardDetalhe | null;
@@ -60,6 +67,9 @@ interface CardDetalheModalProps {
     onComentar: (texto: string) => Promise<void>;
     enviandoComentario: boolean;
     erroComentario: string | null;
+    onEditarPrazo: (due: string | null) => Promise<void>;
+    salvandoPrazo: boolean;
+    erroPrazo: string | null;
 }
 
 /** Renderize com `key={cardIdAberto ?? 'fechado'}` (do useTrelloCardDetalhe) — reseta o rascunho do comentário ao trocar de card, sem precisar de useEffect. */
@@ -72,8 +82,13 @@ export default function CardDetalheModal({
     onComentar,
     enviandoComentario,
     erroComentario,
+    onEditarPrazo,
+    salvandoPrazo,
+    erroPrazo,
 }: CardDetalheModalProps) {
     const [rascunho, setRascunho] = useState('');
+    const [editandoPrazo, setEditandoPrazo] = useState(false);
+    const [valorPrazo, setValorPrazo] = useState('');
 
     useEffect(() => {
         if (!aberto) return;
@@ -92,6 +107,30 @@ export default function CardDetalheModal({
             setRascunho('');
         } catch {
             // erro já fica visível via erroComentario — mantém o rascunho pra não perder o texto
+        }
+    };
+
+    const abrirEdicaoPrazo = () => {
+        setValorPrazo(card?.due ? paraDatetimeLocal(card.due) : '');
+        setEditandoPrazo(true);
+    };
+
+    const salvarPrazo = async () => {
+        if (!valorPrazo) return;
+        try {
+            await onEditarPrazo(new Date(valorPrazo).toISOString());
+            setEditandoPrazo(false);
+        } catch {
+            // erro já fica visível via erroPrazo — mantém o formulário aberto
+        }
+    };
+
+    const removerPrazo = async () => {
+        try {
+            await onEditarPrazo(null);
+            setEditandoPrazo(false);
+        } catch {
+            // erro já fica visível via erroPrazo
         }
     };
 
@@ -140,15 +179,66 @@ export default function CardDetalheModal({
                             {card.labels.length > 0 && <CardLabels labels={card.labels} />}
 
                             <div className="flex flex-wrap gap-6">
-                                {card.due && (
-                                    <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Prazo</p>
-                                        <p className={`text-sm font-medium ${card.dueComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                                            {format(parseISO(card.due), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                                            {card.dueComplete && ' · concluído'}
-                                        </p>
-                                    </div>
-                                )}
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Prazo</p>
+                                    {editandoPrazo ? (
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="datetime-local"
+                                                value={valorPrazo}
+                                                onChange={e => setValorPrazo(e.target.value)}
+                                                disabled={salvandoPrazo}
+                                                className="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={salvarPrazo}
+                                                disabled={salvandoPrazo || !valorPrazo}
+                                                title="Salvar"
+                                                className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">check</span>
+                                            </button>
+                                            {card.due && (
+                                                <button
+                                                    type="button"
+                                                    onClick={removerPrazo}
+                                                    disabled={salvandoPrazo}
+                                                    title="Remover prazo"
+                                                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-40"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditandoPrazo(false)}
+                                                disabled={salvandoPrazo}
+                                                title="Cancelar"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">close</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={abrirEdicaoPrazo}
+                                            className="group flex items-center gap-1.5 text-sm font-medium"
+                                        >
+                                            {card.due ? (
+                                                <span className={card.dueComplete ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}>
+                                                    {format(parseISO(card.due), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                                    {card.dueComplete && ' · concluído'}
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400 italic">Sem prazo</span>
+                                            )}
+                                            <span className="material-symbols-outlined text-[15px] text-slate-300 dark:text-slate-600 group-hover:text-primary">edit</span>
+                                        </button>
+                                    )}
+                                    {erroPrazo && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{erroPrazo}</p>}
+                                </div>
                                 {card.membros.length > 0 && (
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Membros</p>
@@ -222,56 +312,64 @@ export default function CardDetalheModal({
                                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
                                     Comentários ({card.comentarios.length})
                                 </p>
-                                <div className="space-y-3 mb-3">
-                                    {card.comentarios.map(c => (
-                                        <div key={c.id} className="flex items-start gap-2.5">
-                                            <Avatar nome={c.autor.nome} iniciais={c.autor.iniciais} avatarUrl={c.autor.avatarUrl} />
-                                            <div className="min-w-0 flex-1 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{c.autor.nome}</span>
-                                                    <span className="text-[10px] text-slate-400 shrink-0">
-                                                        {format(parseISO(c.data), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                                                    </span>
+                                {card.comentarios.length === 0 ? (
+                                    <p className="text-sm text-slate-400 italic">Nenhum comentário ainda — escreva um aí embaixo.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {card.comentarios.map(c => (
+                                            <div key={c.id} className="flex items-start gap-2.5">
+                                                <Avatar nome={c.autor.nome} iniciais={c.autor.iniciais} avatarUrl={c.autor.avatarUrl} />
+                                                <div className="min-w-0 flex-1 bg-slate-50 dark:bg-slate-800/60 rounded-xl px-3 py-2">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{c.autor.nome}</span>
+                                                        <span className="text-[10px] text-slate-400 shrink-0">
+                                                            {format(parseISO(c.data), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap mt-0.5">{c.texto}</p>
                                                 </div>
-                                                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap mt-0.5">{c.texto}</p>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="flex items-start gap-2.5">
-                                    <div className="w-6 h-6 rounded-full bg-primary/20 shrink-0" />
-                                    <div className="min-w-0 flex-1">
-                                        <textarea
-                                            value={rascunho}
-                                            onChange={e => setRascunho(e.target.value)}
-                                            placeholder="Escreva um comentário…"
-                                            rows={2}
-                                            disabled={enviandoComentario}
-                                            className="w-full text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:opacity-60"
-                                        />
-                                        {erroComentario && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{erroComentario}</p>}
-                                        <div className="flex justify-end mt-1.5">
-                                            <button
-                                                type="button"
-                                                onClick={enviar}
-                                                disabled={enviandoComentario || !rascunho.trim()}
-                                                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                            >
-                                                {enviandoComentario ? (
-                                                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                                                ) : (
-                                                    <span className="material-symbols-outlined text-[16px]">send</span>
-                                                )}
-                                                Comentar
-                                            </button>
-                                        </div>
+                                        ))}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </>
                     )}
                 </div>
+
+                {card && (
+                    <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 px-5 py-3">
+                        <div className="flex items-start gap-2.5">
+                            <div className="w-6 h-6 rounded-full bg-primary/20 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                                <textarea
+                                    value={rascunho}
+                                    onChange={e => setRascunho(e.target.value)}
+                                    placeholder="Escreva um comentário…"
+                                    rows={2}
+                                    disabled={enviandoComentario}
+                                    className="w-full text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 focus:ring-2 focus:ring-primary/20 outline-none resize-none disabled:opacity-60"
+                                />
+                                {erroComentario && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{erroComentario}</p>}
+                                <div className="flex justify-end mt-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={enviar}
+                                        disabled={enviandoComentario || !rascunho.trim()}
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {enviandoComentario ? (
+                                            <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                                        ) : (
+                                            <span className="material-symbols-outlined text-[16px]">send</span>
+                                        )}
+                                        Comentar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
