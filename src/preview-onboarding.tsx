@@ -44,6 +44,8 @@ export function PreviewOnboarding() {
                 notificacaoMembroFiltro={notificacaoAtrasados.membroFiltro}
                 notificacaoMembrosDisponiveis={notificacaoAtrasados.membrosDisponiveis}
                 onMudarNotificacaoMembro={notificacaoAtrasados.mudarMembroFiltro}
+                notificacaoListasIgnoradas={notificacaoAtrasados.listasIgnoradas}
+                onToggleNotificacaoLista={notificacaoAtrasados.toggleListaIgnorada}
             />
         </div>
     );

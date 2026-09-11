@@ -21,7 +21,7 @@ export default function Header(props: HeaderProps) {
 
     return (
         <header 
-            className="flex items-center justify-between whitespace-nowrap border-b border-solid px-6 py-3 shadow-md z-10 transition-colors duration-500"
+            className="flex items-center justify-between whitespace-nowrap border-b border-solid px-6 py-3 shadow-md z-30 transition-colors duration-500"
             style={{ 
                 backgroundColor: theme.headerBg,
                 borderColor: isCD ? '#0D47A1' : '#28a05e',

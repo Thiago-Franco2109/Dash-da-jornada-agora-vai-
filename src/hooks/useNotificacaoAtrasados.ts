@@ -21,11 +21,27 @@ import { nivelDaTarefa } from '../utils/trelloNivel';
 
 const STORAGE_KEY = 'onboarding_notificacao_atrasados_v1';
 const STORAGE_KEY_MEMBRO = 'onboarding_notificacao_membro_v1';
+const STORAGE_KEY_LISTAS_IGNORADAS = 'onboarding_notificacao_listas_ignoradas_v1';
 const INTERVALO_MS = 60_000;
 const TAG_NOTIFICACAO = 'onboarding-atrasados';
 
-function isAtrasado(card: CardTrelloOnboarding, membroFiltro: string | null): boolean {
+function loadSet(key: string): Set<string> {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw) return new Set(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set();
+}
+
+function saveSet(key: string, set: Set<string>) {
+    try {
+        localStorage.setItem(key, JSON.stringify([...set]));
+    } catch { /* ignore */ }
+}
+
+function isAtrasado(card: CardTrelloOnboarding, membroFiltro: string | null, listasIgnoradas: Set<string>): boolean {
     if (card.closed || card.dueComplete || !card.due) return false;
+    if (listasIgnoradas.has(card.listId)) return false;
     if (membroFiltro && !card.membros.some(m => m.id === membroFiltro)) return false;
     return nivelDaTarefa(card.due).nivel === 'overdue';
 }
@@ -83,6 +99,17 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
         return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     }, [cards]);
 
+    const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(() => loadSet(STORAGE_KEY_LISTAS_IGNORADAS));
+
+    const toggleListaIgnorada = useCallback((id: string) => {
+        setListasIgnoradas(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            saveSet(STORAGE_KEY_LISTAS_IGNORADAS, next);
+            return next;
+        });
+    }, []);
+
     // refresh muda de identidade a cada render do App — guardamos numa ref
     // pra o setInterval sempre chamar a versão atual sem precisar recriar o timer.
     const refreshRef = useRef(refresh);
@@ -122,7 +149,7 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
     // notificações do sistema) mas ainda tocar som de novo a cada vez.
     useEffect(() => {
         if (!ativado || permissao !== 'granted') return;
-        const atrasados = cards.filter(c => isAtrasado(c, membroFiltro));
+        const atrasados = cards.filter(c => isAtrasado(c, membroFiltro, listasIgnoradas));
         if (atrasados.length === 0) return;
 
         const titulo = atrasados.length === 1
@@ -154,7 +181,7 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
             notif.onclick = () => window.focus();
         } catch { /* ignore */ }
         tocarAlerta();
-    }, [cards, ativado, permissao, membroFiltro]);
+    }, [cards, ativado, permissao, membroFiltro, listasIgnoradas]);
 
     return {
         ativado,
@@ -164,5 +191,7 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
         membroFiltro,
         mudarMembroFiltro,
         membrosDisponiveis,
+        listasIgnoradas,
+        toggleListaIgnorada,
     };
 }

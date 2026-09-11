@@ -31,10 +31,12 @@ interface OnboardingViewProps {
     notificacaoPermissao?: NotificationPermission | 'unsupported';
     onAtivarNotificacao?: () => void;
     onDesativarNotificacao?: () => void;
-    /** Filtro de membro PRÓPRIO da notificação (independente do filtro do Quadro). */
+    /** Filtro de membro/lista PRÓPRIO da notificação (independente do filtro do Quadro). */
     notificacaoMembroFiltro?: string | null;
     notificacaoMembrosDisponiveis?: MembroTrello[];
     onMudarNotificacaoMembro?: (id: string | null) => void;
+    notificacaoListasIgnoradas?: Set<string>;
+    onToggleNotificacaoLista?: (id: string) => void;
 }
 
 type ModoVisualizacao = 'tabela' | 'quadro';
@@ -126,6 +128,8 @@ export default function OnboardingView({
     notificacaoMembroFiltro = null,
     notificacaoMembrosDisponiveis = [],
     onMudarNotificacaoMembro,
+    notificacaoListasIgnoradas = new Set<string>(),
+    onToggleNotificacaoLista,
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
     const [notifConfigAberta, setNotifConfigAberta] = useState(false);
@@ -307,21 +311,46 @@ export default function OnboardingView({
                                     </button>
                                 </div>
                                 {notifConfigAberta && (
-                                    <div className="absolute right-0 top-full mt-1.5 z-20 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10">
-                                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Notificar cards de</p>
-                                        {notificacaoMembrosDisponiveis.length === 0 ? (
-                                            <p className="text-xs text-slate-400 italic">Nenhum membro nos cards carregados ainda.</p>
-                                        ) : (
-                                            <>
-                                                <FiltroMembros
-                                                    membros={notificacaoMembrosDisponiveis}
-                                                    selecionado={notificacaoMembroFiltro}
-                                                    onSelecionar={id => onMudarNotificacaoMembro?.(id)}
-                                                />
-                                                <p className="text-[11px] text-slate-400 mt-2">
-                                                    {notificacaoMembroFiltro ? 'Só cards com esse membro atrasam a notificação.' : 'Sem filtro — todo card atrasado do board notifica.'}
-                                                </p>
-                                            </>
+                                    <div className="absolute right-0 top-full mt-1.5 z-20 w-72 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 space-y-4">
+                                        <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Notificar cards de</p>
+                                            {notificacaoMembrosDisponiveis.length === 0 ? (
+                                                <p className="text-xs text-slate-400 italic">Nenhum membro nos cards carregados ainda.</p>
+                                            ) : (
+                                                <>
+                                                    <FiltroMembros
+                                                        membros={notificacaoMembrosDisponiveis}
+                                                        selecionado={notificacaoMembroFiltro}
+                                                        onSelecionar={id => onMudarNotificacaoMembro?.(id)}
+                                                    />
+                                                    <p className="text-[11px] text-slate-400 mt-2">
+                                                        {notificacaoMembroFiltro ? 'Só cards com esse membro atrasam a notificação.' : 'Sem filtro — todo card atrasado do board notifica.'}
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {listasTrello.length > 0 && (
+                                            <div className="pt-3 border-t border-slate-100 dark:border-slate-700">
+                                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Ignorar listas</p>
+                                                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
+                                                    {listasTrello.map(l => {
+                                                        const ignorada = notificacaoListasIgnoradas.has(l.id);
+                                                        return (
+                                                            <label key={l.id} className="flex items-center gap-2 text-sm px-1 py-0.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={ignorada}
+                                                                    onChange={() => onToggleNotificacaoLista?.(l.id)}
+                                                                    className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary/40"
+                                                                />
+                                                                <span className={ignorada ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'}>{l.nome}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <p className="text-[11px] text-slate-400 mt-2">Marcadas não geram notificação, mesmo atrasadas.</p>
+                                            </div>
                                         )}
                                     </div>
                                 )}
