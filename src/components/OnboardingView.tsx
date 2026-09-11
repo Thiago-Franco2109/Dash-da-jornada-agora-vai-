@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { differenceInCalendarDays, format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { cityBelongsToManager, type Manager, type ProductModeKey } from '../config/managerMapping';
@@ -31,6 +31,10 @@ interface OnboardingViewProps {
     notificacaoPermissao?: NotificationPermission | 'unsupported';
     onAtivarNotificacao?: () => void;
     onDesativarNotificacao?: () => void;
+    /** Filtro de membro PRÓPRIO da notificação (independente do filtro do Quadro). */
+    notificacaoMembroFiltro?: string | null;
+    notificacaoMembrosDisponiveis?: MembroTrello[];
+    onMudarNotificacaoMembro?: (id: string | null) => void;
 }
 
 type ModoVisualizacao = 'tabela' | 'quadro';
@@ -119,8 +123,22 @@ export default function OnboardingView({
     notificacaoPermissao = 'unsupported',
     onAtivarNotificacao,
     onDesativarNotificacao,
+    notificacaoMembroFiltro = null,
+    notificacaoMembrosDisponiveis = [],
+    onMudarNotificacaoMembro,
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
+    const [notifConfigAberta, setNotifConfigAberta] = useState(false);
+    const notifConfigRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!notifConfigAberta) return;
+        const fechar = (e: MouseEvent) => {
+            if (notifConfigRef.current && !notifConfigRef.current.contains(e.target as Node)) setNotifConfigAberta(false);
+        };
+        document.addEventListener('mousedown', fechar);
+        return () => document.removeEventListener('mousedown', fechar);
+    }, [notifConfigAberta]);
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(loadListasOcultas);
@@ -246,33 +264,68 @@ export default function OnboardingView({
                             </button>
                         )}
                         {notificacaoPermissao !== 'unsupported' && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (notificacaoPermissao === 'denied') return;
-                                    if (notificacaoAtivada) onDesativarNotificacao?.();
-                                    else onAtivarNotificacao?.();
-                                }}
-                                title={
-                                    notificacaoPermissao === 'denied'
-                                        ? 'Notificações bloqueadas pelo navegador — habilite nas configurações do site'
-                                        : notificacaoAtivada
-                                            ? 'Clique pra desligar o alerta de cards atrasados'
-                                            : 'Avisar (com som) quando um card ficar atrasado, a cada 1 minuto'
-                                }
-                                className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                                    notificacaoPermissao === 'denied'
-                                        ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
-                                        : notificacaoAtivada
-                                            ? 'border-primary bg-primary/10 text-primary'
-                                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
-                                }`}
-                            >
-                                <span className="material-symbols-outlined text-[18px]">
-                                    {notificacaoAtivada ? 'notifications_active' : 'notifications_none'}
-                                </span>
-                                Atrasados
-                            </button>
+                            <div ref={notifConfigRef} className="relative flex">
+                                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (notificacaoPermissao === 'denied') return;
+                                            if (notificacaoAtivada) onDesativarNotificacao?.();
+                                            else onAtivarNotificacao?.();
+                                        }}
+                                        title={
+                                            notificacaoPermissao === 'denied'
+                                                ? 'Notificações bloqueadas pelo navegador — habilite nas configurações do site'
+                                                : notificacaoAtivada
+                                                    ? 'Clique pra desligar o alerta de cards atrasados'
+                                                    : 'Avisar (com som) quando um card ficar atrasado, a cada 1 minuto'
+                                        }
+                                        className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 transition-colors ${
+                                            notificacaoPermissao === 'denied'
+                                                ? 'text-slate-400 cursor-not-allowed bg-white dark:bg-slate-800'
+                                                : notificacaoAtivada
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">
+                                            {notificacaoAtivada ? 'notifications_active' : 'notifications_none'}
+                                        </span>
+                                        Atrasados
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNotifConfigAberta(v => !v)}
+                                        title="Configurar quem gera notificação"
+                                        className={`flex items-center justify-center w-7 border-l border-slate-200 dark:border-slate-700 transition-colors ${
+                                            notifConfigAberta
+                                                ? 'bg-primary/10 text-primary'
+                                                : 'bg-white dark:bg-slate-800 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">expand_more</span>
+                                    </button>
+                                </div>
+                                {notifConfigAberta && (
+                                    <div className="absolute right-0 top-full mt-1.5 z-20 w-64 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10">
+                                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Notificar cards de</p>
+                                        {notificacaoMembrosDisponiveis.length === 0 ? (
+                                            <p className="text-xs text-slate-400 italic">Nenhum membro nos cards carregados ainda.</p>
+                                        ) : (
+                                            <>
+                                                <FiltroMembros
+                                                    membros={notificacaoMembrosDisponiveis}
+                                                    selecionado={notificacaoMembroFiltro}
+                                                    onSelecionar={id => onMudarNotificacaoMembro?.(id)}
+                                                />
+                                                <p className="text-[11px] text-slate-400 mt-2">
+                                                    {notificacaoMembroFiltro ? 'Só cards com esse membro atrasam a notificação.' : 'Sem filtro — todo card atrasado do board notifica.'}
+                                                </p>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
                         <button
                             type="button"

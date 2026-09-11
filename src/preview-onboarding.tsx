@@ -41,6 +41,9 @@ export function PreviewOnboarding() {
                 notificacaoPermissao={notificacaoAtrasados.permissao}
                 onAtivarNotificacao={notificacaoAtrasados.ativar}
                 onDesativarNotificacao={notificacaoAtrasados.desativar}
+                notificacaoMembroFiltro={notificacaoAtrasados.membroFiltro}
+                notificacaoMembrosDisponiveis={notificacaoAtrasados.membrosDisponiveis}
+                onMudarNotificacaoMembro={notificacaoAtrasados.mudarMembroFiltro}
             />
         </div>
     );

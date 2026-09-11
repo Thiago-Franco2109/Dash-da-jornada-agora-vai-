@@ -828,6 +828,9 @@ function App() {
             notificacaoPermissao={notificacaoAtrasados.permissao}
             onAtivarNotificacao={notificacaoAtrasados.ativar}
             onDesativarNotificacao={notificacaoAtrasados.desativar}
+            notificacaoMembroFiltro={notificacaoAtrasados.membroFiltro}
+            notificacaoMembrosDisponiveis={notificacaoAtrasados.membrosDisponiveis}
+            onMudarNotificacaoMembro={notificacaoAtrasados.mudarMembroFiltro}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (

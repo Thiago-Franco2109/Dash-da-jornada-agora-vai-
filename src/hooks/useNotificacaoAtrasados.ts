@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { CardTrelloOnboarding } from './useOnboardingTrello';
+import type { MembroTrello } from '../types/trello';
 import { nivelDaTarefa } from '../utils/trelloNivel';
 
 /**
@@ -11,14 +12,21 @@ import { nivelDaTarefa } from '../utils/trelloNivel';
  * "Atrasado" usa a mesma classificação da UI (nivelDaTarefa === 'overdue'),
  * pra bater com o badge vermelho "Atrasados: N" que já existe — e ignora
  * cards arquivados ou já marcados como concluídos.
+ *
+ * Filtro de membro é próprio da notificação (não o mesmo do Quadro/Filtros)
+ * — o board é usado por um token compartilhado, então "atribuído a mim" só
+ * faz sentido como uma escolha explícita e estável de quem é "eu" aqui,
+ * guardada à parte de qualquer filtro de visualização que mude com o uso.
  */
 
 const STORAGE_KEY = 'onboarding_notificacao_atrasados_v1';
+const STORAGE_KEY_MEMBRO = 'onboarding_notificacao_membro_v1';
 const INTERVALO_MS = 60_000;
 const TAG_NOTIFICACAO = 'onboarding-atrasados';
 
-function isAtrasado(card: CardTrelloOnboarding): boolean {
+function isAtrasado(card: CardTrelloOnboarding, membroFiltro: string | null): boolean {
     if (card.closed || card.dueComplete || !card.due) return false;
+    if (membroFiltro && !card.membros.some(m => m.id === membroFiltro)) return false;
     return nivelDaTarefa(card.due).nivel === 'overdue';
 }
 
@@ -57,6 +65,23 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
     const [permissao, setPermissao] = useState<NotificationPermission | 'unsupported'>(
         suportado() ? Notification.permission : 'unsupported',
     );
+    const [membroFiltro, setMembroFiltro] = useState<string | null>(() => {
+        try { return localStorage.getItem(STORAGE_KEY_MEMBRO) || null; } catch { return null; }
+    });
+
+    const mudarMembroFiltro = useCallback((id: string | null) => {
+        setMembroFiltro(id);
+        try {
+            if (id) localStorage.setItem(STORAGE_KEY_MEMBRO, id);
+            else localStorage.removeItem(STORAGE_KEY_MEMBRO);
+        } catch { /* ignore */ }
+    }, []);
+
+    const membrosDisponiveis = useMemo(() => {
+        const porId = new Map<string, MembroTrello>();
+        for (const c of cards) for (const m of c.membros) porId.set(m.id, m);
+        return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    }, [cards]);
 
     // refresh muda de identidade a cada render do App — guardamos numa ref
     // pra o setInterval sempre chamar a versão atual sem precisar recriar o timer.
@@ -97,7 +122,7 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
     // notificações do sistema) mas ainda tocar som de novo a cada vez.
     useEffect(() => {
         if (!ativado || permissao !== 'granted') return;
-        const atrasados = cards.filter(isAtrasado);
+        const atrasados = cards.filter(c => isAtrasado(c, membroFiltro));
         if (atrasados.length === 0) return;
 
         const titulo = atrasados.length === 1
@@ -129,7 +154,15 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
             notif.onclick = () => window.focus();
         } catch { /* ignore */ }
         tocarAlerta();
-    }, [cards, ativado, permissao]);
+    }, [cards, ativado, permissao, membroFiltro]);
 
-    return { ativado, permissao, ativar, desativar };
+    return {
+        ativado,
+        permissao,
+        ativar,
+        desativar,
+        membroFiltro,
+        mudarMembroFiltro,
+        membrosDisponiveis,
+    };
 }
