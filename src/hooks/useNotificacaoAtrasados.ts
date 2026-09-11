@@ -110,11 +110,19 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
             // `renotify` já é padrão (garante o som tocar de novo mesmo
             // reaproveitando a mesma `tag`) mas ainda não está no lib.dom.d.ts
             // desse TS — daí o tipo estendido inline em vez de `any`.
+            //
+            // `requireInteraction: true` é o que faz o balão FICAR na tela em
+            // vez de sumir sozinho depois de ~5s (Chrome/Edge no Windows —
+            // no Mac o SO sempre decide isso sozinho, não dá pra forçar).
+            // Sem isso, quem não estiver olhando na hora exata só vê a
+            // notificação depois, na central do sistema — era exatamente o
+            // "só aparece quando eu abro a central" que foi reportado.
             const opcoes: NotificationOptions & { renotify?: boolean } = {
                 body: corpo,
                 icon: '/favicon.png',
                 tag: TAG_NOTIFICACAO,
                 renotify: true,
+                requireInteraction: true,
                 silent: false,
             };
             const notif = new Notification(titulo, opcoes);
