@@ -112,6 +112,7 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
             // desse TS — daí o tipo estendido inline em vez de `any`.
             const opcoes: NotificationOptions & { renotify?: boolean } = {
                 body: corpo,
+                icon: '/favicon.png',
                 tag: TAG_NOTIFICACAO,
                 renotify: true,
                 silent: false,
