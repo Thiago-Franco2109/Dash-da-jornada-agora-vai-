@@ -19,7 +19,10 @@ const mockCrmAlerts = [
 ] as unknown as CrmFollowUpAlert[];
 
 const mockTrelloTasks = [
-    { id: 't1', nome: 'Ligar pro Damone', due: '2026-08-22T00:00:00.000Z', dueComplete: false, boardId: 'b1', board: 'Prospecção', listId: 'l1', lista: 'Fazendo', cardUrl: 'https://trello.com/c/mock1' },
+    { id: 't1', nome: 'Ligar pro Damone', due: '2026-08-22T00:00:00.000Z', dueComplete: false, closed: false, boardId: 'b1', board: 'Prospecção', listId: 'l1', lista: 'Fazendo', cardUrl: 'https://trello.com/c/mock1' },
+    { id: 't2', nome: 'Card arquivado (não deveria notificar)', due: '2026-08-10T00:00:00.000Z', dueComplete: false, closed: true, boardId: 'b1', board: 'Prospecção', listId: 'l1', lista: 'Fazendo', cardUrl: 'https://trello.com/c/mock2' },
+    { id: 't3', nome: 'Card de outro board (pra testar ignorar board)', due: '2026-08-15T00:00:00.000Z', dueComplete: false, closed: false, boardId: 'b2', board: '[SC] Parceiros em Queda', listId: 'l2', lista: 'A fazer', cardUrl: 'https://trello.com/c/mock3' },
+    { id: 't4', nome: 'Card de lista diferente no mesmo board (pra testar ignorar lista)', due: '2026-08-16T00:00:00.000Z', dueComplete: false, closed: false, boardId: 'b1', board: 'Prospecção', listId: 'l3', lista: 'Fechado', cardUrl: 'https://trello.com/c/mock4' },
 ] as unknown as TarefaTrello[];
 
 createRoot(document.getElementById('root')!).render(

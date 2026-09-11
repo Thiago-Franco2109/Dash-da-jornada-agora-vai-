@@ -4,6 +4,10 @@ import type { CrmFollowUpAlert } from '../types/crm';
 import type { TarefaTrello } from '../hooks/useTrelloTarefas';
 import type { AppView } from '../types/views';
 import { formatCrmDate } from './crm/crmShared';
+import { loadPersistedSet, savePersistedSet } from '../utils/persistedSet';
+
+const STORAGE_KEY_BOARDS_IGNORADOS = 'notificacao_bell_boards_ignorados_v1';
+const STORAGE_KEY_LISTAS_IGNORADAS = 'notificacao_bell_listas_ignoradas_v1';
 
 type AlertLevel = 'overdue' | 'today' | 'upcoming';
 
@@ -21,12 +25,18 @@ const LEVEL_DOT: Record<AlertLevel, string> = {
     upcoming: 'bg-slate-400',
 };
 
-function classifyTrelloTarefas(tarefas: TarefaTrello[], upcomingDays = 3): TrelloAlert[] {
+function classifyTrelloTarefas(
+    tarefas: TarefaTrello[],
+    boardsIgnorados: Set<string>,
+    listasIgnoradas: Set<string>,
+    upcomingDays = 3,
+): TrelloAlert[] {
     const today = startOfDay(new Date());
     const out: TrelloAlert[] = [];
 
     for (const tarefa of tarefas) {
-        if (!tarefa.due || tarefa.dueComplete) continue;
+        if (tarefa.closed || !tarefa.due || tarefa.dueComplete) continue;
+        if (boardsIgnorados.has(tarefa.boardId) || listasIgnoradas.has(tarefa.listId)) continue;
 
         let date: Date;
         try {
@@ -59,6 +69,7 @@ interface NotificationBellProps {
 
 export default function NotificationBell({ crmAlerts, trelloTasks, onNavigate }: NotificationBellProps) {
     const [open, setOpen] = useState(false);
+    const [configAberta, setConfigAberta] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -70,7 +81,56 @@ export default function NotificationBell({ crmAlerts, trelloTasks, onNavigate }:
         return () => document.removeEventListener('mousedown', close);
     }, [open]);
 
-    const trelloAlerts = useMemo(() => classifyTrelloTarefas(trelloTasks), [trelloTasks]);
+    const [boardsIgnorados, setBoardsIgnorados] = useState<Set<string>>(() => loadPersistedSet(STORAGE_KEY_BOARDS_IGNORADOS));
+    const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(() => loadPersistedSet(STORAGE_KEY_LISTAS_IGNORADAS));
+
+    const toggleBoardIgnorado = (id: string) => {
+        setBoardsIgnorados(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            savePersistedSet(STORAGE_KEY_BOARDS_IGNORADOS, next);
+            return next;
+        });
+    };
+
+    const toggleListaIgnorada = (id: string) => {
+        setListasIgnoradas(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            savePersistedSet(STORAGE_KEY_LISTAS_IGNORADAS, next);
+            return next;
+        });
+    };
+
+    // Boards/listas disponíveis pra configurar o filtro — vem de todas as
+    // tarefas (não só as em alerta), senão listas que hoje não têm nada
+    // atrasado não apareceriam pra serem ignoradas antes de acumular atraso.
+    const boardsDisponiveis = useMemo(() => {
+        const porId = new Map<string, string>();
+        for (const t of trelloTasks) porId.set(t.boardId, t.board);
+        return [...porId.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }, [trelloTasks]);
+
+    const listasPorBoard = useMemo(() => {
+        const mapa = new Map<string, { id: string; name: string }[]>();
+        const vistos = new Set<string>();
+        for (const t of trelloTasks) {
+            if (vistos.has(t.listId)) continue;
+            vistos.add(t.listId);
+            const lista = mapa.get(t.boardId) ?? [];
+            lista.push({ id: t.listId, name: t.lista });
+            mapa.set(t.boardId, lista);
+        }
+        for (const lista of mapa.values()) lista.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+        return mapa;
+    }, [trelloTasks]);
+
+    const trelloAlerts = useMemo(
+        () => classifyTrelloTarefas(trelloTasks, boardsIgnorados, listasIgnoradas),
+        [trelloTasks, boardsIgnorados, listasIgnoradas],
+    );
 
     const urgentCount =
         crmAlerts.filter(a => a.level !== 'upcoming').length +
@@ -140,8 +200,50 @@ export default function NotificationBell({ crmAlerts, trelloTasks, onNavigate }:
 
                             <div className="px-4 pt-2 pb-1 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tarefas do Trello</span>
-                                <span className="text-[11px] font-bold text-slate-400">{trelloAlerts.length}</span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfigAberta(v => !v)}
+                                        className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded"
+                                        title="Ignorar boards/listas"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">tune</span>
+                                    </button>
+                                    <span className="text-[11px] font-bold text-slate-400">{trelloAlerts.length}</span>
+                                </div>
                             </div>
+
+                            {configAberta && (
+                                <div className="mx-4 mb-2 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 max-h-48 overflow-y-auto">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Ignorar boards/listas</p>
+                                    {boardsDisponiveis.length === 0 ? (
+                                        <p className="text-[11px] text-slate-400">Nenhum board carregado ainda.</p>
+                                    ) : boardsDisponiveis.map(board => (
+                                        <div key={board.id} className="mb-1.5">
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={boardsIgnorados.has(board.id)}
+                                                    onChange={() => toggleBoardIgnorado(board.id)}
+                                                    className="rounded"
+                                                />
+                                                {board.name}
+                                            </label>
+                                            {(listasPorBoard.get(board.id) ?? []).map(lista => (
+                                                <label key={lista.id} className="flex items-center gap-2 pl-6 mt-0.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={listasIgnoradas.has(lista.id)}
+                                                        onChange={() => toggleListaIgnorada(lista.id)}
+                                                        className="rounded"
+                                                    />
+                                                    {lista.name}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             {trelloAlerts.length === 0 ? (
                                 <p className="px-4 pb-3 text-xs text-slate-400">Nenhuma tarefa pendente.</p>
                             ) : (

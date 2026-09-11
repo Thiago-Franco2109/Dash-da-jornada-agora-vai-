@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { CardTrelloOnboarding } from './useOnboardingTrello';
 import type { MembroTrello } from '../types/trello';
 import { nivelDaTarefa } from '../utils/trelloNivel';
+import { loadPersistedSet, savePersistedSet } from '../utils/persistedSet';
 
 /**
  * Notificação do sistema (Web Notification API — "nível 1": funciona com a
@@ -24,20 +25,6 @@ const STORAGE_KEY_MEMBRO = 'onboarding_notificacao_membro_v1';
 const STORAGE_KEY_LISTAS_IGNORADAS = 'onboarding_notificacao_listas_ignoradas_v1';
 const INTERVALO_MS = 60_000;
 const TAG_NOTIFICACAO = 'onboarding-atrasados';
-
-function loadSet(key: string): Set<string> {
-    try {
-        const raw = localStorage.getItem(key);
-        if (raw) return new Set(JSON.parse(raw));
-    } catch { /* ignore */ }
-    return new Set();
-}
-
-function saveSet(key: string, set: Set<string>) {
-    try {
-        localStorage.setItem(key, JSON.stringify([...set]));
-    } catch { /* ignore */ }
-}
 
 function isAtrasado(card: CardTrelloOnboarding, membroFiltro: string | null, listasIgnoradas: Set<string>): boolean {
     if (card.closed || card.dueComplete || !card.due) return false;
@@ -99,13 +86,13 @@ export function useNotificacaoAtrasados(cards: CardTrelloOnboarding[], refresh: 
         return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     }, [cards]);
 
-    const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(() => loadSet(STORAGE_KEY_LISTAS_IGNORADAS));
+    const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(() => loadPersistedSet(STORAGE_KEY_LISTAS_IGNORADAS));
 
     const toggleListaIgnorada = useCallback((id: string) => {
         setListasIgnoradas(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id); else next.add(id);
-            saveSet(STORAGE_KEY_LISTAS_IGNORADAS, next);
+            savePersistedSet(STORAGE_KEY_LISTAS_IGNORADAS, next);
             return next;
         });
     }, []);
