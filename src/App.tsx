@@ -33,6 +33,7 @@ import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './ut
 import { useAtribuicaoCs } from './hooks/useAtribuicaoCs';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
 import { useOnboardingTrello } from './hooks/useOnboardingTrello';
+import { useNotificacaoAtrasados } from './hooks/useNotificacaoAtrasados';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -249,8 +250,12 @@ function App() {
     listas: onboardingListasTrello,
     refreshTrello: refreshOnboardingTrello,
   } = useOnboardingTrello({
-    enabled: onboardingTabActive,
+    // Sempre ativo (não só na aba) — a notificação de atrasados abaixo
+    // precisa rechecar em background, independente de qual aba está aberta.
+    enabled: isAuthenticated,
   });
+
+  const notificacaoAtrasados = useNotificacaoAtrasados(onboardingCardsTrello, refreshOnboardingTrello);
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -819,6 +824,10 @@ function App() {
             etapasTrello={onboardingEtapasTrello}
             cardsTrello={onboardingCardsTrello}
             listasTrello={onboardingListasTrello}
+            notificacaoAtivada={notificacaoAtrasados.ativado}
+            notificacaoPermissao={notificacaoAtrasados.permissao}
+            onAtivarNotificacao={notificacaoAtrasados.ativar}
+            onDesativarNotificacao={notificacaoAtrasados.desativar}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (

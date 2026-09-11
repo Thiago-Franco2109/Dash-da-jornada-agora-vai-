@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client';
 import OnboardingView from './components/OnboardingView';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
 import { useOnboardingTrello } from './hooks/useOnboardingTrello';
+import { useNotificacaoAtrasados } from './hooks/useNotificacaoAtrasados';
 import './index.css';
 
 export function PreviewOnboarding() {
@@ -21,6 +22,7 @@ export function PreviewOnboarding() {
     const produto = fonte === 'cd' ? 'cd' : undefined;
     const { pendentes, isLoading, isRefreshing, error, lastSyncTime, refreshData } = useOnboardingPendente({ produto });
     const { etapasPorEstabId, cards, listas, refreshTrello } = useOnboardingTrello();
+    const notificacaoAtrasados = useNotificacaoAtrasados(cards, refreshTrello);
 
     return (
         <div className="h-screen flex bg-white dark:bg-slate-900">
@@ -35,6 +37,10 @@ export function PreviewOnboarding() {
                 etapasTrello={etapasPorEstabId}
                 cardsTrello={cards}
                 listasTrello={listas}
+                notificacaoAtivada={notificacaoAtrasados.ativado}
+                notificacaoPermissao={notificacaoAtrasados.permissao}
+                onAtivarNotificacao={notificacaoAtrasados.ativar}
+                onDesativarNotificacao={notificacaoAtrasados.desativar}
             />
         </div>
     );

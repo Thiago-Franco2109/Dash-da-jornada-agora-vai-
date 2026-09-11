@@ -26,6 +26,11 @@ interface OnboardingViewProps {
     /** Todos os cards + listas do board de onboarding — alimenta o modo "Quadro". */
     cardsTrello?: CardTrelloOnboarding[];
     listasTrello?: ListaTrelloOnboarding[];
+    /** Notificação do sistema pra cards atrasados — ver useNotificacaoAtrasados. */
+    notificacaoAtivada?: boolean;
+    notificacaoPermissao?: NotificationPermission | 'unsupported';
+    onAtivarNotificacao?: () => void;
+    onDesativarNotificacao?: () => void;
 }
 
 type ModoVisualizacao = 'tabela' | 'quadro';
@@ -110,6 +115,10 @@ export default function OnboardingView({
     etapasTrello,
     cardsTrello = [],
     listasTrello = [],
+    notificacaoAtivada = false,
+    notificacaoPermissao = 'unsupported',
+    onAtivarNotificacao,
+    onDesativarNotificacao,
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
@@ -234,6 +243,35 @@ export default function OnboardingView({
                                         {totalFiltrosAtivos}
                                     </span>
                                 )}
+                            </button>
+                        )}
+                        {notificacaoPermissao !== 'unsupported' && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (notificacaoPermissao === 'denied') return;
+                                    if (notificacaoAtivada) onDesativarNotificacao?.();
+                                    else onAtivarNotificacao?.();
+                                }}
+                                title={
+                                    notificacaoPermissao === 'denied'
+                                        ? 'Notificações bloqueadas pelo navegador — habilite nas configurações do site'
+                                        : notificacaoAtivada
+                                            ? 'Clique pra desligar o alerta de cards atrasados'
+                                            : 'Avisar (com som) quando um card ficar atrasado, a cada 1 minuto'
+                                }
+                                className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                                    notificacaoPermissao === 'denied'
+                                        ? 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
+                                        : notificacaoAtivada
+                                            ? 'border-primary bg-primary/10 text-primary'
+                                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[18px]">
+                                    {notificacaoAtivada ? 'notifications_active' : 'notifications_none'}
+                                </span>
+                                Atrasados
                             </button>
                         )}
                         <button
