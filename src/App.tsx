@@ -444,6 +444,10 @@ function App() {
       const extras: EnrichedPerformanceRow[] = [];
       for (const p of parceirosAtivos) {
         if (existing.has(String(p.id))) continue;
+        // Marketplace e Cardápio Digital são listas disjuntas (ver jornada.ts).
+        // `parceirosAtivos` traz os dois de propósito (serve de índice id→cidade
+        // p/ o app inteiro), então quem monta LISTA filtra pelo produto.
+        if (p.cardapioDigital !== isCD) continue;
         const minimal = {
           cidade: p.cidade ?? '', estabelecimento: p.nome, estab_id: String(p.id),
           status: 'ativo', lancamento: '', desempenho: '',
@@ -458,7 +462,7 @@ function App() {
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc, mappingVersion],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc, mappingVersion],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;

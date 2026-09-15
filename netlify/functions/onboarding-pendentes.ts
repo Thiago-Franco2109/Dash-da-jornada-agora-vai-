@@ -27,7 +27,8 @@ import { checkOrigin } from './_shared/auth';
  * andamento, é lixo acumulado.
  *
  * ?produto=cd filtra só assinantes do Cardápio Digital, mesma convenção da
- * `jornada.ts`. Sem o parâmetro, mostra pendente de qualquer produto.
+ * `jornada.ts` — e, como lá, as duas listas são DISJUNTAS: sem o parâmetro
+ * vêm só os pendentes de marketplace, nunca os de CD.
  *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
@@ -47,7 +48,11 @@ export const handler: Handler = async (event) => {
 
     const q = event.queryStringParameters ?? {};
     const soCd = q.produto === 'cd';
-    const filtroCd = soCd ? ' AND e.cardapio_digital = 1' : '';
+    // Mesma regra do `jornada.ts`: os dois produtos são listas disjuntas, então
+    // sem `?produto=cd` o pendente de Cardápio Digital NÃO entra no marketplace.
+    const filtroCd = soCd
+        ? ' AND e.cardapio_digital = 1'
+        : ' AND (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)';
     const dias = Math.min(Math.max(Number(q.dias) || 30, 1), 365);
 
     let connection;

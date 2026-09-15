@@ -85,7 +85,15 @@ export const handler: Handler = async (event) => {
     const modoDesempenho = q.modo === 'desempenho';
     const semanas = modoDesempenho ? SEMANAS_DESEMPENHO : SEMANAS_JORNADA;
 
-    const filtroCd = soCd ? ' AND e.cardapio_digital = 1' : '';
+    // Os dois produtos são listas DISJUNTAS: `?produto=cd` traz só quem tem
+    // cardapio_digital = 1, e o marketplace traz só quem NÃO tem. Antes o
+    // marketplace não filtrava nada e engolia as lojas de Cardápio Digital
+    // (conferido: das 101 lojas com cardapio_digital = 1, ZERO tem qualquer
+    // pedido de marketplace — 61 só vendem pelo CD e 40 não venderam nada).
+    // IS NULL entra junto porque a coluna é opcional em cadastro antigo.
+    const filtroCd = soCd
+        ? ' AND e.cardapio_digital = 1'
+        : ' AND (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)';
     const filtroPedidoCd = soCd ? ' AND cardapio_digital = 1' : '';
 
     let connection;

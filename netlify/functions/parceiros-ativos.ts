@@ -8,7 +8,12 @@ import { checkOrigin } from './_shared/auth';
  * pedido/estar na planilha. Base para a carteira deixar de depender do INDICADOR
  * (que é montado por pedidos e ignora parceiros novos sem venda).
  *
- * Retorna id, nome, cidade (via localidade). Read-only, protegido por origem.
+ * Retorna id, nome, cidade (via localidade) e `cardapioDigital`. A lista NÃO é
+ * filtrada por produto de propósito: ela também serve de índice id→cidade e
+ * id→nome para o app inteiro (os dois modos). Quem monta lista de parceiro
+ * filtra pelo flag — ver `jornada.ts` para a regra de disjunção CD × marketplace.
+ *
+ * Read-only, protegido por origem.
  */
 
 const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
@@ -27,7 +32,8 @@ export const handler: Handler = async (event) => {
     try {
         connection = await getConnection();
         const [rows] = await connection.query<RowDataPacket[]>(
-            `SELECT e.id, e.nome, e.uid, e.localidade_id, l.nome AS cidade
+            `SELECT e.id, e.nome, e.uid, e.localidade_id, l.nome AS cidade,
+                    e.cardapio_digital AS cardapio_digital
              FROM estabelecimento e
              LEFT JOIN localidade l ON l.id = e.localidade_id
              WHERE e.delivery = 1
@@ -39,6 +45,7 @@ export const handler: Handler = async (event) => {
             uid: (r.uid as string) ?? null,
             cidade: (r.cidade as string) ?? null,
             localidadeId: (r.localidade_id as number) ?? null,
+            cardapioDigital: Number(r.cardapio_digital ?? 0) === 1,
         }));
         return {
             statusCode: 200,

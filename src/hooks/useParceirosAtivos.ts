@@ -14,6 +14,8 @@ export interface ParceiroAtivo {
     uid: string | null;
     cidade: string | null;
     localidadeId: number | null;
+    /** Loja de Cardápio Digital. Não é parceiro do marketplace (listas disjuntas). */
+    cardapioDigital: boolean;
 }
 
 let _cache: ParceiroAtivo[] | null = null;
@@ -24,7 +26,10 @@ async function fetchParceirosAtivos(): Promise<ParceiroAtivo[]> {
     if (!res.ok || json?.ok === false) {
         throw new Error(json?.error || `Erro ${res.status} ao carregar parceiros do banco.`);
     }
-    return (json.data ?? []) as ParceiroAtivo[];
+    return ((json.data ?? []) as ParceiroAtivo[]).map(p => ({
+        ...p,
+        cardapioDigital: p.cardapioDigital === true,
+    }));
 }
 
 export function useParceirosAtivos() {
