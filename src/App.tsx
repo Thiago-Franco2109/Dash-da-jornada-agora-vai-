@@ -75,6 +75,7 @@ import { useAcoesPromocionaisData } from './hooks/useAcoesPromocionaisData';
 import { useGatewaySheetData } from './hooks/useGatewaySheetData';
 import { useCrmData } from './hooks/useCrmData';
 import PartnerSearchPalette from './components/PartnerSearchPalette';
+import { findPartner } from './utils/partnerIdentity';
 
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
@@ -317,11 +318,14 @@ function App() {
   const crmPartnerForSelected = useMemo((): CrmPartner | null => {
     if (!selectedRow || isCD) return null;
     const estabId = String(selectedRow.estab_id ?? '').trim();
+    // Tendo estab_id, é SÓ por ele. O `find` com `id || nome` na mesma condição
+    // devolvia o primeiro homônimo da lista (ex: "Mega Lanches" de Carandaí no
+    // lugar do de Santos Dumont) e o painel de CRM/promoções mostrava os dados
+    // da loja errada. Nome só quando a linha não tem id. Ver partnerIdentity.ts.
+    if (estabId) return crmPartners.find(p => p.estabId === estabId) ?? null;
     const nome = selectedRow.estabelecimento?.trim();
-    return crmPartners.find(p =>
-      (estabId && p.estabId === estabId) ||
-      (nome && p.estabelecimento === nome),
-    ) ?? null;
+    if (!nome) return null;
+    return crmPartners.find(p => p.estabelecimento === nome) ?? null;
   }, [selectedRow, crmPartners, isCD]);
 
   const { setStatus: setOfertasStatus, records: ofertasRecords } = useOfertasDaCasa();
@@ -605,7 +609,7 @@ function App() {
       : enrichedData;
 
   const currentSelectedRow = selectedRow
-    ? (activeEnrichedPool.find(r => r.estabelecimento === selectedRow.estabelecimento) ?? selectedRow)
+    ? (findPartner(activeEnrichedPool, selectedRow) ?? selectedRow)
     : null;
 
   const handleRelevanceChange = (partnerId: string, score: number) => {
@@ -614,7 +618,7 @@ function App() {
   };
 
   const handleRowClick = (row: EnrichedPerformanceRow) => {
-    const latest = activeEnrichedPool.find(r => r.estabelecimento === row.estabelecimento) ?? row;
+    const latest = findPartner(activeEnrichedPool, row) ?? row;
     setSelectedRow(latest);
     if (currentView !== 'dashboard' && currentView !== 'cd_desempenho' && currentView !== 'churn' && currentView !== 'todos_parceiros') {
       setCurrentView('dashboard');
@@ -625,7 +629,10 @@ function App() {
     const map = new Map<string, EnrichedPerformanceRow>();
     const add = (rows: EnrichedPerformanceRow[]) => {
       for (const row of rows) {
-        const key = (row.estab_id || row.estabelecimento || '').trim().toLowerCase();
+        // Sem estab_id, nome+cidade é o mais perto de identidade que dá: só
+        // pelo nome, dois homônimos de cidades diferentes viravam um resultado.
+        const key = (String(row.estab_id ?? '').trim()
+          || `${row.estabelecimento ?? ''}|${row.cidade ?? ''}`).trim().toLowerCase();
         if (!key) continue;
         if (!map.has(key)) map.set(key, row);
       }
@@ -643,12 +650,8 @@ function App() {
   }, [isCD, enrichedData, indicadorEnrichedData, enrichedDesempenhoData]);
 
   const navigateToPartner = (row: EnrichedPerformanceRow) => {
-    const matchKey = (r: EnrichedPerformanceRow) =>
-      r.estabelecimento === row.estabelecimento ||
-      (!!row.estab_id && r.estab_id === row.estab_id);
-
     if (isCD) {
-      const inDesempenho = enrichedDesempenhoData.find(matchKey);
+      const inDesempenho = findPartner(enrichedDesempenhoData, row);
       setSelectedRow(inDesempenho ?? row);
       setCurrentView('cd_desempenho');
     } else {
@@ -656,12 +659,12 @@ function App() {
       // também aparece no pool CRM genérico (sem filtro de data), então
       // checar CRM primeiro sempre "ganhava" e mandava o usuário para a
       // tela genérica em vez da tela de onboarding de verdade.
-      const inDashboard = enrichedData.find(matchKey);
+      const inDashboard = findPartner(enrichedData, row);
       if (inDashboard) {
         setSelectedRow(inDashboard);
         setCurrentView('dashboard');
       } else {
-        const inIndicador = indicadorEnrichedData.find(matchKey);
+        const inIndicador = findPartner(indicadorEnrichedData, row);
         setSelectedRow(inIndicador ?? row);
         setCurrentView('todos_parceiros');
       }

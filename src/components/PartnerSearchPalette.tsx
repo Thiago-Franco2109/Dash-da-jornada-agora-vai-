@@ -139,7 +139,7 @@ export default function PartnerSearchPalette({
                     ) : (
                         results.map((partner, index) => (
                             <button
-                                key={`${partner.estab_id ?? ''}-${partner.estabelecimento}`}
+                                key={`${partner.estab_id ?? ''}-${partner.estabelecimento}-${partner.cidade ?? ''}`}
                                 data-index={index}
                                 type="button"
                                 onClick={() => {
@@ -173,6 +173,12 @@ export default function PartnerSearchPalette({
                                         {partner.analista ? ` · ${partner.analista}` : ''}
                                     </p>
                                 </div>
+                                {/* Nome se repete entre cidades; o id é o que identifica a loja. */}
+                                {partner.estab_id && (
+                                    <span className="hidden sm:inline-flex shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                        #{partner.estab_id}
+                                    </span>
+                                )}
                                 {index === activeIndex && (
                                     <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-500 border border-slate-200 dark:border-slate-700">
                                         ↵
