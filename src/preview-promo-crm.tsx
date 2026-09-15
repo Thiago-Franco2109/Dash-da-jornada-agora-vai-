@@ -1,6 +1,6 @@
 /**
- * Entrada isolada para conferir o botão "Gerar Arte" dentro de
- * PartnerPromoCrmSection (aba Promoções da página do parceiro), sem login.
+ * Entrada isolada para conferir PartnerPromoCrmSection (aba Promoções da página
+ * do parceiro) sem login — botão "Gerar Arte" e a tabela de campanhas.
  *
  * Rode `npm run dev` e abra http://localhost:5173/preview-promo-crm.html
  *
@@ -8,11 +8,37 @@
  * `rollupOptions.input`, então só `index.html` é empacotado.
  */
 import { StrictMode } from 'react';
+
 import { createRoot } from 'react-dom/client';
 import PartnerPromoCrmSection from './components/PartnerPromoCrmSection';
 import type { EnrichedPerformanceRow } from './utils/calculations';
 import type { CrmPartner } from './types/crm';
 import './index.css';
+
+// A seção chama `usePromoStatus` (Function promo-status), que não existe no dev
+// server. Responde no lugar dela com a lista real de campanhas vigentes do CMS,
+// pra dar pra conferir as linhas extras e cada estado possível.
+const CAMPANHAS_VIGENTES = [
+    { id: 26, nome: 'Super Promos!' },
+    { id: 31, nome: 'Ofertas da Casa' },
+    { id: 32, nome: 'Super Bigou!' },
+    { id: 33, nome: 'Tudo por R$9,99' },
+    { id: 35, nome: 'Promo do Dia!' },
+    { id: 38, nome: 'Semana do Cliente' },
+];
+
+const fetchReal = window.fetch.bind(window);
+window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('/promo-status')) {
+        return Promise.resolve(new Response(JSON.stringify({
+            ok: true,
+            campanhas: CAMPANHAS_VIGENTES,
+            porParceiro: { 28136: { 'Super Promos!': { rascunho: 0, pendente: 0, aprovado: 2 } } },
+            campanhasPorLocalidade: { 1: ['Super Promos!', 'Tudo por R$9,99', 'Semana do Cliente'] },
+        }), { headers: { 'Content-Type': 'application/json' } }));
+    }
+    return fetchReal(input, init);
+}) as typeof window.fetch;
 
 const mockPartner = {
     cidade: 'Além Paraíba',
@@ -30,6 +56,17 @@ const mockPartner = {
     indice_desempenho: 1.2,
     city_weight: 1,
     priority_stars: 3,
+    // Espelha o que computePromoResumo devolveria pro mock acima: campanha da
+    // cidade sem item do parceiro = "sem item"; fora da cidade nem aparece aqui
+    // (a linha cai em "Não ofertada na cidade").
+    promo_resumo: {
+        pendente: 0, aprovado: 2, rascunho: 0, semItem: 2,
+        detalhe: [
+            { campanha: 'Super Promos!', status: 'aprovado' },
+            { campanha: 'Tudo por R$9,99', status: 'sem item' },
+            { campanha: 'Semana do Cliente', status: 'sem item' },
+        ],
+    },
 } as unknown as EnrichedPerformanceRow;
 
 const mockCrmPartner = {

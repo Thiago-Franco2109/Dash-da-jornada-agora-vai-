@@ -14,6 +14,11 @@ import { checkOrigin } from './_shared/auth';
  *  - campanhasPorLocalidade[localidade_id] = [nomes de campanha na cidade]
  *    (para mostrar "sem item" quando a campanha existe na cidade mas o parceiro
  *     não tem item nela — ex: Promo do Dia)
+ *  - campanhas = [{ id, nome }] de TODA campanha vigente, tenha ela item ou não.
+ *    As duas listas acima só enxergam campanha que já tem item em algum lugar;
+ *    a tela de Promoções precisa da lista completa (é a mesma que o CS vê no
+ *    CMS) pra conseguir mostrar "não ofertada na cidade". O `id` é o
+ *    `campanha_promocao.id`, que é o que monta o link /campanha/promocao/cadastro/<id>.
  *
  * STOPGAP: protegido por checagem de origem.
  */
@@ -30,10 +35,20 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
+    const VIGENTE = `ativo = 1
+        AND (data_inicio IS NULL OR data_inicio <= NOW())
+        AND (data_fim IS NULL OR data_fim >= NOW())`;
+
     let connection;
     const started = Date.now();
     try {
         connection = await getConnection();
+
+        const [campanhasVigentes] = await connection.query<RowDataPacket[]>(
+            `SELECT id, nome FROM campanha_promocao WHERE ${VIGENTE} ORDER BY nome`,
+        );
+        const campanhas = campanhasVigentes.map(c => ({ id: Number(c.id), nome: String(c.nome ?? '') }));
+
         const [rows] = await connection.query<RowDataPacket[]>(
             `SELECT e.localidade_id AS loc, cp.nome AS campanha,
                     c.estabelecimento_id AS estab, ic.status AS st
@@ -74,6 +89,7 @@ export const handler: Handler = async (event) => {
             headers: jsonHeaders,
             body: JSON.stringify({
                 ok: true,
+                campanhas,
                 porParceiro,
                 campanhasPorLocalidade,
                 elapsedMs: Date.now() - started,

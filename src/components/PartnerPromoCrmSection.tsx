@@ -11,8 +11,8 @@ import {
     getOfertasDaCasaStatusMeta,
     isTopPriorityCity,
 } from '../config/crmCampaigns';
-import { CAMPAIGN_TYPES, getCampaignConfig, resolveCampaignTypeId, type CampaignTypeId } from '../config/campaignTypes';
-import type { PromoCampanhaStatus } from '../hooks/usePromoStatus';
+import { CAMPAIGN_TYPES, campaignIdFromNome, getCampaignConfig, type CampaignTypeId } from '../config/campaignTypes';
+import { usePromoStatus, type PromoCampanhaStatus } from '../hooks/usePromoStatus';
 import CampaignIcons from './CampaignIcons';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
@@ -33,10 +33,12 @@ const TONE_STYLES: Record<CardTone, { rail: string; stamp: string; dot: string }
 };
 
 /** Identidade da campanha vive no ícone (convenção de campaignTypes.ts), nunca no estado. */
-const ACCENT_STYLES: Record<'amber' | 'violet' | 'indigo', string> = {
+const ACCENT_STYLES: Record<'amber' | 'violet' | 'indigo' | 'slate', string> = {
     amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
     violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400',
     indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400',
+    // Campanha descoberta no banco: sem identidade própria definida no app.
+    slate: 'bg-slate-100 text-slate-500 dark:bg-slate-700/40 dark:text-slate-300',
 };
 
 /**
@@ -71,7 +73,7 @@ function campaignStateFromResumo(
 ): { tone: CardTone; label: string } | null {
     const resumo = partner.promo_resumo;
     if (!resumo?.detalhe) return null;
-    const entry = resumo.detalhe.find(d => resolveCampaignTypeId(d.campanha) === id);
+    const entry = resumo.detalhe.find(d => campaignIdFromNome(d.campanha) === id);
     if (!entry) return { tone: 'idle', label: 'Não ofertada na cidade' };
     return PROMO_STATUS_TONE[entry.status];
 }
@@ -119,6 +121,19 @@ const CUPOM_STATUS_SELECT_OPTIONS: { value: PromoStatus; label: string }[] = [
     { value: 'confirmado', label: 'Confirmado' },
 ];
 
+/**
+ * Mesmo link que `getCmsPromoUrl` monta para as campanhas conhecidas, só que a
+ * partir do `campanha_promocao.id` que vem do banco — é assim que campanha
+ * descoberta dinamicamente ganha link certo sem precisar estar no campaignTypes.
+ */
+function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
+    const base = `https://admin.bigou.com.br/campanha/promocao/cadastro/${campanhaId}`;
+    return localidadeId ? `${base}?localidade_id=${localidadeId}` : base;
+}
+
+/** Campanhas com linha própria na tabela; o resto do CMS entra como linha extra. */
+const KNOWN_ROW_IDS = new Set<CampaignTypeId>(['ofertas_da_casa', 'super_promos', 'cupons_destaque']);
+
 function partnerKey(partner: EnrichedPerformanceRow): string {
     return String(partner.estab_id || partner.estabelecimento);
 }
@@ -164,6 +179,16 @@ export default function PartnerPromoCrmSection({
     const isTopCity = isTopPriorityCity(partner.cidade, topCities);
     const note = getNote(pid);
     const ofertasRecord = getRecord(pid);
+
+    // Campanhas vigentes no CMS que não são uma das 3 com tratamento próprio
+    // (ex: "Tudo por R$9,99", "Semana do Cliente"). Entram como linha
+    // somente-leitura: não há onde guardar status manual do CS pra elas
+    // (ver isEditableCampaign), mas o Estado real do banco vale igual.
+    const { promoData } = usePromoStatus();
+    const campanhasExtras = promoData.campanhas
+        .map(c => ({ ...c, campaignId: campaignIdFromNome(c.nome) }))
+        .filter(c => !KNOWN_ROW_IDS.has(c.campaignId))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
     const superPromosAtiva = !!partner.promo_campanhas?.includes('Super Promos!');
     const dbActiveCampaigns = [
@@ -300,6 +325,28 @@ export default function PartnerPromoCrmSection({
                     cityIdsLoading={cityIdsLoading}
                     onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
                 />
+
+                {/* Demais campanhas vigentes no CMS — somente leitura (ver campanhasExtras). */}
+                {campanhasExtras.map(c => {
+                    const state = campaignStateFromResumo(partner, c.campaignId)
+                        ?? { tone: 'idle' as CardTone, label: 'Carregando…' };
+                    return (
+                        <CampaignRow
+                            key={c.id}
+                            icons={getCampaignConfig(c.campaignId).icons}
+                            accent="slate"
+                            title={c.nome}
+                            description="Campanha vigente no CMS. Estado vem dos itens promocionais do parceiro."
+                            tone={state.tone}
+                            toneLabel={state.label}
+                            href={cmsCampanhaUrl(c.id, localidadeId)}
+                            cmsLabel="Abrir campanha no CMS"
+                            localidadeId={localidadeId}
+                            cityIdsLoading={cityIdsLoading}
+                            onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
+                        />
+                    );
+                })}
 
                 <CampaignRow
                     icons={getCampaignConfig('cupons_destaque').icons}
@@ -606,7 +653,7 @@ function CampaignRow({
     onGerarArte,
 }: {
     icons: readonly string[];
-    accent: 'amber' | 'violet' | 'indigo';
+    accent: 'amber' | 'violet' | 'indigo' | 'slate';
     title: string;
     description: string;
     tone: CardTone;

@@ -110,6 +110,19 @@ export function resolveCampaignTypeId(raw: string): CampaignTypeId | null {
     return null;
 }
 
+/**
+ * Id estável a partir do nome da campanha no banco (`campanha_promocao.nome`).
+ * Os 3 tipos conhecidos caem no id canônico; qualquer outra campanha vigente
+ * (ex: "Tudo por R$9,99", "Semana do Cliente") vira um id derivado do nome,
+ * somente-leitura — ver getCampaignConfig / isEditableCampaign.
+ */
+export function campaignIdFromNome(nome: string): CampaignTypeId {
+    const known = resolveCampaignTypeId(nome);
+    if (known) return known;
+    const slug = normalizeCampaignText(nome).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return slug || 'campanha';
+}
+
 export function getCampaignOverrideField(id: CampaignTypeId): CampaignStatusOverrideField | null {
     return getCampaignConfig(id).overrideField;
 }

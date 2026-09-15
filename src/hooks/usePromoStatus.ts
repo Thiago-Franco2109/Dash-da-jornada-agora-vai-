@@ -18,7 +18,18 @@ export interface PromoResumo {
     detalhe: { campanha: string; status: PromoCampanhaStatus }[];
 }
 
+/** Campanha vigente no CMS (`campanha_promocao`). `id` monta o link do CMS. */
+export interface CampanhaVigente {
+    id: number;
+    nome: string;
+}
+
 export interface PromoStatusData {
+    /**
+     * TODA campanha vigente, tenha item ou não — é a mesma lista que o CS vê no
+     * CMS. As duas abaixo só enxergam campanha que já tem item em algum lugar.
+     */
+    campanhas: CampanhaVigente[];
     /** porParceiro[estabId][nomeCampanha] = { rascunho, pendente, aprovado } */
     porParceiro: Record<string, Record<string, StatusCounts>>;
     /** campanhasPorLocalidade[localidade_id] = nomes de campanha na cidade */
@@ -65,13 +76,14 @@ async function fetchPromoStatus(): Promise<PromoStatusData> {
         throw new Error(json?.error || `Erro ${res.status} ao carregar status de promoções.`);
     }
     return {
+        campanhas: (json.campanhas ?? []) as CampanhaVigente[],
         porParceiro: json.porParceiro ?? {},
         campanhasPorLocalidade: json.campanhasPorLocalidade ?? {},
     };
 }
 
 export function usePromoStatus() {
-    const [promoData, setPromoData] = useState<PromoStatusData>(_cache ?? { porParceiro: {}, campanhasPorLocalidade: {} });
+    const [promoData, setPromoData] = useState<PromoStatusData>(_cache ?? { campanhas: [], porParceiro: {}, campanhasPorLocalidade: {} });
     const [loading, setLoading] = useState(!_cache);
     const [error, setError] = useState<string | null>(null);
 
