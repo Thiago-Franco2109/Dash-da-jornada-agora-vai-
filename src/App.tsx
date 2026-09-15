@@ -277,12 +277,19 @@ function App() {
   }, [parceirosAtivos]);
   // Índice nome→id (do banco) p/ o overlay casar por nome quando o estab_id da
   // planilha não bate (ex: dashboard "novos formatado").
+  // Nome repetido no banco (ex: 4 "Mega Lanches" em cidades diferentes) não vira
+  // entrada: casar por nome ali seria sorteio, e o parceiro herdaria as campanhas
+  // do homônimo. Ambíguo = fica de fora e o overlay simplesmente não casa.
   const parceirosNomeToId = useMemo(() => {
     const m = new Map<string, string>();
+    const ambiguos = new Set<string>();
     for (const p of parceirosAtivos) {
       const key = normalizeNome(p.nome);
-      if (key && !m.has(key)) m.set(key, String(p.id));
+      if (!key) continue;
+      if (m.has(key)) { ambiguos.add(key); continue; }
+      m.set(key, String(p.id));
     }
+    for (const key of ambiguos) m.delete(key);
     return m;
   }, [parceirosAtivos]);
   // Índice id→nome (do banco) — o banco é a fonte de verdade do NOME. A planilha

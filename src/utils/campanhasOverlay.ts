@@ -40,13 +40,20 @@ export function overlayCampanhas(
     // enquanto o mapa não carregou, não mexe (evita "Não ofertado" falso)
     if (!map || Object.keys(map).length === 0) return row;
 
-    // resolve o id do banco: 1) estab_id; 2) fallback por nome (dashboard)
-    let id = String(row.estab_id ?? '');
-    let db = map[id];
-    if (!db && nomeToId) {
-        const byName = nomeToId.get(normalizeNome(row.estabelecimento));
-        if (byName) { id = byName; db = map[byName]; }
+    // Resolve o id do banco: 1) estab_id; 2) fallback por nome (dashboard "novos
+    // formatado", onde a linha não traz estab_id).
+    //
+    // O fallback só vale quando NÃO há estab_id. Antes ele disparava sempre que o
+    // parceiro não estivesse no `map` — mas não estar no `map` é o estado NORMAL de
+    // quem não tem campanha ativa (~2/3 da base). Com nomes repetidos no banco
+    // (ex: 4 "Mega Lanches" em cidades diferentes) o id era trocado pelo de um
+    // homônimo e o parceiro herdava as promoções dele (aparecia "Aprovada" sem ter
+    // nenhum item criado).
+    let id = String(row.estab_id ?? '').trim();
+    if (!id && nomeToId) {
+        id = nomeToId.get(normalizeNome(row.estabelecimento)) ?? '';
     }
+    const db = id ? map[id] : undefined;
     const campanhas = db?.campanhas ?? [];
     const ov = overridesMap?.[id];
     // resumo de status dos itens promocionais (coluna Promoções)
