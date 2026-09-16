@@ -54,6 +54,13 @@ export interface CrmPartner {
     campaignStatuses: CampaignStatuses;
     analista?: string;
     logoUrl?: string;
+    /**
+     * Dia da jornada (dias desde o lançamento). Só vem preenchido no CRM Jornada,
+     * que monta o CrmPartner a partir das linhas da jornada — o CRM Promoções lê do
+     * INDICADOR, que não tem data de lançamento. Onde existir, a UI mostra o badge
+     * de urgência do prazo de 28 dias.
+     */
+    diasDesdeLancamento?: number;
 }
 
 export interface CrmParseInfo {

@@ -24,6 +24,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         ] },
         { label: 'Jornada Adoção', items: [
             { id: 'dashboard', icon: 'dashboard', label: 'Lista jornada 28D' },
+            ...(!isCD ? [{ id: 'crm_jornada' as AppView, icon: 'campaign', label: 'CRM Jornada 28D' }] : []),
         ] },
         { label: 'Ongoing', items: [
             ...(!isCD ? [{ id: 'carteira' as AppView, icon: 'account_balance_wallet', label: 'Carteira' }] : []),

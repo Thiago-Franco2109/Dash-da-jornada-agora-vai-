@@ -12,6 +12,8 @@ import { getEffectiveManager } from '../config/managerMapping';
 interface ReportsViewProps {
     data: EnrichedPerformanceRow[];
     managerFilter?: string;
+    /** Leva pro CRM Jornada 28D, onde dá pra agir sobre quem está sem campanha ativa. */
+    onNavigateToCrmJornada?: () => void;
 }
 
 type CentralTab = 'overview' | 'atividade' | 'ativacoes';
@@ -22,7 +24,7 @@ const TABS: { id: CentralTab; label: string; icon: string; wip?: boolean }[] = [
     { id: 'ativacoes', label: 'Ativação de Campanhas', icon: 'campaign', wip: true },
 ];
 
-export default function ReportsView({ data, managerFilter = '' }: ReportsViewProps) {
+export default function ReportsView({ data, managerFilter = '', onNavigateToCrmJornada }: ReportsViewProps) {
     const [activeTab, setActiveTab] = useState<CentralTab>('overview');
 
     return (
@@ -68,7 +70,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
                     ))}
                 </div>
 
-                {activeTab === 'overview' && <OverviewTab data={data} managerFilter={managerFilter} />}
+                {activeTab === 'overview' && <OverviewTab data={data} managerFilter={managerFilter} onNavigateToCrmJornada={onNavigateToCrmJornada} />}
                 {activeTab === 'atividade' && <AtividadeBaseTab managerFilter={managerFilter} />}
                 {activeTab === 'ativacoes' && <AtivacaoCampanhasTab managerFilter={managerFilter} />}
             </div>
@@ -80,7 +82,7 @@ export default function ReportsView({ data, managerFilter = '' }: ReportsViewPro
 // ABA 1 — VISÃO GERAL (conteúdo original da Central de KPIs, sem alterações de lógica)
 // ─────────────────────────────────────────────────────────────────────────
 
-function OverviewTab({ data, managerFilter }: { data: EnrichedPerformanceRow[]; managerFilter: string }) {
+function OverviewTab({ data, managerFilter, onNavigateToCrmJornada }: { data: EnrichedPerformanceRow[]; managerFilter: string; onNavigateToCrmJornada?: () => void }) {
     const [cityFilter, setCityFilter] = useState('all');
 
     const filteredData = useMemo(() => {
@@ -115,18 +117,6 @@ function OverviewTab({ data, managerFilter }: { data: EnrichedPerformanceRow[]; 
             meetingGoal: { count: meetingGoal, percent: (meetingGoal / total) * 100 },
             campaigns: campaignStats,
         };
-    }, [filteredData]);
-
-    const noCampaignLists = useMemo(() => {
-        const lists = {} as Record<CampaignTypeId, EnrichedPerformanceRow[]>;
-        for (const c of CAMPAIGN_TYPES) {
-            lists[c.id] = filteredData
-                .filter(row =>
-                    (row.campaign_statuses?.[c.id] ?? (c.id === 'super_promos' ? row.promo_status : c.id === 'cupons_destaque' ? row.cupom_status : 'aguardando')) !== 'ativo',
-                )
-                .sort((a, b) => b.dias_desde_lancamento - a.dias_desde_lancamento);
-        }
-        return lists;
     }, [filteredData]);
 
     const uniqueCities = Array.from(new Set(data.map(d => d.cidade))).filter(Boolean).sort();
@@ -192,6 +182,9 @@ function OverviewTab({ data, managerFilter }: { data: EnrichedPerformanceRow[]; 
                 ))}
             </div>
 
+            {/* A lista de quem está pendente vive no CRM Jornada, onde dá pra agir
+                (mudar status, registrar contato, marcar follow-up). Aqui fica só o
+                número — duas listas paralelas da mesma pergunta divergiam sozinhas. */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                 {CAMPAIGN_TYPES.map(c => (
                     <div key={c.id} className="bg-white dark:bg-slate-800 rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
@@ -206,14 +199,16 @@ function OverviewTab({ data, managerFilter }: { data: EnrichedPerformanceRow[]; 
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pendente</span>
                             </div>
                         </div>
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                            {noCampaignLists[c.id].map(store => (
-                                <StoreMiniCard key={`no-${c.id}-${store.estab_id || store.estabelecimento}`} store={store} campaignId={c.id} />
-                            ))}
-                            {noCampaignLists[c.id].length === 0 && (
-                                <EmptyState message={`Todos os parceiros têm ${c.shortLabel.toLowerCase()} ativa!`} />
-                            )}
-                        </div>
+                        {onNavigateToCrmJornada && (
+                            <button
+                                type="button"
+                                onClick={onNavigateToCrmJornada}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900/50 hover:bg-violet-50 dark:hover:bg-violet-500/10 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-violet-600 border border-slate-100 dark:border-slate-700 transition-colors"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">campaign</span>
+                                Trabalhar no CRM Jornada 28D
+                            </button>
+                        )}
                     </div>
                 ))}
             </div>
@@ -786,53 +781,3 @@ function KPICard({ title, value, subtitle, icons, color, trend }: { title: strin
     );
 }
 
-function StoreMiniCard({ store, campaignId }: { store: EnrichedPerformanceRow; campaignId: CampaignTypeId }) {
-    const campaign = CAMPAIGN_TYPES.find(c => c.id === campaignId)!;
-    const status = store.campaign_statuses?.[campaignId]
-        ?? (campaignId === 'super_promos' ? store.promo_status : campaignId === 'cupons_destaque' ? store.cupom_status : 'aguardando');
-    return (
-        <div className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all group/card">
-            <div className="shrink-0 relative">
-                {store.logo_url ? (
-                    <img src={store.logo_url} alt={store.estabelecimento} className="size-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700" />
-                ) : (
-                    <div className="size-10 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center text-slate-300 border border-slate-200 dark:border-slate-700">
-                        <span className="material-symbols-outlined text-[20px]">store</span>
-                    </div>
-                )}
-                <div className={`absolute -bottom-1 -right-1 size-4 rounded-full border-2 border-slate-50 dark:border-slate-900 flex items-center justify-center ${
-                    campaignId === 'ofertas_da_casa' ? 'bg-amber-500' : campaignId === 'super_promos' ? 'bg-violet-500' : 'bg-indigo-500'
-                }`}>
-                    <CampaignIcons icons={campaign.icons} iconClassName="text-[8px] text-white font-black" />
-                </div>
-            </div>
-
-            <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover/card:text-primary transition-colors">{store.estabelecimento}</h4>
-                <div className="flex items-center gap-2">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter truncate max-w-[120px]">{store.analista}</p>
-                    <span className="size-1 bg-slate-300 dark:bg-slate-700 rounded-full" />
-                    <p className="text-[10px] text-slate-400 font-medium italic">{store.cidade}</p>
-                </div>
-            </div>
-
-            <div className="flex flex-col items-end">
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${store.dias_desde_lancamento > 15 ? 'bg-red-50 dark:bg-red-500/10 text-red-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-                    {store.dias_desde_lancamento}d
-                </span>
-                <span className="text-[9px] font-bold text-slate-400 mt-0.5 uppercase tracking-tighter">
-                    {status}
-                </span>
-            </div>
-        </div>
-    );
-}
-
-function EmptyState({ message }: { message: string }) {
-    return (
-        <div className="py-12 text-center bg-emerald-50/30 dark:bg-emerald-500/5 rounded-3xl border-2 border-dashed border-emerald-100 dark:border-emerald-500/20">
-            <span className="material-symbols-outlined text-4xl text-emerald-500 mb-2">check_circle</span>
-            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">{message}</p>
-        </div>
-    );
-}

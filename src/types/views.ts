@@ -8,6 +8,7 @@ export type AppView =
     | 'pedido_mensal'
     | 'onboarding'
     | 'crm'
+    | 'crm_jornada'
     | 'cd_desempenho'
     | 'churn'
     | 'cs_kpis'

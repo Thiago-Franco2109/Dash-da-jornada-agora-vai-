@@ -13,12 +13,33 @@ interface CrmKanbanBoardProps {
     campaign?: CampaignTypeId;
     /** false para campanhas descobertas dinamicamente (status calculado, sem edição manual). Default true. */
     isEditable?: boolean;
+    /** false no CRM Jornada: parceiro recém-lançado não tem GMV, e o card mostra o dia da jornada no lugar. */
+    showGmv?: boolean;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
     onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     onEditPartner: (partnerId: string) => void;
     onRegisterContact: (partnerId: string) => void;
+}
+
+/**
+ * Badge do dia da jornada. As faixas são as mesmas das abas de período da tela
+ * "Lista jornada 28D" (1-14 / 15-21 / 22-28), pra não inventar um quarto
+ * vocabulário de urgência no app.
+ */
+function JornadaDayBadge({ dias }: { dias: number }) {
+    const tone = dias >= 22
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : dias >= 15
+            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    return (
+        <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold ${tone}`} title="Dia da jornada de 28 dias">
+            <span className="material-symbols-outlined text-[12px]">hourglass_bottom</span>
+            Dia {dias}/28
+        </span>
+    );
 }
 
 function followUpBadge(iso: string | null | undefined) {
@@ -38,6 +59,7 @@ export default function CrmKanbanBoard({
     localStatus,
     campaign = 'super_promos',
     isEditable = true,
+    showGmv = true,
     getNote,
     onStatusChange,
     onPartnerStatusChange,
@@ -114,7 +136,8 @@ export default function CrmKanbanBoard({
                             )}
                         </p>
                         <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                            {formatGmvTotal(col.total)} · {col.cards.length} {col.cards.length === 1 ? 'parceiro' : 'parceiros'}
+                            {showGmv && `${formatGmvTotal(col.total)} · `}
+                            {col.cards.length} {col.cards.length === 1 ? 'parceiro' : 'parceiros'}
                         </p>
                     </div>
 
@@ -156,7 +179,11 @@ export default function CrmKanbanBoard({
                                     )}
 
                                     <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
-                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatGmv(row)}</span>
+                                        {row.diasDesdeLancamento != null ? (
+                                            <JornadaDayBadge dias={row.diasDesdeLancamento} />
+                                        ) : (
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatGmv(row)}</span>
+                                        )}
                                         <div className="flex items-center gap-1">
                                             {isEditable ? (
                                                 <StatusDropdown

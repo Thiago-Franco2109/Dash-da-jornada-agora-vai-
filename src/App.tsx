@@ -25,6 +25,7 @@ import PedidoMensalView from './components/PedidoMensalView';
 import OnboardingView from './components/OnboardingView';
 import OnboardingCompletoAlert from './components/OnboardingCompletoAlert';
 import CrmView from './components/CrmView';
+import CrmJornadaView from './components/CrmJornadaView';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
@@ -48,6 +49,7 @@ import {
     type PromoCupomFilterValue,
 } from './config/promoCupomFilter';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
+import { jornadaRowsToCrmPartners } from './utils/jornadaCrmAdapter';
 import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/ofertasStatusMap';
 import { getCampaignOverrideField, isEditableCampaign, type CampaignTypeId } from './config/campaignTypes';
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
@@ -368,7 +370,7 @@ function App() {
     setPromoCupomFilter('');
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'todos_parceiros')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'crm_jornada' || currentView === 'todos_parceiros')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
@@ -539,6 +541,18 @@ function App() {
     }
     return counts;
   }, [dataBeforePromoCupomFilter]);
+
+  // CRM Jornada: parte de `enrichedData` cru (e não de baseFilteredData) pra não
+  // herdar em silêncio os filtros da tela da lista — aba de período e filtro de
+  // promo/cupom fariam o kanban esconder justamente as colunas que ele existe
+  // pra mostrar. Cidade/gestor/busca a própria tela aplica.
+  //
+  // O corte <= 28 é explícito: a jornada vem do banco com folga de dias (ver
+  // comentário do filteredTableData logo abaixo).
+  const crmJornadaPartners = useMemo(
+    () => jornadaRowsToCrmPartners(enrichedData.filter(row => row.dias_desde_lancamento <= 28)),
+    [enrichedData],
+  );
 
   // Filter Data
   //
@@ -748,7 +762,11 @@ function App() {
             <ContactsView data={enrichedData} onRowClick={handleRowClick} managerFilter={managerFilter} />
           </div>
         ) : currentView === 'reports' ? (
-          <ReportsView data={enrichedData} managerFilter={managerFilter} />
+          <ReportsView
+            data={enrichedData}
+            managerFilter={managerFilter}
+            onNavigateToCrmJornada={!isCD ? () => setCurrentView('crm_jornada') : undefined}
+          />
         ) : currentView === 'carteira' ? (
           <CarteiraView
             rows={carteiraRows}
@@ -800,6 +818,18 @@ function App() {
             cityFilter={cityFilter}
             setCityFilter={setCityFilter}
             onStatusChange={handleStatusChange}
+            onCampaignStatusChange={handleCampaignStatusChange}
+            getNote={getCrmNote}
+            upsertNote={upsertCrmNote}
+            registerContact={registerCrmContact}
+          />
+        ) : currentView === 'crm_jornada' ? (
+          <CrmJornadaView
+            partners={crmJornadaPartners}
+            managerFilter={managerFilter}
+            searchQuery={searchQuery}
+            cityFilter={cityFilter}
+            setCityFilter={setCityFilter}
             onCampaignStatusChange={handleCampaignStatusChange}
             getNote={getCrmNote}
             upsertNote={upsertCrmNote}
