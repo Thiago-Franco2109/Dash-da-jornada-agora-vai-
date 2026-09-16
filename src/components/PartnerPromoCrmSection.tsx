@@ -16,6 +16,7 @@ import { usePromoStatus, type PromoCampanhaStatus } from '../hooks/usePromoStatu
 import CampaignIcons from './CampaignIcons';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
+import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
 import { formatBRL } from '../utils/crmData';
 import GerarArteModal from './GerarArteModal';
 
@@ -181,10 +182,11 @@ export default function PartnerPromoCrmSection({
     const ofertasRecord = getRecord(pid);
 
     // Campanhas vigentes no CMS que não são uma das 3 com tratamento próprio
-    // (ex: "Tudo por R$9,99", "Semana do Cliente"). Entram como linha
-    // somente-leitura: não há onde guardar status manual do CS pra elas
-    // (ver isEditableCampaign), mas o Estado real do banco vale igual.
+    // (ex: "Tudo por R$9,99", "Semana do Cliente"). O Estado vem do banco e o
+    // Status CRM é salvo em `campanha_status_cs`, que aceita qualquer campanha
+    // — as 3 conhecidas seguem nas colunas antigas.
     const { promoData } = usePromoStatus();
+    const { getCampanhaStatus, setCampanhaStatus, erro: campanhaStatusErro } = useCampanhaStatusCs();
     const campanhasExtras = promoData.campanhas
         .map(c => ({ ...c, campaignId: campaignIdFromNome(c.nome) }))
         .filter(c => !KNOWN_ROW_IDS.has(c.campaignId))
@@ -326,7 +328,7 @@ export default function PartnerPromoCrmSection({
                     onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
                 />
 
-                {/* Demais campanhas vigentes no CMS — somente leitura (ver campanhasExtras). */}
+                {/* Demais campanhas vigentes no CMS (ver campanhasExtras). */}
                 {campanhasExtras.map(c => {
                     const state = campaignStateFromResumo(partner, c.campaignId)
                         ?? { tone: 'idle' as CardTone, label: 'Carregando…' };
@@ -339,6 +341,11 @@ export default function PartnerPromoCrmSection({
                             description="Campanha vigente no CMS. Estado vem dos itens promocionais do parceiro."
                             tone={state.tone}
                             toneLabel={state.label}
+                            manual={{
+                                value: getCampanhaStatus(pid, c.campaignId),
+                                options: CRM_STATUS_SELECT_OPTIONS,
+                                onChange: val => { void setCampanhaStatus(pid, c.campaignId, val as PromoStatus); },
+                            }}
                             href={cmsCampanhaUrl(c.id, localidadeId)}
                             cmsLabel="Abrir campanha no CMS"
                             localidadeId={localidadeId}
@@ -367,6 +374,16 @@ export default function PartnerPromoCrmSection({
                     cityIdsLoading={cityIdsLoading}
                     isLast
                 />
+
+                {campanhaStatusErro && (
+                    <div className="flex items-start gap-2 px-6 sm:px-8 py-3 bg-amber-50 dark:bg-amber-500/10 border-t border-amber-200 dark:border-amber-500/20 text-[12px] text-amber-800 dark:text-amber-300">
+                        <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
+                        <span>
+                            O status CRM destas campanhas não está sendo salvo ({campanhaStatusErro}).
+                            Falta criar a tabela <code className="font-mono">campanha_status_cs</code> no Supabase — ver <code className="font-mono">supabase/campanha_status_cs.sql</code>.
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* CRM — Prospecção: dados de nível parceiro (não por campanha), sempre visível abaixo da tabela */}
