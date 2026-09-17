@@ -96,13 +96,24 @@ export function enrichedRowToCrmPartner(row: EnrichedPerformanceRow): CrmPartner
         campaignStatuses: row.campaign_statuses ?? {},
         analista: row.analista,
         logoUrl: row.logo_url,
-        diasDesdeLancamento: row.dias_desde_lancamento,
+        // Quem não lançou não tem dia de jornada — o badge "Dia 0/28" mentiria.
+        diasDesdeLancamento: row.pre_lancamento ? undefined : row.dias_desde_lancamento,
+        preLancamento: row.pre_lancamento && {
+            origem: row.pre_lancamento.origem,
+            dias: row.pre_lancamento.dias,
+            etapa: row.pre_lancamento.etapa,
+            diasNaEtapa: row.pre_lancamento.diasNaEtapa,
+            cardUrl: row.pre_lancamento.cardUrl,
+        },
     };
 }
 
-/** Mais perto do dia 28 primeiro — quem tá acabando o prazo aparece no topo. */
+/**
+ * Mais perto do dia 28 primeiro — quem tá acabando o prazo aparece no topo.
+ * Pré-lançamento vai pro fim: o prazo dele ainda nem começou.
+ */
 export function jornadaRowsToCrmPartners(rows: EnrichedPerformanceRow[]): CrmPartner[] {
     return rows
         .map(enrichedRowToCrmPartner)
-        .sort((a, b) => (b.diasDesdeLancamento ?? 0) - (a.diasDesdeLancamento ?? 0));
+        .sort((a, b) => (b.diasDesdeLancamento ?? -1) - (a.diasDesdeLancamento ?? -1));
 }

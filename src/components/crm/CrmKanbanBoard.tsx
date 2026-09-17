@@ -6,6 +6,7 @@ import type { CampaignTypeId } from '../../config/campaignTypes';
 import { KANBAN_STAGES, getPromoStatusForPartner, sumIndiceGmv, formatGmvTotal } from '../../utils/crmPipeline';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv, getStatusMeta } from './crmShared';
 import { DESFECHOS_LIGACAO, getDesfecho, type DesfechoLigacao, type MotivoLigacao } from '../../config/desfechoLigacao';
+import { urgenciaOnboarding } from '../../utils/preLancamento';
 import { differenceInCalendarDays, isPast, isToday, parseISO } from 'date-fns';
 
 interface CrmKanbanBoardProps {
@@ -102,6 +103,42 @@ function diasDesdeContato(iso: string | null | undefined): number | null {
     } catch {
         return null;
     }
+}
+
+/**
+ * Relógio de quem ainda não lançou. Mesmas faixas da tela de onboarding
+ * (7+ âmbar, 14+ vermelho) — não inventar uma terceira escala de urgência.
+ */
+function OnboardingChip({ info }: { info: NonNullable<CrmPartner['preLancamento']> }) {
+    const nivel = urgenciaOnboarding(info.dias);
+    const tom = nivel === 'critico'
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : nivel === 'atencao'
+            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    return (
+        <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold ${tom}`} title="Assinou o contrato, ainda não lançou">
+            <span className="material-symbols-outlined text-[12px]">pending_actions</span>
+            {info.dias == null ? 'Onboarding' : `Onboarding · ${info.dias}d`}
+        </span>
+    );
+}
+
+/** Em que etapa do board o parceiro está — contexto que o kanban de campanha não tem. */
+function EtapaChip({ info }: { info: NonNullable<CrmPartner['preLancamento']> }) {
+    if (!info.etapa) return null;
+    const chip = (
+        <span className="inline-flex max-w-[150px] items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" title={info.etapa}>
+            <span className="truncate">{info.etapa}</span>
+            {info.diasNaEtapa != null && <span className="shrink-0 opacity-70">· {info.diasNaEtapa}d</span>}
+        </span>
+    );
+    if (!info.cardUrl) return chip;
+    return (
+        <a href={info.cardUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="hover:opacity-80">
+            {chip}
+        </a>
+    );
 }
 
 function followUpBadge(iso: string | null | undefined) {
@@ -341,6 +378,7 @@ export default function CrmKanbanBoard({
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        {row.preLancamento && <EtapaChip info={row.preLancamento} />}
                                         <ItemStateChip
                                             itemState={row.campaigns?.[campaign]?.itemState}
                                             dias={row.campaigns?.[campaign]?.pendenteDias}
@@ -377,7 +415,9 @@ export default function CrmKanbanBoard({
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
-                                        {row.diasDesdeLancamento != null ? (
+                                        {row.preLancamento ? (
+                                            <OnboardingChip info={row.preLancamento} />
+                                        ) : row.diasDesdeLancamento != null ? (
                                             <JornadaDayBadge dias={row.diasDesdeLancamento} />
                                         ) : (
                                             <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{formatGmv(row)}</span>

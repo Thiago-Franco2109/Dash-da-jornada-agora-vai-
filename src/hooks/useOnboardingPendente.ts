@@ -11,6 +11,8 @@ export interface ParceiroPendente {
     estabId: string;
     estabelecimento: string;
     cidade: string;
+    /** localidade_id do banco — semeia o estabIdToLoc (campanhas da cidade). */
+    localidadeId: string | null;
     contratoId: number;
     dataAdesao: string;
     diasPendente: number;

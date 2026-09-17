@@ -50,6 +50,7 @@ import {
 } from './config/promoCupomFilter';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
 import { jornadaRowsToCrmPartners } from './utils/jornadaCrmAdapter';
+import { buildPreLancamentoRows } from './utils/preLancamento';
 import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/ofertasStatusMap';
 import { getCampaignOverrideField, isEditableCampaign, type CampaignTypeId } from './config/campaignTypes';
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
@@ -92,7 +93,7 @@ function App() {
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
+  const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | 'pre' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
   const [promoCupomFilter, setPromoCupomFilter] = useState<PromoCupomFilterValue | ''>('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
@@ -135,7 +136,6 @@ function App() {
   );
   const acoesPromocionaisTabActive = isAuthenticated && !isCD && currentView === 'acoes_promocionais';
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
-  const onboardingTabActive = isAuthenticated && currentView === 'onboarding';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const crmDataEnabled = isAuthenticated && !isCD && (
     crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null || partnerSearchOpen
@@ -253,7 +253,10 @@ function App() {
     error: onboardingError,
     lastSyncTime: onboardingLastSync,
     refreshData: refreshOnboarding,
-  } = useOnboardingPendente({ enabled: onboardingTabActive, produto: isCD ? 'cd' : undefined });
+    // Gate plano, não por aba: esses parceiros agora também alimentam a Lista
+    // jornada 28D e o CRM Jornada. Gate por view faria o `enabled` oscilar e
+    // esvaziar o contador da aba "Pré-lançamento" a cada troca de tela.
+  } = useOnboardingPendente({ enabled: isAuthenticated, produto: isCD ? 'cd' : undefined });
 
   const {
     etapasPorEstabId: onboardingEtapasTrello,
@@ -284,8 +287,14 @@ function App() {
     for (const p of parceirosAtivos) {
       if (p.localidadeId != null) m.set(String(p.id), String(p.localidadeId));
     }
+    // `parceiros-ativos` filtra delivery = 1, então quem está em onboarding não
+    // estaria aqui — e sem localidade o resumo de promoções não sabe quais
+    // campanhas existem na cidade dele.
+    for (const p of onboardingPendentes) {
+      if (p.localidadeId != null) m.set(p.estabId, p.localidadeId);
+    }
     return m;
-  }, [parceirosAtivos]);
+  }, [parceirosAtivos, onboardingPendentes]);
   // Índice nome→id (do banco) p/ o overlay casar por nome quando o estab_id da
   // planilha não bate (ex: dashboard "novos formatado").
   // Nome repetido no banco (ex: 4 "Mega Lanches" em cidades diferentes) não vira
@@ -442,6 +451,35 @@ function App() {
     return mergeOfertasManualStatus(rows, ofertasRecords);
   }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc]);
 
+  /**
+   * Parceiros que assinaram e ainda não lançaram. O CS já oferece campanha pra
+   * eles, então precisam aparecer na lista e no CRM — mas NÃO em `enrichedData`,
+   * que alimenta a Central de KPIs, a Home e Contatos: loja que não abriu não
+   * pode entrar em denominador de "% ativação de pedidos".
+   */
+  const preLancamentoRows = useMemo(() => {
+    if (isCD) return [];
+    const jaLancados = new Set<string>([
+      ...enrichedData.map(r => String(r.estab_id ?? '')),
+      ...parceirosAtivos.map(p => String(p.id)),
+    ]);
+    const linhas = buildPreLancamentoRows({
+      pendentes: onboardingPendentes,
+      cards: onboardingCardsTrello,
+      etapasPorEstabId: onboardingEtapasTrello,
+      jaLancados,
+      relMap,
+      mode,
+    });
+    return linhas.map(row => overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
+  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc]);
+
+  /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
+  const jornadaPool = useMemo(
+    () => (preLancamentoRows.length === 0 ? enrichedData : [...enrichedData, ...preLancamentoRows]),
+    [enrichedData, preLancamentoRows],
+  );
+
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
@@ -510,11 +548,13 @@ function App() {
   // O filtro de cidade só mostra a carteira de quem está logado: Thiago e
   // Laís veem só as próprias cidades, Ulysses (CEO, sem carteira própria) vê
   // todas.
-  const allCities = Array.from(new Set(enrichedData.map(row => row.cidade))).sort();
+  // Deriva do pool (e não de enrichedData) senão cidade que só tem parceiro em
+  // pré-lançamento some do dropdown. Só alimenta o FilterToolbar da jornada.
+  const allCities = Array.from(new Set(jornadaPool.map(row => row.cidade))).filter(Boolean).sort();
   const uniqueCities = (profile === 'THIAGO' || profile === 'LAÍS')
     ? allCities.filter(city => getCitiesForManager(profile, mode).includes(city))
     : allCities;
-  const uniqueManagers = Array.from(new Set(enrichedData.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
+  const uniqueManagers = Array.from(new Set(jornadaPool.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
   /**
    * A home mostra a carteira de quem entrou, sem os filtros das telas — ela é
@@ -526,14 +566,18 @@ function App() {
   );
 
   const dataBeforePromoCupomFilter = useMemo(() => {
-    return enrichedData.filter((row: EnrichedPerformanceRow) => {
-      if (cityFilter && row.cidade !== cityFilter) return false;
+    return jornadaPool.filter((row: EnrichedPerformanceRow) => {
+      // Card do Trello que o banco ainda não conhece não tem cidade, e sem cidade
+      // não dá pra dizer de quem é a carteira. Esconder dos dois CS é pior que
+      // mostrar pros dois — some sozinho quando o banco sincroniza (~1 dia).
+      const semCarteira = row.pre_lancamento?.origem === 'trello';
+      if (!semCarteira && cityFilter && row.cidade !== cityFilter) return false;
       if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (priorityFilter && row.priority_stars.toString() !== priorityFilter) return false;
-      if (managerFilter && row.analista !== managerFilter) return false;
+      if (!semCarteira && managerFilter && row.analista !== managerFilter) return false;
       return true;
     });
-  }, [enrichedData, cityFilter, searchQuery, priorityFilter, managerFilter]);
+  }, [jornadaPool, cityFilter, searchQuery, priorityFilter, managerFilter]);
 
   const baseFilteredData = useMemo(() => {
     if (!promoCupomFilter) return dataBeforePromoCupomFilter;
@@ -558,8 +602,8 @@ function App() {
   // O corte <= 28 é explícito: a jornada vem do banco com folga de dias (ver
   // comentário do filteredTableData logo abaixo).
   const crmJornadaPartners = useMemo(
-    () => jornadaRowsToCrmPartners(enrichedData.filter(row => row.dias_desde_lancamento <= 28)),
-    [enrichedData],
+    () => jornadaRowsToCrmPartners(jornadaPool.filter(row => row.dias_desde_lancamento <= 28)),
+    [jornadaPool],
   );
 
   // Filter Data
@@ -571,6 +615,10 @@ function App() {
   // uma folga de dias pra não sumir um parceiro no fuso horário errado), e sem
   // este corte esses dias de sobra apareciam na tela mesmo já formados.
   let filteredTableData = baseFilteredData.filter((row: EnrichedPerformanceRow) => {
+    // Quem não lançou é decidido pela flag, nunca pelo número de dias — o dia 0
+    // dele não significa "lançou hoje".
+    if (row.pre_lancamento) return ageGroupFilter === 'all' || ageGroupFilter === 'pre';
+    if (ageGroupFilter === 'pre') return false;
     const days = row.dias_desde_lancamento;
     if (ageGroupFilter === 'all' && days > 28) return false;
     if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) return false;
@@ -623,16 +671,27 @@ function App() {
   // o mapa `campanhas` (Netlify function), que fica em 0 pra praticamente todo
   // parceiro novo; promo_resumo vem do `promo-status`, item a item, e é quem
   // realmente aparece como aprovado no painel.
-  const jornadaKpiTotal = filteredTableData.length || 1;
-  const jornadaKpiPedidosCount = filteredTableData.filter(row => row.total_pedidos > 0).length;
-  const jornadaKpiPromocaoCount = filteredTableData.filter(row => (row.promo_resumo?.aprovado ?? 0) > 0).length;
-  const jornadaKpiCupomCount = filteredTableData.filter(row => getRowCampaignStatus(row, 'cupons_destaque') === 'ativo').length;
+  //
+  // Só lançados: loja que não abriu não pode entrar no denominador de "%
+  // ativação de pedidos" — ela não teve chance de vender.
+  const jornadaKpiRows = filteredTableData.filter(row => !row.pre_lancamento);
+  const jornadaKpiTotal = jornadaKpiRows.length || 1;
+  const jornadaKpiPedidosCount = jornadaKpiRows.filter(row => row.total_pedidos > 0).length;
+  const jornadaKpiPromocaoCount = jornadaKpiRows.filter(row => (row.promo_resumo?.aprovado ?? 0) > 0).length;
+  const jornadaKpiCupomCount = jornadaKpiRows.filter(row => getRowCampaignStatus(row, 'cupons_destaque') === 'ativo').length;
+
+  /** Contadores do cabeçalho quando a aba Pré-lançamento está ativa. */
+  const preLancamentoNaTela = filteredTableData.filter(row => row.pre_lancamento);
+  const preLancamento7d = preLancamentoNaTela.filter(r => (r.pre_lancamento?.dias ?? 0) >= 7).length;
+  const preLancamento14d = preLancamentoNaTela.filter(r => (r.pre_lancamento?.dias ?? 0) >= 14).length;
 
   const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros'
     ? (isCD ? enrichedDesempenhoData : indicadorEnrichedData)
     : currentView === 'cd_desempenho'
       ? enrichedDesempenhoData
-      : enrichedData;
+      // pool da jornada: inclui pré-lançamento, senão clicar numa dessas linhas
+      // cairia no fallback e a ficha receberia uma cópia congelada
+      : jornadaPool;
 
   const currentSelectedRow = selectedRow
     ? (findPartner(activeEnrichedPool, selectedRow) ?? selectedRow)
@@ -1045,7 +1104,26 @@ function App() {
                       <p className="text-slate-500 dark:text-slate-400 text-base font-normal">Acompanhe as métricas de desempenho e o status de saúde dos parceiros nos primeiros 28 dias críticos de ativação.</p>
                     </div>
 
-                    {!isCD && (
+                    {!isCD && ageGroupFilter === 'pre' ? (
+                      // Percentual de ativação não diz nada sobre loja que não abriu —
+                      // aqui o que importa é quanto tempo está esperando.
+                      <div className="flex items-center gap-4 md:gap-6 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shrink-0">
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-slate-700 dark:text-slate-200 leading-none tabular-nums">{preLancamentoNaTela.length}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Em pré-lançamento</p>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-amber-600 dark:text-amber-400 leading-none tabular-nums">{preLancamento7d}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">7+ dias</p>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
+                        <div className="text-center px-1">
+                          <p className="text-lg font-black text-red-600 dark:text-red-400 leading-none tabular-nums">{preLancamento14d}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">14+ dias</p>
+                        </div>
+                      </div>
+                    ) : !isCD && (
                       <div className="flex items-center gap-4 md:gap-6 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shrink-0">
                         <div className="text-center px-1">
                           <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
@@ -1132,6 +1210,8 @@ function App() {
                   <div className="flex gap-6 overflow-x-auto scrollbar-hide pt-2">
                       {[
                           { id: 'all', label: 'Todos os Períodos' },
+                          // Antes do dia 1: a fileira é uma linha do tempo.
+                          ...(!isCD ? [{ id: 'pre', label: 'Pré-lançamento' }] : []),
                           { id: '1-7', label: '1 a 7 dias' },
                           { id: '8-14', label: '8 a 14 dias' },
                           { id: '15-21', label: '15 a 21 dias' },
@@ -1145,12 +1225,16 @@ function App() {
                               {tab.label}
                               <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
                                   {baseFilteredData.filter(r => {
+                                      // Pré-lançamento sai pela flag, nunca pelo número de
+                                      // dias — o 0 dele não quer dizer "lançou hoje".
+                                      if (r.pre_lancamento) return tab.id === 'pre' || tab.id === 'all';
+                                      if (tab.id === 'pre') return false;
                                       const d = r.dias_desde_lancamento;
                                       if (tab.id === '1-7') return d >= 1 && d <= 7;
                                       if (tab.id === '8-14') return d >= 8 && d <= 14;
                                       if (tab.id === '15-21') return d >= 15 && d <= 21;
                                       if (tab.id === '22-28') return d >= 22 && d <= 28;
-                                      return true;
+                                      return d <= 28; // "Todos" = a jornada inteira, com o mesmo corte da tabela
                                   }).length}
                               </span>
                           </button>

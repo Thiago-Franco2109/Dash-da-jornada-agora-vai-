@@ -72,8 +72,12 @@ export function filterCrmPartners(
     const { cityFilter, managerFilter, searchQuery, stageFilter, localStatus = {}, campaign = 'super_promos', crmCitiesMatch: matchCity } = opts;
 
     return partners.filter(row => {
-        if (cityFilter && matchCity && !matchCity(row.cidade, cityFilter)) return false;
-        if (managerFilter && row.analista !== managerFilter) return false;
+        // Card do Trello que o banco ainda não conhece não tem cidade — sem ela
+        // não dá pra dizer de quem é a carteira, então aparece pros dois CS até
+        // a réplica sincronizar (~1 dia).
+        const semCarteira = row.preLancamento?.origem === 'trello';
+        if (!semCarteira && cityFilter && matchCity && !matchCity(row.cidade, cityFilter)) return false;
+        if (!semCarteira && managerFilter && row.analista !== managerFilter) return false;
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             if (!row.estabelecimento.toLowerCase().includes(q) && !row.cidade.toLowerCase().includes(q)) return false;

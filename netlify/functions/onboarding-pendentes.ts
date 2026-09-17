@@ -64,6 +64,7 @@ export const handler: Handler = async (event) => {
             `SELECT e.id AS estab,
                     e.nome AS nome,
                     IFNULL(l.nome, '') AS cidade,
+                    e.localidade_id AS locId,
                     v.id AS contratoId,
                     DATE_FORMAT(v.data_adesao, '%Y-%m-%d') AS adesao,
                     DATEDIFF(CURDATE(), v.data_adesao) AS diasPendente
@@ -85,6 +86,9 @@ export const handler: Handler = async (event) => {
             estabId: String(r.estab),
             estabelecimento: String(r.nome ?? ''),
             cidade: String(r.cidade ?? ''),
+            // Usado pra semear o estabIdToLoc — sem isso o resumo de promoções
+            // do parceiro em onboarding não sabe quais campanhas existem na cidade.
+            localidadeId: r.locId == null ? null : String(r.locId),
             contratoId: Number(r.contratoId ?? 0) || 0,
             dataAdesao: String(r.adesao ?? ''),
             diasPendente: Number(r.diasPendente ?? 0),

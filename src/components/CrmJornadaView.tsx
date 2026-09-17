@@ -141,7 +141,8 @@ export default function CrmJornadaView({
                         </span>
                     </p>
                     <p className="text-[11px] text-slate-400 mt-1">
-                        {visiveis.length} {visiveis.length === 1 ? 'parceiro' : 'parceiros'} na jornada
+                        {visiveis.filter(p => !p.preLancamento).length} na jornada
+                        {visiveis.some(p => p.preLancamento) && ` · ${visiveis.filter(p => p.preLancamento).length} em pré-lançamento`}
                         {faltamAtivar > 0 && ` · ${faltamAtivar} ainda sem ${campaignConfig.shortLabel.toLowerCase()}`}
                         {urgentes > 0 && (
                             <span className="text-red-500 font-bold"> · {urgentes} no prazo final (dia 22+)</span>

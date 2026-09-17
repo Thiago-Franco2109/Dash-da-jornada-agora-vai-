@@ -12,6 +12,7 @@ import {
 import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 import type { PromoResumo } from '../hooks/usePromoStatus';
+import { urgenciaOnboarding } from '../utils/preLancamento';
 
 export type CampaignStatusChangeHandler = (
     partnerId: string,
@@ -64,6 +65,22 @@ export type PerformanceRow = {
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
     gmv_mensal?: { label: string; value: number }[];
+    /**
+     * Parceiro que assinou contrato e ainda NÃO lançou. A presença deste campo é
+     * a flag — não existe `pre_lancamento: false`. Nenhuma métrica de jornada
+     * (pedidos, índice, prioridade, avaliação) se aplica a ele: o relógio dos 28
+     * dias só começa quando a loja abre.
+     */
+    pre_lancamento?: {
+        /** 'trello' = card no board mas ainda não no banco (réplica tem ~1 dia de atraso). */
+        origem: 'banco' | 'trello';
+        /** Dias desde a assinatura (banco). null quando só existe card no Trello. */
+        dias: number | null;
+        etapa: string | null;
+        diasNaEtapa: number | null;
+        cardUrl?: string;
+        dataAdesao?: string;
+    };
 };
 
 /**
@@ -79,6 +96,52 @@ const PROMO_SLOTS = [
     { key: 'rascunho', icon: 'edit_note', tone: 'text-slate-500 dark:text-slate-400', hint: 'em rascunho' },
     { key: 'semItem', icon: 'block', tone: 'text-red-500 dark:text-red-400', hint: 'na cidade, sem item pro parceiro' },
 ] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe' | 'pendenteDiasMax'>; icon: string; tone: string; hint: string }[];
+
+type PreLancamento = NonNullable<PerformanceRow['pre_lancamento']>;
+
+/** Métrica que não se aplica a quem não lançou. Traço, nunca zero. */
+function Traco() {
+    return <span className="text-slate-300 dark:text-slate-600">—</span>;
+}
+
+/** Relógio do onboarding no lugar do "dia N/28" — o da jornada só começa na abertura. */
+function OnboardingPill({ info }: { info: PreLancamento }) {
+    const nivel = urgenciaOnboarding(info.dias);
+    const tom = nivel === 'critico'
+        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+        : nivel === 'atencao'
+            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    const titulo = info.dataAdesao
+        ? `Assinou em ${info.dataAdesao.split('-').reverse().join('/')} — ${info.dias} dias sem lançar`
+        : 'Card no Trello, sem data de assinatura ainda';
+    return (
+        <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold ${tom}`} title={titulo}>
+            <span className="material-symbols-outlined text-[12px]">pending_actions</span>
+            {info.dias == null ? 'Onboarding' : `Onboarding · ${info.dias}d`}
+        </span>
+    );
+}
+
+/** Onde o parceiro está no board — é a resposta de "jornada" pra quem não lançou. */
+function EtapaTrelloChip({ info }: { info: PreLancamento }) {
+    if (!info.etapa) {
+        return <span className="text-[11px] italic text-slate-300 dark:text-slate-600">sem card</span>;
+    }
+    const texto = info.diasNaEtapa != null ? `${info.etapa} · ${info.diasNaEtapa}d` : info.etapa;
+    const chip = (
+        <span className="inline-flex max-w-[150px] items-center gap-1 rounded bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" title={texto}>
+            <span className="truncate">{info.etapa}</span>
+            {info.diasNaEtapa != null && <span className="shrink-0 opacity-70">· {info.diasNaEtapa}d</span>}
+        </span>
+    );
+    if (!info.cardUrl) return chip;
+    return (
+        <a href={info.cardUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="hover:opacity-80">
+            {chip}
+        </a>
+    );
+}
 
 export function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
     const fromMap = getCampaignStatus(row.campaign_statuses, campaignId);
@@ -712,8 +775,13 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 return (
                                     <tr
                                         key={row.estab_id ? `id:${row.estab_id}` : `${row.estabelecimento}-${row.cidade}-${index}`}
-                                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group ${isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}
-                                        onClick={() => handleRowClick(row)}
+                                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group ${
+                                            row.pre_lancamento ? 'bg-sky-50/40 dark:bg-sky-900/10' : isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10 cursor-pointer' : 'cursor-pointer'
+                                        }`}
+                                        // A ficha do parceiro mostra dias de jornada, pedidos esperados e
+                                        // índice — sem lançamento, nada disso existe.
+                                        title={row.pre_lancamento ? 'Parceiro ainda não lançou — sem ficha de jornada' : undefined}
+                                        onClick={() => { if (!row.pre_lancamento) handleRowClick(row); }}
                                     >
                                         {isDesempenho ? (
                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6 relative">
@@ -740,11 +808,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             </td>
                                         ) : (
                                             <>
-                                                <td className="whitespace-nowrap py-4 pl-4 pr-3 text-base font-semibold text-slate-700 dark:text-slate-300 sm:pl-6 group-hover:text-primary transition-colors relative">
-                                                    {isTopPriority && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
-                                                    {row.cidade}
+                                                <td className="whitespace-nowrap py-4 pl-4 pr-3 text-base font-semibold text-slate-700 dark:text-slate-300 sm:pl-6 transition-colors relative">
+                                                    {row.pre_lancamento && <div className="absolute left-0 top-0 bottom-0 w-1 bg-sky-400"></div>}
+                                                    {!row.pre_lancamento && isTopPriority && <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>}
+                                                    {row.cidade || (
+                                                        <span className="text-sm italic font-normal text-slate-300 dark:text-slate-600">sem cidade</span>
+                                                    )}
                                                 </td>
-                                                <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 group-hover:text-primary transition-colors">
+                                                <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 transition-colors ${row.pre_lancamento ? '' : 'group-hover:text-primary'}`}>
                                                     <div className="flex items-center gap-3">
                                                         {row.logo_url ? (
                                                             <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
@@ -756,6 +827,15 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                         <span className="truncate max-w-[200px]" title={row.estabelecimento}>
                                                             {row.estabelecimento}
                                                         </span>
+                                                        {row.pre_lancamento?.origem === 'trello' && (
+                                                            <span
+                                                                className="shrink-0 inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                                                title="Card no Trello. O banco que este painel lê atualiza em cerca de 1 dia."
+                                                            >
+                                                                <span className="material-symbols-outlined text-[11px]">cloud_sync</span>
+                                                                aguardando dados
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </>
@@ -772,11 +852,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             </td>
                                         )}
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${row.status === 'ativo'
-                                                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-green-600/20'
-                                                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 ring-red-600/20'
+                                            {/* Sem este ramo, pré-lançamento cairia no `else` vermelho
+                                                e 13 parceiros saudáveis apareceriam como cancelados. */}
+                                            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                                row.pre_lancamento
+                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-400/30'
+                                                    : row.status === 'ativo'
+                                                        ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-green-600/20'
+                                                        : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 ring-red-600/20'
                                                 }`}>
-                                                {row.status}
+                                                {row.pre_lancamento ? 'Pré-lançamento' : row.status}
                                             </span>
                                         </td>
                                         {isIndicador ? (
@@ -870,18 +955,28 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             </>
                                         ) : (
                                             <>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">{row.dias_desde_lancamento}</td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">
+                                            {row.pre_lancamento ? <OnboardingPill info={row.pre_lancamento} /> : row.dias_desde_lancamento}
+                                        </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-center">
-                                            <span className="font-bold text-lg text-slate-900 dark:text-white">{row.total_pedidos}</span>
-                                            <span className="text-slate-400 mx-1 text-sm">/</span>
-                                            <span className="text-slate-500 text-sm">{row.pedidos_esperados}</span>
+                                            {row.pre_lancamento ? <Traco /> : (
+                                                <>
+                                                    <span className="font-bold text-lg text-slate-900 dark:text-white">{row.total_pedidos}</span>
+                                                    <span className="text-slate-400 mx-1 text-sm">/</span>
+                                                    <span className="text-slate-500 text-sm">{row.pedidos_esperados}</span>
+                                                </>
+                                            )}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center font-medium text-slate-700 dark:text-slate-300">
-                                            {row.indice_desempenho.toFixed(2)}
+                                            {row.pre_lancamento ? <Traco /> : row.indice_desempenho.toFixed(2)}
                                         </td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">{row.city_weight}</td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center text-slate-500 dark:text-slate-400">
+                                            {row.pre_lancamento?.origem === 'trello' ? <Traco /> : row.city_weight}
+                                        </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {renderStars(row.priority_stars)}
+                                            {/* 1 estrela significa "Excelente" no filtro — renderizar
+                                                estrela aqui mentiria sobre quem nem abriu a loja. */}
+                                            {row.pre_lancamento ? <Traco /> : renderStars(row.priority_stars)}
                                         </td>
 
                                         {displayCampaigns.map(campaign => {
@@ -893,6 +988,9 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 );
                                             }
                                             const status = getRowCampaignStatus(row, campaign.id);
+                                            // Card só do Trello ainda não tem estab_id no banco: o partnerId
+                                            // cairia no nome e a marcação nasceria órfã. Some o handler → inerte.
+                                            const semIdReal = row.pre_lancamento?.origem === 'trello';
                                             return (
                                                 <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
                                                     <StatusDropdown
@@ -903,8 +1001,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                         currentStatus={status}
                                                         activeDropdown={activeDropdown}
                                                         setActiveDropdown={setActiveDropdown}
-                                                        onCampaignStatusChange={onCampaignStatusChange}
-                                                        onStatusChange={onStatusChange}
+                                                        onCampaignStatusChange={semIdReal ? undefined : onCampaignStatusChange}
+                                                        onStatusChange={semIdReal ? undefined : onStatusChange}
                                                     >
                                                         {renderIndicadorBadge(status)}
                                                     </StatusDropdown>
@@ -913,13 +1011,19 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         })}
 
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {renderAvaliacaoBadge(row.total_avaliacoes, row.dias_desde_lancamento)}
+                                            {row.pre_lancamento ? <Traco /> : renderAvaliacaoBadge(row.total_avaliacoes, row.dias_desde_lancamento)}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {renderContactDots()}
+                                            {/* O estado de contato é chaveado pelo lançamento no localStorage
+                                                e reseta quando ele muda — marcar aqui sumiria na abertura. */}
+                                            {row.pre_lancamento
+                                                ? <span title="A régua de contatos começa no lançamento"><Traco /></span>
+                                                : renderContactDots()}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {row.isFinished ? (
+                                            {row.pre_lancamento ? (
+                                                <EtapaTrelloChip info={row.pre_lancamento} />
+                                            ) : row.isFinished ? (
                                                 <span className="text-emerald-500 material-symbols-outlined" title="Jornada Concluída">verified</span>
                                             ) : (
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Em curso</span>

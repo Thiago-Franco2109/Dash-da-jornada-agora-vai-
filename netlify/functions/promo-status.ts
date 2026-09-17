@@ -62,6 +62,7 @@ export const handler: Handler = async (event) => {
         const [rows] = await connection.query<RowDataPacket[]>(
             `SELECT e.localidade_id AS loc, cp.nome AS campanha,
                     c.estabelecimento_id AS estab, ic.status AS st,
+                    e.delivery AS del,
                     COUNT(*) AS n,
                     MIN(ic.data_modificacao_status) AS desde,
                     DATEDIFF(NOW(), MIN(ic.data_modificacao_status)) AS dias,
@@ -71,11 +72,17 @@ export const handler: Handler = async (event) => {
              JOIN catalogo c ON c.id = ic.catalogo_id
              JOIN estabelecimento e ON e.id = c.estabelecimento_id
              JOIN campanha_promocao cp ON cp.id = ic.campanha_promocao_id
-             WHERE ic.promocional = 1 AND ic.status IN (0,1,2) AND e.delivery = 1
+             WHERE ic.promocional = 1 AND ic.status IN (0,1,2)
+               AND ( e.delivery = 1
+                  OR ( e.delivery = 0
+                       AND EXISTS (SELECT 1 FROM venda_estabelecimento ve
+                                   JOIN venda v ON v.id = ve.venda_id
+                                   WHERE ve.estabelecimento_id = e.id
+                                     AND v.data_adesao >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) ) )
                AND cp.ativo = 1
                AND (cp.data_inicio IS NULL OR cp.data_inicio <= NOW())
                AND (cp.data_fim IS NULL OR cp.data_fim >= NOW())
-             GROUP BY loc, campanha, estab, st`,
+             GROUP BY loc, campanha, estab, st, del`,
         );
 
         interface Contagem {
@@ -94,12 +101,25 @@ export const handler: Handler = async (event) => {
         const faixas: Record<string, number> = { '0-2': 0, '3-6': 0, '7-13': 0, '14-29': 0, '30+': 0 };
         let itensPendentes = 0, pendentesSemData = 0, pendentesArquivadosOuInativos = 0;
 
+        // Separado por delivery pra provar que incluir onboarding é ADITIVO:
+        // os números de `delivery = 1` têm que continuar idênticos aos de antes.
+        const lancados = new Set<string>(), emOnboarding = new Set<string>();
+        let itensPendentesLancados = 0, itensPendentesOnboarding = 0, aprovadosLancados = 0, aprovadosOnboarding = 0;
+
         for (const r of rows) {
             const estab = String(r.estab);
             const campanha = r.campanha as string;
             const loc = String(r.loc ?? '');
             const nome = STATUS_NOME[r.st as number];
             if (!nome) continue;
+            const ehLancado = Number(r.del) === 1;
+            (ehLancado ? lancados : emOnboarding).add(estab);
+            if (nome === 'pendente') {
+                if (ehLancado) itensPendentesLancados += Number(r.n); else itensPendentesOnboarding += Number(r.n);
+            }
+            if (nome === 'aprovado') {
+                if (ehLancado) aprovadosLancados += Number(r.n); else aprovadosOnboarding += Number(r.n);
+            }
 
             const p = (porParceiro[estab] ??= {});
             const cc = (p[campanha] ??= { rascunho: 0, pendente: 0, aprovado: 0 });
@@ -120,7 +140,11 @@ export const handler: Handler = async (event) => {
                 }
             }
 
-            if (loc) (campanhasPorLoc[loc] ??= new Set()).add(campanha);
+            // Trancado em delivery = 1 de propósito: este mapa é o denominador do
+            // "sem item" de TODO mundo. Se um parceiro em onboarding fosse o
+            // primeiro da cidade com item numa campanha, o semItem de todos os
+            // lançados daquela cidade subiria em 1 — número que a tela já mostra.
+            if (loc && ehLancado) (campanhasPorLoc[loc] ??= new Set()).add(campanha);
         }
 
         const campanhasPorLocalidade: Record<string, string[]> = {};
@@ -141,6 +165,14 @@ export const handler: Handler = async (event) => {
                     pendentesSemData,
                     pendentesArquivadosOuInativos,
                     pendentesPorFaixaDias: faixas,
+                    // Critério de não-regressão: os `*Lancados` têm que bater com
+                    // o que era medido antes de incluir onboarding.
+                    parceirosLancados: lancados.size,
+                    parceirosOnboarding: emOnboarding.size,
+                    itensPendentesLancados,
+                    itensPendentesOnboarding,
+                    aprovadosLancados,
+                    aprovadosOnboarding,
                 },
                 elapsedMs: Date.now() - started,
             }),

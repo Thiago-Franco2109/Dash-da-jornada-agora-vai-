@@ -64,6 +64,17 @@ export interface CrmPartner {
     analista?: string;
     logoUrl?: string;
     /**
+     * Parceiro que assinou e ainda não lançou. Quando presente, `diasDesdeLancamento`
+     * vem undefined — o relógio dos 28 dias ainda não começou.
+     */
+    preLancamento?: {
+        origem: 'banco' | 'trello';
+        dias: number | null;
+        etapa: string | null;
+        diasNaEtapa: number | null;
+        cardUrl?: string;
+    };
+    /**
      * Dia da jornada (dias desde o lançamento). Só vem preenchido no CRM Jornada,
      * que monta o CrmPartner a partir das linhas da jornada — o CRM Promoções lê do
      * INDICADOR, que não tem data de lançamento. Onde existir, a UI mostra o badge
