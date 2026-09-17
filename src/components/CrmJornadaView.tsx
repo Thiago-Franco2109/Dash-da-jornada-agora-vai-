@@ -32,7 +32,8 @@ interface CrmJornadaViewProps {
     onCampaignStatusChange?: (partnerId: string, campaign: CampaignTypeId, newStatus: PromoStatus) => void;
     getNote: (partnerId: string) => CrmPartnerNote | undefined;
     upsertNote: (partnerId: string, patch: Partial<Pick<CrmPartnerNote, 'notes' | 'lastContact' | 'nextFollowUp'>>) => void;
-    registerContact: (partnerId: string) => void;
+    /** `nextFollowUp` vem do desfecho da ligação — cada motivo tem seu prazo de voltar. */
+    registerContact: (partnerId: string, nextFollowUp?: string | null) => void;
 }
 
 export default function CrmJornadaView({

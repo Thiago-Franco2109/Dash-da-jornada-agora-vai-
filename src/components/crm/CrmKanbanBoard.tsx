@@ -121,7 +121,7 @@ function followUpBadge(iso: string | null | undefined) {
  * contato, status, motivo e quando voltar. Antes eram três ações separadas
  * (ligar, registrar, arrastar) e por isso ninguém marcava nada.
  */
-function BotaoLigacao({ row, onDesfecho }: { row: CrmPartner; onDesfecho: (d: DesfechoLigacao, detalhe?: string) => void }) {
+function BotaoLigacao({ onDesfecho }: { onDesfecho: (d: DesfechoLigacao, detalhe?: string) => void }) {
     const [aberto, setAberto] = useState(false);
     const [detalhe, setDetalhe] = useState('');
     const [pedindoDetalhe, setPedindoDetalhe] = useState<DesfechoLigacao | null>(null);
@@ -415,10 +415,7 @@ export default function CrmKanbanBoard({
                                                 );
                                             })()}
                                             {onDesfechoLigacao ? (
-                                                <BotaoLigacao
-                                                    row={row}
-                                                    onDesfecho={(d, detalhe) => onDesfechoLigacao(row, d, detalhe)}
-                                                />
+                                                <BotaoLigacao onDesfecho={(d, detalhe) => onDesfechoLigacao(row, d, detalhe)} />
                                             ) : (
                                                 <button
                                                     type="button"
