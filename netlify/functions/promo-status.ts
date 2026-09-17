@@ -10,7 +10,14 @@ import { checkOrigin } from './_shared/auth';
  * estabelecimento. status: 0=rascunho 1=pendente 2=aprovado 3=cancelado.
  *
  * Retorna:
- *  - porParceiro[estabId][campanha] = { rascunho, pendente, aprovado }
+ *  - porParceiro[estabId][campanha] = { rascunho, pendente, aprovado,
+ *      pendenteDias, pendenteDesde }
+ *    `pendenteDias` = há quantos dias o item pendente MAIS ANTIGO daquela campanha
+ *    está esperando. Item nasce pendente quando o CS cria; sai de pendente quando
+ *    alguém aprova (o próprio CS pode aprovar pelo parceiro, depois do ok dele).
+ *    Ou seja: é há quantos dias a oferta está pronta esperando a conversa acontecer.
+ *    DATEDIFF é calculado NO BANCO de propósito — mysql2 devolve DATETIME como Date
+ *    e o JSON.stringify serializa em UTC, então subtrair no front erra ±1 dia no Brasil.
  *  - campanhasPorLocalidade[localidade_id] = [nomes de campanha na cidade]
  *    (para mostrar "sem item" quando a campanha existe na cidade mas o parceiro
  *     não tem item nela — ex: Promo do Dia)
@@ -49,9 +56,17 @@ export const handler: Handler = async (event) => {
         );
         const campanhas = campanhasVigentes.map(c => ({ id: Number(c.id), nome: String(c.nome ?? '') }));
 
+        // Agrupado no banco: a resposta fica menor que a de antes (uma linha por
+        // (estab, campanha, status) em vez de uma por item) e o WHERE é idêntico,
+        // então as contagens não mudam.
         const [rows] = await connection.query<RowDataPacket[]>(
             `SELECT e.localidade_id AS loc, cp.nome AS campanha,
-                    c.estabelecimento_id AS estab, ic.status AS st
+                    c.estabelecimento_id AS estab, ic.status AS st,
+                    COUNT(*) AS n,
+                    MIN(ic.data_modificacao_status) AS desde,
+                    DATEDIFF(NOW(), MIN(ic.data_modificacao_status)) AS dias,
+                    SUM(ic.ativo = 1 AND ic.arquivado = 0) AS n_vivo,
+                    SUM(ic.data_modificacao_status IS NULL) AS n_sem_data
              FROM item_catalogo ic
              JOIN catalogo c ON c.id = ic.catalogo_id
              JOIN estabelecimento e ON e.id = c.estabelecimento_id
@@ -59,11 +74,25 @@ export const handler: Handler = async (event) => {
              WHERE ic.promocional = 1 AND ic.status IN (0,1,2) AND e.delivery = 1
                AND cp.ativo = 1
                AND (cp.data_inicio IS NULL OR cp.data_inicio <= NOW())
-               AND (cp.data_fim IS NULL OR cp.data_fim >= NOW())`,
+               AND (cp.data_fim IS NULL OR cp.data_fim >= NOW())
+             GROUP BY loc, campanha, estab, st`,
         );
 
-        const porParceiro: Record<string, Record<string, { rascunho: number; pendente: number; aprovado: number }>> = {};
+        interface Contagem {
+            rascunho: number;
+            pendente: number;
+            aprovado: number;
+            pendenteDias?: number | null;
+            pendenteDesde?: string | null;
+        }
+        const porParceiro: Record<string, Record<string, Contagem>> = {};
         const campanhasPorLoc: Record<string, Set<string>> = {};
+
+        // Diagnóstico: `promo-status` não filtra item arquivado/inativo (a function
+        // acoes-promocionais filtra). Antes de mudar o WHERE — o que mexeria em
+        // contagem que a tela já mostra — medimos o tamanho do problema.
+        const faixas: Record<string, number> = { '0-2': 0, '3-6': 0, '7-13': 0, '14-29': 0, '30+': 0 };
+        let itensPendentes = 0, pendentesSemData = 0, pendentesArquivadosOuInativos = 0;
 
         for (const r of rows) {
             const estab = String(r.estab);
@@ -74,7 +103,22 @@ export const handler: Handler = async (event) => {
 
             const p = (porParceiro[estab] ??= {});
             const cc = (p[campanha] ??= { rascunho: 0, pendente: 0, aprovado: 0 });
-            cc[nome]++;
+            const n = Number(r.n);
+            cc[nome] += n;
+
+            if (nome === 'pendente') {
+                const dias = r.dias == null ? null : Number(r.dias);
+                cc.pendenteDias = dias;
+                cc.pendenteDesde = r.desde ? new Date(r.desde as string).toISOString() : null;
+
+                itensPendentes += n;
+                pendentesSemData += Number(r.n_sem_data ?? 0);
+                pendentesArquivadosOuInativos += n - Number(r.n_vivo ?? 0);
+                if (dias != null) {
+                    const faixa = dias <= 2 ? '0-2' : dias <= 6 ? '3-6' : dias <= 13 ? '7-13' : dias <= 29 ? '14-29' : '30+';
+                    faixas[faixa] += n;
+                }
+            }
 
             if (loc) (campanhasPorLoc[loc] ??= new Set()).add(campanha);
         }
@@ -92,6 +136,12 @@ export const handler: Handler = async (event) => {
                 campanhas,
                 porParceiro,
                 campanhasPorLocalidade,
+                diagnostico: {
+                    itensPendentes,
+                    pendentesSemData,
+                    pendentesArquivadosOuInativos,
+                    pendentesPorFaixaDias: faixas,
+                },
                 elapsedMs: Date.now() - started,
             }),
         };

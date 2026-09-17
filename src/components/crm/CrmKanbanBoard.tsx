@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CrmPartner } from '../../types/crm';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
 import type { CrmPartnerNote } from '../../types/crm';
 import type { CampaignTypeId } from '../../config/campaignTypes';
 import { KANBAN_STAGES, getPromoStatusForPartner, sumIndiceGmv, formatGmvTotal } from '../../utils/crmPipeline';
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv, getStatusMeta } from './crmShared';
-import { isPast, isToday, parseISO } from 'date-fns';
+import { DESFECHOS_LIGACAO, getDesfecho, type DesfechoLigacao, type MotivoLigacao } from '../../config/desfechoLigacao';
+import { differenceInCalendarDays, isPast, isToday, parseISO } from 'date-fns';
 
 interface CrmKanbanBoardProps {
     partners: CrmPartner[];
@@ -15,6 +16,12 @@ interface CrmKanbanBoardProps {
     isEditable?: boolean;
     /** false no CRM Jornada: parceiro recém-lançado não tem GMV, e o card mostra o dia da jornada no lugar. */
     showGmv?: boolean;
+    /** Link pra aprovar a oferta no CMS depois do ok do parceiro. */
+    getCmsUrl?: (row: CrmPartner) => string | undefined;
+    /** Registra o desfecho da ligação (status + motivo + follow-up) num clique só. */
+    onDesfechoLigacao?: (row: CrmPartner, desfecho: DesfechoLigacao, detalhe?: string) => void;
+    /** Motivo já registrado, pro CS saber com que argumento voltar. */
+    getMotivo?: (row: CrmPartner) => MotivoLigacao | null | undefined;
     getNote: (id: string) => CrmPartnerNote | undefined;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
@@ -42,6 +49,61 @@ function JornadaDayBadge({ dias }: { dias: number }) {
     );
 }
 
+/**
+ * O que falta pra essa campanha sair do lugar. Vem do banco, não da marcação do
+ * CS — e é o que diz se a próxima ação é trabalho no CMS ou uma ligação.
+ */
+function ItemStateChip({ itemState, dias }: { itemState?: string; dias?: number | null }) {
+    if (itemState === 'pendente') {
+        // Abaixo de 3 dias não mostra: o parceiro ainda nem teve chance, e 14 chips
+        // acesos ao mesmo tempo viram ruído.
+        if (dias == null || dias < 3) {
+            return (
+                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    <span className="material-symbols-outlined text-[12px]">inventory_2</span>
+                    Oferta pronta
+                </span>
+            );
+        }
+        const tom = dias >= 7
+            ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+        return (
+            <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold ${tom}`} title="Oferta criada e esperando a conversa com o parceiro">
+                <span className="material-symbols-outlined text-[12px]">inventory_2</span>
+                Pronta há {dias}d
+            </span>
+        );
+    }
+    if (itemState === 'rascunho') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" title="O CS começou e não publicou — falta terminar no CMS">
+                <span className="material-symbols-outlined text-[12px]">edit_note</span>
+                Rascunho
+            </span>
+        );
+    }
+    if (itemState === 'sem_item') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Ninguém criou oferta pra esse parceiro nessa campanha">
+                <span className="material-symbols-outlined text-[12px]">block</span>
+                Sem item
+            </span>
+        );
+    }
+    return null;
+}
+
+/** Quantos dias desde o último contato. null quando nunca houve. */
+function diasDesdeContato(iso: string | null | undefined): number | null {
+    if (!iso) return null;
+    try {
+        return differenceInCalendarDays(new Date(), parseISO(iso));
+    } catch {
+        return null;
+    }
+}
+
 function followUpBadge(iso: string | null | undefined) {
     if (!iso) return null;
     try {
@@ -54,12 +116,103 @@ function followUpBadge(iso: string | null | undefined) {
     }
 }
 
+/**
+ * Botão de ligação: abre os desfechos possíveis e grava tudo num clique —
+ * contato, status, motivo e quando voltar. Antes eram três ações separadas
+ * (ligar, registrar, arrastar) e por isso ninguém marcava nada.
+ */
+function BotaoLigacao({ row, onDesfecho }: { row: CrmPartner; onDesfecho: (d: DesfechoLigacao, detalhe?: string) => void }) {
+    const [aberto, setAberto] = useState(false);
+    const [detalhe, setDetalhe] = useState('');
+    const [pedindoDetalhe, setPedindoDetalhe] = useState<DesfechoLigacao | null>(null);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!aberto) return;
+        const fechar = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setAberto(false);
+                setPedindoDetalhe(null);
+            }
+        };
+        document.addEventListener('mousedown', fechar);
+        return () => document.removeEventListener('mousedown', fechar);
+    }, [aberto]);
+
+    const escolher = (d: DesfechoLigacao) => {
+        if (d.pedeDetalhe) { setPedindoDetalhe(d); return; }
+        onDesfecho(d);
+        setAberto(false);
+    };
+
+    return (
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                onClick={() => setAberto(v => !v)}
+                className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                title="Registrar ligação"
+            >
+                <span className="material-symbols-outlined text-[16px]">call</span>
+            </button>
+            {aberto && (
+                <div className="absolute z-50 right-0 mt-1 w-64 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 overflow-hidden">
+                    <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-700">
+                        Como foi a ligação?
+                    </p>
+                    {pedindoDetalhe ? (
+                        <div className="p-3 space-y-2">
+                            <input
+                                autoFocus
+                                value={detalhe}
+                                onChange={e => setDetalhe(e.target.value)}
+                                placeholder="Qual foi o motivo?"
+                                className="w-full h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs text-slate-700 dark:text-slate-200"
+                            />
+                            <div className="flex justify-end gap-2">
+                                <button type="button" onClick={() => setPedindoDetalhe(null)} className="text-xs px-2 py-1 text-slate-500">Voltar</button>
+                                <button
+                                    type="button"
+                                    onClick={() => { onDesfecho(pedindoDetalhe, detalhe.trim() || undefined); setAberto(false); setPedindoDetalhe(null); setDetalhe(''); }}
+                                    className="text-xs font-bold px-3 py-1 rounded-lg bg-primary text-white"
+                                >
+                                    Salvar
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        DESFECHOS_LIGACAO.map(d => (
+                            <button
+                                key={d.motivo}
+                                type="button"
+                                onClick={() => escolher(d)}
+                                className="w-full flex items-start gap-2 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-left"
+                            >
+                                <span className="material-symbols-outlined text-[15px] text-slate-400 mt-0.5">{d.icon}</span>
+                                <span className="min-w-0">
+                                    {d.label}
+                                    <span className="block text-[10px] text-slate-400">
+                                        {d.voltarEmDias == null ? 'sai da fila' : `voltar em ${d.voltarEmDias}d`}
+                                    </span>
+                                </span>
+                            </button>
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function CrmKanbanBoard({
     partners,
     localStatus,
     campaign = 'super_promos',
     isEditable = true,
     showGmv = true,
+    getCmsUrl,
+    onDesfechoLigacao,
+    getMotivo,
     getNote,
     onStatusChange,
     onPartnerStatusChange,
@@ -93,8 +246,24 @@ export default function CrmKanbanBoard({
             else map.get('aguardando')!.push(row);
         }
 
+        // Quem está a uma ligação da ativação vem primeiro: oferta pronta, depois
+        // rascunho, depois sem item. Oferta parada há 7+ dias fura a fila — senão
+        // um parceiro do dia 4 esquecido há 10 dias só apareceria lá pelo dia 22,
+        // quando a janela de 28 já está fechando.
+        const peso = (row: CrmPartner) => {
+            const c = row.campaigns?.[campaign];
+            if (c?.itemState === 'pendente') return (c.pendenteDias ?? 0) >= 7 ? -1 : 0;
+            if (c?.itemState === 'rascunho') return 1;
+            if (c?.itemState === 'sem_item') return 2;
+            return 0;
+        };
+
         return stages.map(stage => {
-            const cards = map.get(stage.id) ?? [];
+            const cards = (map.get(stage.id) ?? []).slice().sort((a, b) => {
+                const d = peso(a) - peso(b);
+                if (d !== 0) return d;
+                return (b.diasDesdeLancamento ?? 0) - (a.diasDesdeLancamento ?? 0);
+            });
             return { ...stage, cards, total: sumIndiceGmv(cards) };
         });
     }, [partners, localStatus, campaign, stages]);
@@ -171,12 +340,41 @@ export default function CrmKanbanBoard({
                                         </div>
                                     </div>
 
-                                    {note?.nextFollowUp && fbClass && (
-                                        <div className={`text-[10px] font-bold px-2 py-0.5 rounded mt-2 inline-flex items-center gap-1 ${fbClass}`}>
-                                            <span className="material-symbols-outlined text-[12px]">event</span>
-                                            {formatCrmDate(note.nextFollowUp)}
-                                        </div>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                        <ItemStateChip
+                                            itemState={row.campaigns?.[campaign]?.itemState}
+                                            dias={row.campaigns?.[campaign]?.pendenteDias}
+                                        />
+                                        {(() => {
+                                            const motivo = getMotivo?.(row);
+                                            const d = getDesfecho(motivo);
+                                            if (!d || d.motivo === 'sim') return null;
+                                            return (
+                                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" title={d.label}>
+                                                    <span className="material-symbols-outlined text-[12px]">{d.icon}</span>
+                                                    {d.chip}
+                                                </span>
+                                            );
+                                        })()}
+                                        {(() => {
+                                            // Sem isto o card fica idêntico depois de registrar a ligação —
+                                            // e no dia seguinte o mesmo parceiro é cobrado de novo.
+                                            const d = diasDesdeContato(note?.lastContact);
+                                            if (d == null) return null;
+                                            return (
+                                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                    <span className="material-symbols-outlined text-[12px]">call</span>
+                                                    {d === 0 ? 'Falei hoje' : `Falei há ${d}d`}
+                                                </span>
+                                            );
+                                        })()}
+                                        {note?.nextFollowUp && fbClass && (
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded inline-flex items-center gap-1 ${fbClass}`}>
+                                                <span className="material-symbols-outlined text-[12px]">event</span>
+                                                {formatCrmDate(note.nextFollowUp)}
+                                            </span>
+                                        )}
+                                    </div>
 
                                     <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
                                         {row.diasDesdeLancamento != null ? (
@@ -200,14 +398,37 @@ export default function CrmKanbanBoard({
                                                     <span>{getStatusMeta(getPromoStatusForPartner(row, localStatus, campaign)).icon}</span>
                                                 </span>
                                             )}
-                                            <button
-                                                type="button"
-                                                onClick={() => onRegisterContact(row.partnerId)}
-                                                className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                                                title="Registrar contato"
-                                            >
-                                                <span className="material-symbols-outlined text-[16px]">call</span>
-                                            </button>
+                                            {(() => {
+                                                const url = getCmsUrl?.(row);
+                                                if (!url) return null;
+                                                return (
+                                                    <a
+                                                        href={url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="p-1 rounded text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                                                        title="Abrir a campanha no CMS pra aprovar"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                                                    </a>
+                                                );
+                                            })()}
+                                            {onDesfechoLigacao ? (
+                                                <BotaoLigacao
+                                                    row={row}
+                                                    onDesfecho={(d, detalhe) => onDesfechoLigacao(row, d, detalhe)}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onRegisterContact(row.partnerId)}
+                                                    className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                                    title="Registrar contato"
+                                                >
+                                                    <span className="material-symbols-outlined text-[16px]">call</span>
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 onClick={() => onEditPartner(row.partnerId)}

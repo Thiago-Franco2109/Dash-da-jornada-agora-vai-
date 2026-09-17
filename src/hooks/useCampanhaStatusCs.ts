@@ -1,33 +1,47 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { PromoStatus } from './useStatusOverride';
+import type { MotivoLigacao } from '../config/desfechoLigacao';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Status CRM do CS por (parceiro, campanha) — Supabase `campanha_status_cs`.
+// Status CRM e motivo do CS por (parceiro, campanha) — Supabase `campanha_status_cs`.
 //
-// Existe pras campanhas que NÃO têm coluna própria em
+// STATUS: existe pras campanhas que NÃO têm coluna própria em
 // `partner_status_overrides` (Super Promos e Cupons têm; Ofertas da Casa vive
-// no localStorage). Sem isto, campanha criada no CMS aparecia na tela do
-// parceiro sem onde registrar o status do CS.
+// no localStorage).
+//
+// MOTIVO: por que o parceiro ainda não participa. Diferente do status, é gravado
+// aqui pra TODAS as campanhas — é dimensão nova, não precisa herdar a bagunça de
+// onde cada status mora.
 //
 // Ver supabase/campanha_status_cs.sql.
 // ─────────────────────────────────────────────────────────────────────────
 
-/** [partnerId][campanhaId] = status */
-export type CampanhaStatusMap = Record<string, Record<string, PromoStatus>>;
+export interface CampanhaEntrada {
+    status: PromoStatus;
+    motivo?: MotivoLigacao | null;
+    motivoDetalhe?: string | null;
+}
+
+/** [partnerId][campanhaId] = entrada */
+export type CampanhaStatusMap = Record<string, Record<string, CampanhaEntrada>>;
 
 let _cache: CampanhaStatusMap | null = null;
 
 async function fetchCampanhaStatus(): Promise<CampanhaStatusMap> {
     const { data, error } = await supabase
         .from('campanha_status_cs')
-        .select('partner_id, campanha_id, status');
+        .select('partner_id, campanha_id, status, motivo, motivo_detalhe');
     if (error) throw new Error(error.message);
 
     const map: CampanhaStatusMap = {};
     for (const row of data ?? []) {
         const pid = String(row.partner_id);
-        (map[pid] ??= {})[String(row.campanha_id)] = row.status as PromoStatus;
+        (map[pid] ??= {})[String(row.campanha_id)] = {
+            status: row.status as PromoStatus,
+            motivo: (row.motivo as MotivoLigacao) ?? null,
+            motivoDetalhe: row.motivo_detalhe ?? null,
+        };
     }
     return map;
 }
@@ -47,16 +61,32 @@ export function useCampanhaStatusCs() {
             });
     }, []);
 
-    const getCampanhaStatus = useCallback(
-        (partnerId: string, campanhaId: string): PromoStatus =>
-            statusMap[partnerId]?.[campanhaId] ?? 'aguardando',
+    const getEntrada = useCallback(
+        (partnerId: string, campanhaId: string): CampanhaEntrada | undefined =>
+            statusMap[partnerId]?.[campanhaId],
         [statusMap],
     );
 
-    const setCampanhaStatus = useCallback(async (partnerId: string, campanhaId: string, status: PromoStatus): Promise<boolean> => {
-        const anterior = statusMap[partnerId]?.[campanhaId];
+    const getCampanhaStatus = useCallback(
+        (partnerId: string, campanhaId: string): PromoStatus =>
+            statusMap[partnerId]?.[campanhaId]?.status ?? 'aguardando',
+        [statusMap],
+    );
 
-        const aplicar = (valor: PromoStatus | undefined) => setStatusMap(prev => {
+    const setCampanhaStatus = useCallback(async (
+        partnerId: string,
+        campanhaId: string,
+        status: PromoStatus,
+        extras?: { motivo?: MotivoLigacao | null; motivoDetalhe?: string | null },
+    ): Promise<boolean> => {
+        const anterior = statusMap[partnerId]?.[campanhaId];
+        const nova: CampanhaEntrada = {
+            status,
+            motivo: extras?.motivo ?? null,
+            motivoDetalhe: extras?.motivoDetalhe ?? null,
+        };
+
+        const aplicar = (valor: CampanhaEntrada | undefined) => setStatusMap(prev => {
             const doParceiro = { ...(prev[partnerId] ?? {}) };
             if (valor) doParceiro[campanhaId] = valor;
             else delete doParceiro[campanhaId];
@@ -65,13 +95,20 @@ export function useCampanhaStatusCs() {
             return next;
         });
 
-        aplicar(status); // otimista
+        aplicar(nova); // otimista
         setErro(null);
 
         const { error } = await supabase
             .from('campanha_status_cs')
             .upsert(
-                { partner_id: partnerId, campanha_id: campanhaId, status, atualizado_em: new Date().toISOString() },
+                {
+                    partner_id: partnerId,
+                    campanha_id: campanhaId,
+                    status,
+                    motivo: nova.motivo,
+                    motivo_detalhe: nova.motivoDetalhe,
+                    atualizado_em: new Date().toISOString(),
+                },
                 { onConflict: 'partner_id,campanha_id' },
             );
 
@@ -84,5 +121,5 @@ export function useCampanhaStatusCs() {
         return true;
     }, [statusMap]);
 
-    return { statusMap, getCampanhaStatus, setCampanhaStatus, erro };
+    return { statusMap, getEntrada, getCampanhaStatus, setCampanhaStatus, erro };
 }

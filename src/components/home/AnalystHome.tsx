@@ -130,6 +130,16 @@ const JOURNEY_PREVIEW_SIZE = 6;
 export default function AnalystHome({ rows, onPartnerClick, onNavigate }: AnalystHomeProps) {
     const focus = useMemo(() => buildFocus(rows).slice(0, 3), [rows]);
 
+    /**
+     * Quantos têm oferta criada e parada, esperando a conversa. É ponteiro, não
+     * fila: o "Foco de hoje" tem só 3 vagas e são da cadência de contato — jogar
+     * os parados aqui dentro expulsaria os check-ins de D7/D14/D21/D28.
+     */
+    const ofertasParadas = useMemo(
+        () => rows.filter(r => (r.promo_resumo?.pendente ?? 0) > 0).length,
+        [rows]
+    );
+
     /** A jornada é a lista de trabalho: pior desempenho primeiro. */
     const journey = useMemo(
         () => [...rows].sort((a, b) => a.indice_desempenho - b.indice_desempenho).slice(0, JOURNEY_PREVIEW_SIZE),
@@ -138,6 +148,23 @@ export default function AnalystHome({ rows, onPartnerClick, onNavigate }: Analys
 
     return (
         <div className="space-y-10">
+            {ofertasParadas > 0 && (
+                <button
+                    type="button"
+                    onClick={() => onNavigate('crm_jornada')}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-left hover:bg-amber-100/70 dark:hover:bg-amber-500/15 transition-colors"
+                >
+                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">inventory_2</span>
+                    <span className="flex-1 min-w-0 text-sm text-amber-900 dark:text-amber-200">
+                        <strong>{ofertasParadas}</strong> {ofertasParadas === 1 ? 'parceiro com oferta pronta esperando' : 'parceiros com oferta pronta esperando'} a conversa
+                    </span>
+                    <span className="shrink-0 text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                        Abrir CRM Jornada
+                        <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                    </span>
+                </button>
+            )}
+
             {/* ── Foco de hoje ─────────────────────────────────────── */}
             <section>
                 <div className="flex items-end justify-between mb-4 gap-4">

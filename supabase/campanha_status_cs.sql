@@ -28,12 +28,22 @@
 -- ─────────────────────────────────────────────────────────────────────────
 
 create table if not exists public.campanha_status_cs (
-    partner_id    text        not null,   -- estab_id do parceiro (mesma chave do resto do app)
-    campanha_id   text        not null,   -- id derivado do nome da campanha (ver campaignIdFromNome)
-    status        text        not null,   -- aguardando | ofertei | negado | confirmado | ativo | inativo
-    atualizado_em timestamptz not null default now(),
+    partner_id     text        not null,   -- estab_id do parceiro (mesma chave do resto do app)
+    campanha_id    text        not null,   -- id derivado do nome da campanha (ver campaignIdFromNome)
+    status         text        not null,   -- aguardando | ofertei | negado | confirmado | ativo | inativo
+    -- Por que o parceiro ainda não está participando. Preenchido ao registrar a
+    -- ligação; é o que diz ao CS com que argumento voltar, e agregado responde se
+    -- o gargalo é preço, informação ou recusa.
+    motivo         text,                   -- desconto_alto | nao_entendeu_subsidio | esqueceu | nao_quer | sim | outro
+    motivo_detalhe text,                   -- texto livre quando motivo = 'outro'
+    atualizado_em  timestamptz not null default now(),
     primary key (partner_id, campanha_id)
 );
+
+-- Para quem já rodou a versão anterior deste arquivo (sem as colunas de motivo).
+alter table public.campanha_status_cs
+    add column if not exists motivo         text,
+    add column if not exists motivo_detalhe text;
 
 comment on table public.campanha_status_cs is
     'Status CRM do CS por (parceiro, campanha). Cobre as campanhas sem coluna própria em partner_status_overrides.';

@@ -220,7 +220,15 @@ function App() {
     refreshData: refreshCrmData,
   } = useCrmData({ enabled: crmDataEnabled });
 
-  const { getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact } = useCrmNotes();
+  const { getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact, erro: crmNotasErro } = useCrmNotes();
+
+  // As notas saíram do localStorage pro Supabase (dois CS precisam ver a mesma
+  // fila). Se a tabela não existir, o CS anotaria no vazio — melhor avisar.
+  useEffect(() => {
+    if (crmNotasErro) {
+      setStatusSaveError(`Notas e contatos do CRM não estão sendo salvos (${crmNotasErro}). Falta criar a tabela crm_notas no Supabase — ver supabase/crm_notas.sql.`);
+    }
+  }, [crmNotasErro]);
   const { data: trelloTarefas } = useTrelloTarefas();
   const crmFollowUpAlerts = useMemo(
     () => computeFollowUpAlerts(crmPartners, getCrmNote),

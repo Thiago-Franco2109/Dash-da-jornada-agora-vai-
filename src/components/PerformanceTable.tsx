@@ -78,7 +78,7 @@ const PROMO_SLOTS = [
     { key: 'aprovado', icon: 'check_circle', tone: 'text-emerald-600 dark:text-emerald-400', hint: 'aprovada(s) — ativa no painel' },
     { key: 'rascunho', icon: 'edit_note', tone: 'text-slate-500 dark:text-slate-400', hint: 'em rascunho' },
     { key: 'semItem', icon: 'block', tone: 'text-red-500 dark:text-red-400', hint: 'na cidade, sem item pro parceiro' },
-] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe'>; icon: string; tone: string; hint: string }[];
+] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe' | 'pendenteDiasMax'>; icon: string; tone: string; hint: string }[];
 
 export function getRowCampaignStatus(row: PerformanceRow, campaignId: CampaignTypeId): PromoStatusValue {
     const fromMap = getCampaignStatus(row.campaign_statuses, campaignId);

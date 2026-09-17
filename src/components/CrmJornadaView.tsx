@@ -7,6 +7,9 @@ import CrmKanbanBoard from './crm/CrmKanbanBoard';
 import CrmFollowUpAlerts from './crm/CrmFollowUpAlerts';
 import { computeFollowUpAlerts, filterCrmPartners, getPromoStatusForPartner } from '../utils/crmPipeline';
 import { crmCitiesMatch } from '../utils/crmData';
+import { useCityIds } from '../hooks/useCityIds';
+import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
+import { proximoFollowUp, type DesfechoLigacao } from '../config/desfechoLigacao';
 
 /**
  * CRM Jornada 28D — mesmo kanban do CRM Promoções, mas só com os parceiros
@@ -49,6 +52,8 @@ export default function CrmJornadaView({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editNotes, setEditNotes] = useState('');
     const [editFollowUp, setEditFollowUp] = useState('');
+    const { getCmsPromoUrl } = useCityIds();
+    const { getEntrada, setCampanhaStatus } = useCampanhaStatusCs();
 
     const campaignConfig = getCampaignConfig(campanha);
 
@@ -84,6 +89,24 @@ export default function CrmJornadaView({
     const trocarCampanha = (id: CampaignTypeId) => {
         setCampanha(id);
         localStorage.setItem(CAMPAIGN_STORAGE_KEY, id);
+    };
+
+    /**
+     * Um clique fecha a ligação: grava o contato, o motivo, o status da campanha e
+     * quando voltar. O follow-up alimenta o banner e o sino que já existem.
+     */
+    const registrarDesfecho = (row: CrmPartner, desfecho: DesfechoLigacao, detalhe?: string) => {
+        registerContact(row.partnerId, proximoFollowUp(desfecho));
+        void setCampanhaStatus(row.partnerId, campanha, desfecho.status, {
+            motivo: desfecho.motivo,
+            motivoDetalhe: detalhe ?? null,
+        });
+        onCampaignStatusChange?.(row.partnerId, campanha, desfecho.status);
+    };
+
+    const cmsUrlDoCard = (row: CrmPartner): string | undefined => {
+        const base = campaignConfig.cmsBaseUrl;
+        return base ? getCmsPromoUrl(base, row.cidade) : undefined;
     };
 
     const openEdit = (id: string) => {
@@ -198,6 +221,9 @@ export default function CrmJornadaView({
                         campaign={campanha}
                         showGmv={false}
                         getNote={getNote}
+                        getCmsUrl={cmsUrlDoCard}
+                        onDesfechoLigacao={registrarDesfecho}
+                        getMotivo={row => getEntrada(row.partnerId, campanha)?.motivo}
                         onPartnerStatusChange={() => { /* status re-deriva do enrichedData */ }}
                         onCampaignStatusChange={onCampaignStatusChange}
                         onEditPartner={openEdit}

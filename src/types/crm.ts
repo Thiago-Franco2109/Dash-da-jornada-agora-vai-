@@ -34,6 +34,15 @@ export interface CrmPartner {
         itemCount: number;
         hasActive: boolean;
         sheetInfo?: CampaignSheetInfo;
+        /**
+         * Fato do banco, distinto do `status` (que é marcação do CS). Diz qual é a
+         * próxima ação: `sem_item`/`rascunho` = trabalho no CMS; `pendente` = a
+         * oferta está pronta e falta a conversa com o parceiro. Só o CRM Jornada
+         * preenche hoje.
+         */
+        itemState?: 'sem_item' | 'rascunho' | 'pendente' | 'aprovado';
+        /** Há quantos dias a oferta pendente espera. null = sem data no banco. */
+        pendenteDias?: number | null;
     }>;
     /** @deprecated use campaigns.super_promos */
     promoResumo: string;
