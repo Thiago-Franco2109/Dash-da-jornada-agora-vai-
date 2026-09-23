@@ -173,6 +173,8 @@ interface PerformanceTableProps {
     /** true (padrão): tabela preenche altura e rola internamente.
      *  false: cresce natural e rola com a página (usado no scroll único do churn). */
     fillHeight?: boolean;
+    /** Estado vazio: o construtor de filtros manda o texto que aponta o culpado. */
+    vazio?: { titulo: string; descricao: string; acoes?: { rotulo: string; onClick: () => void }[] };
 }
 
 type ActiveDropdown = { rowIndex: number; field: CampaignTypeId } | null;
@@ -467,7 +469,7 @@ function RelevanceCell({
 // ──────────────────────────────────────────────────────────────
 // PerformanceTable principal
 // ──────────────────────────────────────────────────────────────
-export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, onRelevanceChange, variant = 'journey', pedidosMesHeader, fillHeight = true }: PerformanceTableProps) {
+export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, onRelevanceChange, variant = 'journey', pedidosMesHeader, fillHeight = true, vazio }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
     const isIndicador = variant === 'indicador';
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
@@ -1034,6 +1036,29 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                     </tr>
                                 )
                             })}
+                            {data.length === 0 && vazio && (
+                                <tr>
+                                    <td colSpan={20} className="p-0">
+                                        <div className="flex flex-col items-center justify-center gap-3 p-12 min-h-[320px] text-center">
+                                            <span className="material-symbols-outlined text-5xl text-slate-300 dark:text-slate-600">filter_alt_off</span>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{vazio.titulo}</p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">{vazio.descricao}</p>
+                                            </div>
+                                            {vazio.acoes && vazio.acoes.length > 0 && (
+                                                <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+                                                    {vazio.acoes.map(a => (
+                                                        <button key={a.rotulo} onClick={a.onClick}
+                                                            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
+                                                            {a.rotulo}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
             </div>

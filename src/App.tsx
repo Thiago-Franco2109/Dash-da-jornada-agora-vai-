@@ -4,7 +4,6 @@ import { ptBR } from 'date-fns/locale/pt-BR';
 import Header from './components/Header';
 import NavigationSidebar from './components/NavigationSidebar';
 import HomeView from './components/HomeView';
-import FilterToolbar from './components/FilterToolbar';
 import PerformanceTable, { getRowCampaignStatus } from './components/PerformanceTable';
 import type { SortConfig } from './components/PerformanceTable';
 import PartnerDetailsView from './components/PartnerDetailsView';
@@ -42,15 +41,16 @@ import {
   PEDIDO_MENSAL_DATA_SOURCE,
   PARCEIRO_MENSAL_DATA_SOURCE,
 } from './config/dataSource';
-import { enrichPartnerData, enrichDesempenhoPartnerData, matchesPromoCupomFilter, type EnrichedPerformanceRow } from './utils/calculations';
-import {
-    buildAllPromoCupomFilterOptions,
-    countPromoCupomFilter,
-    type PromoCupomFilterValue,
-} from './config/promoCupomFilter';
+import { enrichPartnerData, enrichDesempenhoPartnerData, type EnrichedPerformanceRow } from './utils/calculations';
 import { crmPartnersToEnrichedRows } from './utils/indicadorPerformance';
 import { jornadaRowsToCrmPartners } from './utils/jornadaCrmAdapter';
 import { buildPreLancamentoRows } from './utils/preLancamento';
+import { aplicarFiltroComposto, condicaoCulpadaPeloVazio, type ContextoAvaliacao } from './utils/avaliarFiltro';
+import { camposFiltraveisJornada } from './config/camposFiltraveis';
+import { grupoVazio, novoId, type FiltroComposto } from './config/filtrosJornada';
+import { estaNaAba, contarPorFaixa, ABAS_JORNADA, type AbaJornada } from './utils/faixaJornada';
+import { hojeISO } from './hooks/useCrmNotes';
+import FilterBar from './components/FilterBar';
 import { mergeOfertasManualStatus, promoStatusToOfertasStatus } from './utils/ofertasStatusMap';
 import { getCampaignOverrideField, isEditableCampaign, type CampaignTypeId } from './config/campaignTypes';
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
@@ -69,7 +69,7 @@ import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
-import { buildNoCityIndexMap, getCitiesForManager } from './config/managerMapping';
+import { buildNoCityIndexMap } from './config/managerMapping';
 import { CACHE_KEYS } from './utils/dataSync';
 import { type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
@@ -83,7 +83,7 @@ import { findPartner } from './utils/partnerIdentity';
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
-  const { managerFilter, setManagerFilter, profile } = useManagerSession();
+  const { managerFilter, setManagerFilter } = useManagerSession();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
@@ -93,8 +93,13 @@ function App() {
   const [cityFilter, setCityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [ageGroupFilter, setAgeGroupFilter] = useState<'all' | 'pre' | '1-7' | '8-14' | '15-21' | '22-28'>('all');
-  const [promoCupomFilter, setPromoCupomFilter] = useState<PromoCupomFilterValue | ''>('');
+  const [ageGroupFilter, setAgeGroupFilter] = useState<AbaJornada>('all');
+  /**
+   * Filtro composto da jornada. Local de propósito: `cityFilter`/`managerFilter`
+   * são globais (alimentam CRM, Carteira, Relatórios…), então o construtor
+   * NUNCA escreve neles — senão mexer num chip aqui mudaria o painel inteiro.
+   */
+  const [filtroJornada, setFiltroJornada] = useState<FiltroComposto>(grupoVazio);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
   const [partnerSearchOpen, setPartnerSearchOpen] = useState(false);
@@ -220,7 +225,7 @@ function App() {
     refreshData: refreshCrmData,
   } = useCrmData({ enabled: crmDataEnabled });
 
-  const { getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact, erro: crmNotasErro } = useCrmNotes();
+  const { notesMap: crmNotasMap, getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact, erro: crmNotasErro, carregando: crmNotasCarregando } = useCrmNotes();
 
   // As notas saíram do localStorage pro Supabase (dois CS precisam ver a mesma
   // fila). Se a tabela não existir, o CS anotaria no vazio — melhor avisar.
@@ -280,7 +285,15 @@ function App() {
   // Decisões de trabalho do CS (Supabase) — única fonte de override de campanha.
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Status dos itens promocionais por parceiro/campanha (banco).
-  const { promoData } = usePromoStatus();
+  const { promoData, loading: promoCarregando, error: promoErro } = usePromoStatus();
+  /**
+   * `promoData` nasce como objeto vazio mas SEMPRE truthy, então sem este
+   * portão o computePromoResumo roda com mapas vazios e escreve zeros
+   * fabricados na linha — indistinguíveis de zeros reais. Com ele,
+   * `promo_resumo === undefined` passa a significar "ainda não sei".
+   */
+  const promoPronto = !promoCarregando && !promoErro;
+  const promoDataOuIndefinido = promoPronto ? promoData : undefined;
   // Mapa estab_id → localidade_id (p/ saber as campanhas da cidade do parceiro).
   const estabIdToLoc = useMemo(() => {
     const m = new Map<string, string>();
@@ -384,7 +397,7 @@ function App() {
     setSearchQuery('');
     setPriorityFilter('');
     setAgeGroupFilter('all');
-    setPromoCupomFilter('');
+    setFiltroJornada(grupoVazio());
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
     if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'crm_jornada' || currentView === 'todos_parceiros')) {
@@ -440,7 +453,7 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
+      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -449,7 +462,7 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc]);
 
   /**
    * Parceiros que assinaram e ainda não lançaram. O CS já oferece campanha pra
@@ -471,8 +484,8 @@ function App() {
       relMap,
       mode,
     });
-    return linhas.map(row => overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
-  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc]);
+    return linhas.map(row => overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
+  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc]);
 
   /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
   const jornadaPool = useMemo(
@@ -483,7 +496,7 @@ function App() {
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
-        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc))),
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc))),
         ofertasRecords,
       );
       // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
@@ -506,11 +519,11 @@ function App() {
         row = { ...row, dias_desde_lancamento: 0, pedidos_esperados: 0, indice_desempenho: 0, priority_stars: 0 };
         const rel = relMap[String(p.id)];
         if (rel != null) row = { ...row, commercial_relevance: rel };
-        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoData, estabIdToLoc));
+        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
       }
       return [...base, ...extras];
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoData, estabIdToLoc, mappingVersion],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, mappingVersion],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
@@ -543,18 +556,6 @@ function App() {
     });
   }, [desempenhoRawRows, mappingVersion, mode, isCD]);
 
-  // Extract unique cities and managers
-  //
-  // O filtro de cidade só mostra a carteira de quem está logado: Thiago e
-  // Laís veem só as próprias cidades, Ulysses (CEO, sem carteira própria) vê
-  // todas.
-  // Deriva do pool (e não de enrichedData) senão cidade que só tem parceiro em
-  // pré-lançamento some do dropdown. Só alimenta o FilterToolbar da jornada.
-  const allCities = Array.from(new Set(jornadaPool.map(row => row.cidade))).filter(Boolean).sort();
-  const uniqueCities = (profile === 'THIAGO' || profile === 'LAÍS')
-    ? allCities.filter(city => getCitiesForManager(profile, mode).includes(city))
-    : allCities;
-  const uniqueManagers = Array.from(new Set(jornadaPool.map(row => row.analista || 'Desconhecido'))).filter(m => m !== 'Desconhecido').sort();
 
   /**
    * A home mostra a carteira de quem entrou, sem os filtros das telas — ela é
@@ -565,34 +566,57 @@ function App() {
     [enrichedData, managerFilter]
   );
 
-  const dataBeforePromoCupomFilter = useMemo(() => {
-    return jornadaPool.filter((row: EnrichedPerformanceRow) => {
-      // Card do Trello que o banco ainda não conhece não tem cidade, e sem cidade
-      // não dá pra dizer de quem é a carteira. Esconder dos dois CS é pior que
-      // mostrar pros dois — some sozinho quando o banco sincroniza (~1 dia).
-      const semCarteira = row.pre_lancamento?.origem === 'trello';
-      if (!semCarteira && cityFilter && row.cidade !== cityFilter) return false;
-      if (searchQuery && !row.estabelecimento.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      if (priorityFilter && row.priority_stars.toString() !== priorityFilter) return false;
-      if (!semCarteira && managerFilter && row.analista !== managerFilter) return false;
-      return true;
+  /** Campos filtráveis desta tela (CD não tem campanha nem pré-lançamento). */
+  const camposFiltro = useMemo(() => camposFiltraveisJornada({ isCD }), [isCD]);
+
+  /**
+   * A carteira da sessão entra como condição visível, não como filtro oculto.
+   * Trocar de gestor continua sendo no seletor de sessão; aqui ela só é
+   * semeada (e re-semeada se a sessão mudar por fora).
+   */
+  useEffect(() => {
+    setFiltroJornada(atual => {
+      const semGestor = atual.itens.filter(i => !(i.tipo === 'condicao' && i.origem === 'sessao'));
+      if (!managerFilter) return semGestor.length === atual.itens.length ? atual : { ...atual, itens: semGestor };
+      return {
+        ...atual,
+        itens: [
+          { tipo: 'condicao' as const, id: novoId(), campoId: 'analista', operador: 'e' as const, valor: { tipo: 'texto' as const, texto: managerFilter }, origem: 'sessao' as const },
+          ...semGestor,
+        ],
+      };
     });
-  }, [jornadaPool, cityFilter, searchQuery, priorityFilter, managerFilter]);
+  }, [managerFilter]);
 
-  const baseFilteredData = useMemo(() => {
-    if (!promoCupomFilter) return dataBeforePromoCupomFilter;
-    return dataBeforePromoCupomFilter.filter(row =>
-      matchesPromoCupomFilter(row, promoCupomFilter),
-    );
-  }, [dataBeforePromoCupomFilter, promoCupomFilter]);
+  /**
+   * Contexto da avaliação. `hojeISO()` (string) como dependência, e não
+   * `new Date()`, senão o memo do resultado invalidaria a cada render.
+   */
+  const hojeDia = hojeISO();
+  const ctxFiltro = useMemo<ContextoAvaliacao>(() => ({
+    hoje: new Date(`${hojeDia}T00:00:00`),
+    promoPronto,
+    crmPronto: !crmNotasCarregando,
+    notaPorParceiro: crmNotasMap,
+    localidadePorEstab: estabIdToLoc,
+  }), [hojeDia, promoPronto, crmNotasCarregando, crmNotasMap, estabIdToLoc]);
 
-  const promoCupomFilterCounts = useMemo(() => {
-    const counts: Partial<Record<PromoCupomFilterValue, number>> = {};
-    for (const opt of buildAllPromoCupomFilterOptions()) {
-      counts[opt.value] = countPromoCupomFilter(dataBeforePromoCupomFilter, opt.value);
-    }
-    return counts;
-  }, [dataBeforePromoCupomFilter]);
+  /**
+   * A busca do Header continua fora do construtor: é global (vale pro CRM,
+   * Todos os Parceiros etc) e achar um parceiro pelo nome tem que ser mais
+   * rápido que montar uma condição.
+   */
+  const poolBuscado = useMemo(() => {
+    if (!searchQuery) return jornadaPool;
+    const q = searchQuery.toLowerCase();
+    return jornadaPool.filter(row => row.estabelecimento.toLowerCase().includes(q));
+  }, [jornadaPool, searchQuery]);
+
+  const resultadoFiltro = useMemo(
+    () => aplicarFiltroComposto(poolBuscado, filtroJornada, camposFiltro, ctxFiltro),
+    [poolBuscado, filtroJornada, camposFiltro, ctxFiltro],
+  );
+
 
   // CRM Jornada: parte de `enrichedData` cru (e não de baseFilteredData) pra não
   // herdar em silêncio os filtros da tela da lista — aba de período e filtro de
@@ -606,27 +630,56 @@ function App() {
     [jornadaPool],
   );
 
-  // Filter Data
-  //
-  // 'all' == a jornada inteira (união dos 4 buckets, 1-28 dias), não "sem
-  // limite". Antes disso nunca precisou de um `days > 28` explícito porque a
-  // planilha antiga só tinha ~28-33 dias de dados; lendo direto do banco (ver
-  // netlify/functions/jornada.ts) a janela de busca é mais larga que isso (tem
-  // uma folga de dias pra não sumir um parceiro no fuso horário errado), e sem
-  // este corte esses dias de sobra apareciam na tela mesmo já formados.
-  let filteredTableData = baseFilteredData.filter((row: EnrichedPerformanceRow) => {
-    // Quem não lançou é decidido pela flag, nunca pelo número de dias — o dia 0
-    // dele não significa "lançou hoje".
-    if (row.pre_lancamento) return ageGroupFilter === 'all' || ageGroupFilter === 'pre';
-    if (ageGroupFilter === 'pre') return false;
-    const days = row.dias_desde_lancamento;
-    if (ageGroupFilter === 'all' && days > 28) return false;
-    if (ageGroupFilter === '1-7' && (days < 1 || days > 7)) return false;
-    if (ageGroupFilter === '8-14' && (days < 8 || days > 14)) return false;
-    if (ageGroupFilter === '15-21' && (days < 15 || days > 21)) return false;
-    if (ageGroupFilter === '22-28' && (days < 22 || days > 28)) return false;
-    return true;
-  });
+  // A aba de período é escopo, não condição: as faixas são mutuamente
+  // exclusivas e o corte da folga de dias do banco (ver jornada.ts) é regra de
+  // janela de dados, não filtro do usuário. Ver utils/faixaJornada.ts.
+  const contagemPorFaixa = useMemo(() => contarPorFaixa(resultadoFiltro.linhas), [resultadoFiltro]);
+  /** Total da aba SEM as condições — é o "de M" do contador. */
+  const totalDaAba = useMemo(
+    () => poolBuscado.filter(row => estaNaAba(row, ageGroupFilter)).length,
+    [poolBuscado, ageGroupFilter],
+  );
+
+  /** Traz de volta, como condição visível, quem foi barrado por não ter carteira. */
+  const incluirSemCarteira = () => {
+    setFiltroJornada(f => ({
+      ...f,
+      juncao: 'ou',
+      itens: [...f.itens, { tipo: 'condicao', id: novoId(), campoId: 'carteira_indefinida', operador: 'verdadeiro', valor: { tipo: 'nenhum' } }],
+    }));
+  };
+
+  /**
+   * Texto do estado vazio. Aponta QUAL condição está zerando (leave-one-out) —
+   * é o que separa um construtor usável de um beco sem saída.
+   */
+  const vazioDaTabela = useMemo(() => {
+    if (resultadoFiltro.pausado) return undefined;
+    const condicoes = filtroJornada.itens.filter(i => i.tipo === 'condicao');
+    if (condicoes.length === 0) return undefined;
+
+    const culpada = condicaoCulpadaPeloVazio(poolBuscado, filtroJornada, camposFiltro, ctxFiltro);
+    const campoCulpado = culpada ? camposFiltro.find(c => c.id === culpada.campoId) : null;
+    const nomeAba = ABAS_JORNADA.find(t => t.id === ageGroupFilter)?.label ?? 'jornada';
+    const quantas = condicoes.length;
+
+    return {
+      titulo: 'Nenhum parceiro passa por esses filtros',
+      descricao: [
+        `Dos ${totalDaAba} parceiros de "${nomeAba}", nenhum atende`,
+        quantas === 1 ? 'à condição.' : filtroJornada.juncao === 'e' ? `às ${quantas} condições ao mesmo tempo.` : `a nenhuma das ${quantas} condições.`,
+        campoCulpado ? `A condição "${campoCulpado.rotulo}" é a que está zerando o resultado.` : '',
+      ].filter(Boolean).join(' '),
+      acoes: [
+        ...(quantas >= 2 && filtroJornada.juncao === 'e'
+          ? [{ rotulo: 'Trocar "e" por "ou"', onClick: () => setFiltroJornada(f => ({ ...f, juncao: 'ou' as const })) }]
+          : []),
+        { rotulo: 'Limpar os filtros', onClick: () => setFiltroJornada(f => ({ ...f, itens: f.itens.filter(i => i.tipo === 'condicao' && i.origem === 'sessao') })) },
+      ],
+    };
+  }, [resultadoFiltro, filtroJornada, poolBuscado, camposFiltro, ctxFiltro, ageGroupFilter, totalDaAba]);
+
+  let filteredTableData = resultadoFiltro.linhas.filter(row => estaNaAba(row, ageGroupFilter));
 
   // Sort Data
   if (sortConfig !== null) {
@@ -1189,53 +1242,18 @@ function App() {
                   )}
                 </div>
 
-                <div className="shrink-0">
-                <FilterToolbar
-                  cityFilter={cityFilter}
-                  setCityFilter={setCityFilter}
-                  cities={uniqueCities}
-                  priorityFilter={priorityFilter}
-                  setPriorityFilter={setPriorityFilter}
-                  managerFilter={managerFilter}
-                  setManagerFilter={setManagerFilter}
-                  managers={uniqueManagers}
-                  showPromoCupomFilter={!isCD}
-                  promoCupomFilter={promoCupomFilter}
-                  setPromoCupomFilter={setPromoCupomFilter}
-                  promoCupomFilterCounts={promoCupomFilterCounts}
-                />
-                </div>
 
                 <div className="shrink-0 flex items-center justify-between px-6 bg-slate-50/30 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex gap-6 overflow-x-auto scrollbar-hide pt-2">
-                      {[
-                          { id: 'all', label: 'Todos os Períodos' },
-                          // Antes do dia 1: a fileira é uma linha do tempo.
-                          ...(!isCD ? [{ id: 'pre', label: 'Pré-lançamento' }] : []),
-                          { id: '1-7', label: '1 a 7 dias' },
-                          { id: '8-14', label: '8 a 14 dias' },
-                          { id: '15-21', label: '15 a 21 dias' },
-                          { id: '22-28', label: '22 a 28 dias' }
-                      ].map(tab => (
+                      {ABAS_JORNADA.filter(t => !isCD || t.id !== 'pre').map(tab => (
                           <button
                               key={tab.id}
-                              onClick={() => setAgeGroupFilter(tab.id as any)}
+                              onClick={() => setAgeGroupFilter(tab.id)}
                               className={`pb-3 pt-2 px-1 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${ageGroupFilter === tab.id ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                           >
                               {tab.label}
                               <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${ageGroupFilter === tab.id ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                                  {baseFilteredData.filter(r => {
-                                      // Pré-lançamento sai pela flag, nunca pelo número de
-                                      // dias — o 0 dele não quer dizer "lançou hoje".
-                                      if (r.pre_lancamento) return tab.id === 'pre' || tab.id === 'all';
-                                      if (tab.id === 'pre') return false;
-                                      const d = r.dias_desde_lancamento;
-                                      if (tab.id === '1-7') return d >= 1 && d <= 7;
-                                      if (tab.id === '8-14') return d >= 8 && d <= 14;
-                                      if (tab.id === '15-21') return d >= 15 && d <= 21;
-                                      if (tab.id === '22-28') return d >= 22 && d <= 28;
-                                      return d <= 28; // "Todos" = a jornada inteira, com o mesmo corte da tabela
-                                  }).length}
+                                  {resultadoFiltro.pausado ? '—' : contagemPorFaixa[tab.id]}
                               </span>
                           </button>
                       ))}
@@ -1256,6 +1274,22 @@ function App() {
                   </button>
                 </div>
 
+                <FilterBar
+                  filtro={filtroJornada}
+                  setFiltro={setFiltroJornada}
+                  campos={camposFiltro}
+                  pool={poolBuscado}
+                  ctx={ctxFiltro}
+                  exibidos={filteredTableData.length}
+                  total={totalDaAba}
+                  abaLabel={ABAS_JORNADA.find(t => t.id === ageGroupFilter)?.label}
+                  pausado={resultadoFiltro.pausado}
+                  motivoPausa={resultadoFiltro.motivo}
+                  incompletas={resultadoFiltro.incompletas}
+                  excluidosSemCarteira={resultadoFiltro.excluidosSemCarteira}
+                  onIncluirSemCarteira={incluirSemCarteira}
+                />
+
                 {loadingSync && rawRows.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-12 min-h-[400px]">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
@@ -1271,6 +1305,7 @@ function App() {
                       onCampaignStatusChange={handleCampaignStatusChange}
                       onStatusChange={handleStatusChange}
                       onRelevanceChange={handleRelevanceChange}
+                      vazio={vazioDaTabela}
                     />
                   </div>
                 )}

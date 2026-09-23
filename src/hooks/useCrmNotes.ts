@@ -53,6 +53,8 @@ export function hojeISO(hoje = new Date()): string {
 export function useCrmNotes() {
     const [notesMap, setNotesMap] = useState<NotesMap>(_cache ?? {});
     const [erro, setErro] = useState<string | null>(null);
+    // Sem isto, "último contato está vazio" casaria com todo mundo enquanto carrega.
+    const [carregando, setCarregando] = useState(_cache == null);
 
     useEffect(() => {
         inscritos.add(setNotesMap);
@@ -62,10 +64,11 @@ export function useCrmNotes() {
     useEffect(() => {
         if (_cache) return;
         fetchNotas()
-            .then(publicar)
+            .then(m => { publicar(m); setCarregando(false); })
             .catch(err => {
                 console.warn('[useCrmNotes] falha ao carregar:', err);
                 setErro(err instanceof Error ? err.message : 'falha ao carregar');
+                setCarregando(false);
             });
     }, []);
 
@@ -123,5 +126,5 @@ export function useCrmNotes() {
         [upsertNote],
     );
 
-    return { notesMap, getNote, upsertNote, registerContact, erro };
+    return { notesMap, getNote, upsertNote, registerContact, erro, carregando };
 }

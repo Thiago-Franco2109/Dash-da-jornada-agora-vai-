@@ -400,4 +400,3 @@ export const getInterpretationBox = (stars: number): { text: string; bg: string;
     }
 };
 
-export { matchesPromoCupomFilter, countPromoCupomFilter } from '../config/promoCupomFilter';
