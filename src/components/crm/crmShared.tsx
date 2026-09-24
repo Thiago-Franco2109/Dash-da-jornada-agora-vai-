@@ -40,6 +40,23 @@ export function formatCrmDate(iso: string | null | undefined) {
     }
 }
 
+/** Follow-up agora tem horário (ver supabase/crm_notas.sql) — formata "dd/MM/yyyy às HH:mm". */
+export function formatCrmDateTime(iso: string | null | undefined) {
+    if (!iso) return '—';
+    try {
+        return format(parseISO(iso), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+    } catch {
+        return iso;
+    }
+}
+
+/** "2026-09-10T08:00:00.000Z" -> "2026-09-10T08:00" (formato de <input type="datetime-local">). */
+export function paraDatetimeLocal(iso: string): string {
+    const d = parseISO(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function formatGmv(row: CrmPartner) {
     if (row.indiceGmv != null && row.indiceGmv > 0) return formatBRL(row.indiceGmv);
     if (row.indiceGmvRaw && row.indiceGmvRaw !== '—') return row.indiceGmvRaw;

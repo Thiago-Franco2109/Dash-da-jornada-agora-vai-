@@ -10,6 +10,7 @@ import { crmCitiesMatch } from '../utils/crmData';
 import { useCityIds } from '../hooks/useCityIds';
 import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
 import { proximoFollowUp, type DesfechoLigacao } from '../config/desfechoLigacao';
+import { paraDatetimeLocal } from './crm/crmShared';
 
 /**
  * CRM Jornada 28D — mesmo kanban do CRM Promoções, mas só com os parceiros
@@ -114,12 +115,12 @@ export default function CrmJornadaView({
         const note = getNote(id);
         setEditingId(id);
         setEditNotes(note?.notes ?? '');
-        setEditFollowUp(note?.nextFollowUp ?? '');
+        setEditFollowUp(note?.nextFollowUp ? paraDatetimeLocal(note.nextFollowUp) : '');
     };
 
     const saveEdit = () => {
         if (!editingId) return;
-        upsertNote(editingId, { notes: editNotes, nextFollowUp: editFollowUp || null });
+        upsertNote(editingId, { notes: editNotes, nextFollowUp: editFollowUp ? new Date(editFollowUp).toISOString() : null });
         setEditingId(null);
     };
 
@@ -244,7 +245,7 @@ export default function CrmJornadaView({
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Próximo follow-up</label>
                             <input
-                                type="date"
+                                type="datetime-local"
                                 value={editFollowUp}
                                 onChange={e => setEditFollowUp(e.target.value)}
                                 className="w-full h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-700 dark:text-slate-200"

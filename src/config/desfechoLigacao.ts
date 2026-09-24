@@ -89,10 +89,11 @@ export function getDesfecho(motivo: string | null | undefined): DesfechoLigacao 
     return DESFECHOS_LIGACAO.find(d => d.motivo === motivo);
 }
 
-/** Data ISO (YYYY-MM-DD) de quando voltar, ou null se o desfecho tira da fila. */
+/** ISO datetime de quando voltar (09:00 local do dia calculado), ou null se o desfecho tira da fila. */
 export function proximoFollowUp(desfecho: DesfechoLigacao, hoje = new Date()): string | null {
     if (desfecho.voltarEmDias == null) return null;
     const d = new Date(hoje);
     d.setDate(d.getDate() + desfecho.voltarEmDias);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    d.setHours(9, 0, 0, 0);
+    return d.toISOString();
 }

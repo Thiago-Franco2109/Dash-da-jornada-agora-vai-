@@ -25,6 +25,7 @@ import OnboardingView from './components/OnboardingView';
 import OnboardingCompletoAlert from './components/OnboardingCompletoAlert';
 import CrmView from './components/CrmView';
 import CrmJornadaView from './components/CrmJornadaView';
+import TarefasDoDiaView from './components/TarefasDoDiaView';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
@@ -33,7 +34,7 @@ import { fetchJornadaMarketplace, fetchJornadaCd, fetchCdDesempenho } from './ut
 import { useAtribuicaoCs } from './hooks/useAtribuicaoCs';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
 import { useOnboardingTrello } from './hooks/useOnboardingTrello';
-import { useNotificacaoAtrasados } from './hooks/useNotificacaoAtrasados';
+import { useTarefasPendentes } from './hooks/useTarefasPendentes';
 import {
   PARTNER_DATA_SOURCES,
   CD_DATA_SOURCES,
@@ -63,7 +64,6 @@ import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
 import { useCrmNotes } from './hooks/useCrmNotes';
 import { useTrelloTarefas } from './hooks/useTrelloTarefas';
-import { computeFollowUpAlerts } from './utils/crmPipeline';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
@@ -234,11 +234,7 @@ function App() {
       setStatusSaveError(`Notas e contatos do CRM não estão sendo salvos (${crmNotasErro}). Falta criar a tabela crm_notas no Supabase — ver supabase/crm_notas.sql.`);
     }
   }, [crmNotasErro]);
-  const { data: trelloTarefas } = useTrelloTarefas();
-  const crmFollowUpAlerts = useMemo(
-    () => computeFollowUpAlerts(crmPartners, getCrmNote),
-    [crmPartners, getCrmNote],
-  );
+  const { data: trelloTarefas, refresh: refreshTrelloTarefas } = useTrelloTarefas();
 
   // Atribuição de CS (cidade e loja) do Supabase — publica no resolvedor
   // síncrono usado por todas as telas.
@@ -274,7 +270,16 @@ function App() {
     enabled: isAuthenticated,
   });
 
-  const notificacaoAtrasados = useNotificacaoAtrasados(onboardingCardsTrello, refreshOnboardingTrello);
+  const tarefasPendentes = useTarefasPendentes({
+    crmPartners,
+    getCrmNote,
+    managerFilter,
+    onboardingCardsTrello,
+    trelloTarefas,
+    refreshOnboardingTrello,
+    refreshTrelloTarefas,
+    onNotificacaoClick: () => setCurrentView('tarefas_dia'),
+  });
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
@@ -843,8 +848,7 @@ function App() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onOpenPartnerSearch={() => setPartnerSearchOpen(true)}
-        crmAlerts={crmFollowUpAlerts}
-        trelloTasks={trelloTarefas}
+        notificationCount={tarefasPendentes.contagemPorNivel.overdue + tarefasPendentes.contagemPorNivel.today}
       />
       <div className="flex flex-1 min-h-0 relative">
         <NavigationSidebar 
@@ -858,6 +862,26 @@ function App() {
             <CsKpisView />
         ) : currentView === 'trello' ? (
             <TrelloView />
+        ) : currentView === 'tarefas_dia' ? (
+            <TarefasDoDiaView
+              tarefas={tarefasPendentes.tarefasUnificadas}
+              contagemPorNivel={tarefasPendentes.contagemPorNivel}
+              ativado={tarefasPendentes.ativado}
+              permissao={tarefasPendentes.permissao}
+              onAtivar={tarefasPendentes.ativar}
+              onDesativar={tarefasPendentes.desativar}
+              membroFiltro={tarefasPendentes.membroFiltro}
+              membrosDisponiveis={tarefasPendentes.membrosDisponiveis}
+              onMudarMembro={tarefasPendentes.mudarMembroFiltro}
+              boardsIgnorados={tarefasPendentes.boardsIgnorados}
+              boardsDisponiveis={tarefasPendentes.boardsDisponiveis}
+              onToggleBoardIgnorado={tarefasPendentes.toggleBoardIgnorado}
+              listasIgnoradas={tarefasPendentes.listasIgnoradas}
+              listasPorBoard={tarefasPendentes.listasPorBoard}
+              onToggleListaIgnorada={tarefasPendentes.toggleListaIgnorada}
+              upsertCrmNote={upsertCrmNote}
+              onRefreshTrello={() => { refreshOnboardingTrello(); refreshTrelloTarefas(); }}
+            />
         ) : currentView === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <SettingsView />
@@ -988,15 +1012,6 @@ function App() {
             etapasTrello={onboardingEtapasTrello}
             cardsTrello={onboardingCardsTrello}
             listasTrello={onboardingListasTrello}
-            notificacaoAtivada={notificacaoAtrasados.ativado}
-            notificacaoPermissao={notificacaoAtrasados.permissao}
-            onAtivarNotificacao={notificacaoAtrasados.ativar}
-            onDesativarNotificacao={notificacaoAtrasados.desativar}
-            notificacaoMembroFiltro={notificacaoAtrasados.membroFiltro}
-            notificacaoMembrosDisponiveis={notificacaoAtrasados.membrosDisponiveis}
-            onMudarNotificacaoMembro={notificacaoAtrasados.mudarMembroFiltro}
-            notificacaoListasIgnoradas={notificacaoAtrasados.listasIgnoradas}
-            onToggleNotificacaoLista={notificacaoAtrasados.toggleListaIgnorada}
           />
         ) : currentView === 'todos_parceiros' ? (
           currentSelectedRow ? (

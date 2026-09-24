@@ -1,8 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { useProductMode } from '../context/ProductModeContext';
 import type { AppView } from '../types/views';
-import type { CrmFollowUpAlert } from '../types/crm';
-import type { TarefaTrello } from '../hooks/useTrelloTarefas';
 import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
@@ -11,8 +9,7 @@ interface HeaderProps {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
     onOpenPartnerSearch?: () => void;
-    crmAlerts?: CrmFollowUpAlert[];
-    trelloTasks?: TarefaTrello[];
+    notificationCount?: number;
 }
 
 export default function Header(props: HeaderProps) {
@@ -87,9 +84,8 @@ export default function Header(props: HeaderProps) {
 
             <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
                 <NotificationBell
-                    crmAlerts={props.crmAlerts ?? []}
-                    trelloTasks={props.trelloTasks ?? []}
-                    onNavigate={props.onNavigate}
+                    count={props.notificationCount ?? 0}
+                    onClick={() => props.onNavigate('tarefas_dia')}
                 />
 
                 <button

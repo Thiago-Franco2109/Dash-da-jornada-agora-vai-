@@ -44,3 +44,17 @@ create policy "leitura app" on public.crm_notas for select using (true);
 
 drop policy if exists "escrita app" on public.crm_notas;
 create policy "escrita app" on public.crm_notas for all using (true) with check (true);
+
+-- ── Migração: follow-up com hora, não só data ───────────────────────────
+-- O alarme estridente de tarefa vencida precisa saber A QUE HORA venceu, não
+-- só o dia — senão um follow-up de "hoje" já nasce atrasado desde a meia-noite,
+-- e um follow-up de amanhã de manhã não teria como "vencer" só à tarde.
+-- Linhas existentes (só data, sem hora) recebem 09:00 no fuso de São Paulo
+-- (início do expediente) — mesmo horário-padrão usado em qualquer agendamento
+-- novo sem hora explícita (ver proximoFollowUp() em desfechoLigacao.ts).
+alter table public.crm_notas
+    alter column proximo_follow_up type timestamptz
+    using ((proximo_follow_up + time '09:00') at time zone 'America/Sao_Paulo');
+
+comment on column public.crm_notas.proximo_follow_up is
+    'Data+hora do próximo follow-up (timestamptz). Alimenta o alarme unificado e a visão "Tarefas do dia".';

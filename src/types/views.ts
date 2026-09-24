@@ -9,6 +9,7 @@ export type AppView =
     | 'onboarding'
     | 'crm'
     | 'crm_jornada'
+    | 'tarefas_dia'
     | 'cd_desempenho'
     | 'churn'
     | 'cs_kpis'

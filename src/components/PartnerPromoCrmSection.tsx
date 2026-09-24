@@ -18,6 +18,7 @@ import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
 import { formatBRL } from '../utils/crmData';
+import { paraDatetimeLocal, formatCrmDateTime } from './crm/crmShared';
 import GerarArteModal from './GerarArteModal';
 
 type CardTone = 'active' | 'pending' | 'denied' | 'idle';
@@ -223,14 +224,14 @@ export default function PartnerPromoCrmSection({
 
     const openCrmEdit = () => {
         setEditNotes(note?.notes ?? '');
-        setEditFollowUp(note?.nextFollowUp ?? '');
+        setEditFollowUp(note?.nextFollowUp ? paraDatetimeLocal(note.nextFollowUp) : '');
         setOfertasNotes(ofertasRecord?.notes ?? '');
         crmSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         notesRef.current?.focus();
     };
 
     const saveCrmNotes = () => {
-        upsertNote(pid, { notes: editNotes, nextFollowUp: editFollowUp || null });
+        upsertNote(pid, { notes: editNotes, nextFollowUp: editFollowUp ? new Date(editFollowUp).toISOString() : null });
         setOfertasNotesRecord(pid, ofertasNotes);
     };
 
@@ -489,7 +490,7 @@ export default function PartnerPromoCrmSection({
                             </span>
                             <div>
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-violet-500">Próximo follow-up</p>
-                                <p className="font-bold text-slate-800 dark:text-white">{formatDate(note?.nextFollowUp)}</p>
+                                <p className="font-bold text-slate-800 dark:text-white">{formatCrmDateTime(note?.nextFollowUp)}</p>
                             </div>
                         </div>
                     </div>
@@ -529,8 +530,8 @@ export default function PartnerPromoCrmSection({
                                 Agendar próximo follow-up
                             </label>
                             <input
-                                type="date"
-                                value={editFollowUp || note?.nextFollowUp || ''}
+                                type="datetime-local"
+                                value={editFollowUp || (note?.nextFollowUp ? paraDatetimeLocal(note.nextFollowUp) : '')}
                                 onChange={e => setEditFollowUp(e.target.value)}
                                 className="w-full h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-colors dark:text-white"
                             />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { differenceInCalendarDays, format, parseISO, startOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { useTrelloTarefas, type TarefaTrello } from '../hooks/useTrelloTarefas';
 import { useTrelloAtividadeHoje, type AtividadeTrelloHoje, type MovimentacaoTrello } from '../hooks/useTrelloAtividadeHoje';
@@ -227,10 +227,9 @@ export default function TrelloView() {
     // Uma tabela só (estilo Pipedrive/Notion), ordenada por urgência e depois
     // por prazo — em vez de um bloco vertical por nível.
     const linhas = useMemo(() => {
-        const hoje = startOfDay(new Date());
         const comNivel = tarefasFiltradas.map(t => {
-            const { nivel, data } = nivelDaTarefa(t.due);
-            return { tarefa: t, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
+            const { nivel, diasOffset } = nivelDaTarefa(t.due);
+            return { tarefa: t, nivel, daysOffset: diasOffset };
         });
         return comNivel.sort((a, b) => compararPorModo({ ...a, due: a.tarefa.due }, { ...b, due: b.tarefa.due }, ordenacao));
     }, [tarefasFiltradas, ordenacao]);

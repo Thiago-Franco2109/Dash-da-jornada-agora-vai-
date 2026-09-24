@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { differenceInCalendarDays, format, startOfDay } from 'date-fns';
+import { useMemo, useState } from 'react';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { cityBelongsToManager, type Manager, type ProductModeKey } from '../config/managerMapping';
 import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
@@ -26,17 +26,6 @@ interface OnboardingViewProps {
     /** Todos os cards + listas do board de onboarding — alimenta o modo "Quadro". */
     cardsTrello?: CardTrelloOnboarding[];
     listasTrello?: ListaTrelloOnboarding[];
-    /** Notificação do sistema pra cards atrasados — ver useNotificacaoAtrasados. */
-    notificacaoAtivada?: boolean;
-    notificacaoPermissao?: NotificationPermission | 'unsupported';
-    onAtivarNotificacao?: () => void;
-    onDesativarNotificacao?: () => void;
-    /** Filtro de membro/lista PRÓPRIO da notificação (independente do filtro do Quadro). */
-    notificacaoMembroFiltro?: string | null;
-    notificacaoMembrosDisponiveis?: MembroTrello[];
-    onMudarNotificacaoMembro?: (id: string | null) => void;
-    notificacaoListasIgnoradas?: Set<string>;
-    onToggleNotificacaoLista?: (id: string) => void;
 }
 
 type ModoVisualizacao = 'tabela' | 'quadro';
@@ -121,28 +110,8 @@ export default function OnboardingView({
     etapasTrello,
     cardsTrello = [],
     listasTrello = [],
-    notificacaoAtivada = false,
-    notificacaoPermissao = 'unsupported',
-    onAtivarNotificacao,
-    onDesativarNotificacao,
-    notificacaoMembroFiltro = null,
-    notificacaoMembrosDisponiveis = [],
-    onMudarNotificacaoMembro,
-    notificacaoListasIgnoradas = new Set<string>(),
-    onToggleNotificacaoLista,
 }: OnboardingViewProps) {
     const [busca, setBusca] = useState('');
-    const [notifConfigAberta, setNotifConfigAberta] = useState(false);
-    const notifConfigRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (!notifConfigAberta) return;
-        const fechar = (e: MouseEvent) => {
-            if (notifConfigRef.current && !notifConfigRef.current.contains(e.target as Node)) setNotifConfigAberta(false);
-        };
-        document.addEventListener('mousedown', fechar);
-        return () => document.removeEventListener('mousedown', fechar);
-    }, [notifConfigAberta]);
     const [modo, setModo] = useState<ModoVisualizacao>(loadModo);
     const [filtrosAbertos, setFiltrosAbertos] = useState(false);
     const [listasOcultas, setListasOcultas] = useState<Set<string>>(loadListasOcultas);
@@ -187,12 +156,11 @@ export default function OnboardingView({
     // de onboarding inteiro, não só os parceiros que já viraram linha na
     // tabela de pendentes.
     const colunasQuadro: ColunaQuadro<CardTrelloOnboarding>[] = useMemo(() => {
-        const hoje = startOfDay(new Date());
         const porLista = new Map<string, { tarefa: CardTrelloOnboarding; nivel: ReturnType<typeof nivelDaTarefa>['nivel']; daysOffset: number | null }[]>();
         for (const card of cardsTrello) {
             if (membroFiltro && !card.membros.some(m => m.id === membroFiltro)) continue;
-            const { nivel, data } = nivelDaTarefa(card.due);
-            const item = { tarefa: card, nivel, daysOffset: data ? differenceInCalendarDays(data, hoje) : null };
+            const { nivel, diasOffset } = nivelDaTarefa(card.due);
+            const item = { tarefa: card, nivel, daysOffset: diasOffset };
             const atual = porLista.get(card.listId);
             if (atual) atual.push(item); else porLista.set(card.listId, [item]);
         }
@@ -266,95 +234,6 @@ export default function OnboardingView({
                                     </span>
                                 )}
                             </button>
-                        )}
-                        {notificacaoPermissao !== 'unsupported' && (
-                            <div ref={notifConfigRef} className="relative flex">
-                                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (notificacaoPermissao === 'denied') return;
-                                            if (notificacaoAtivada) onDesativarNotificacao?.();
-                                            else onAtivarNotificacao?.();
-                                        }}
-                                        title={
-                                            notificacaoPermissao === 'denied'
-                                                ? 'Notificações bloqueadas pelo navegador — habilite nas configurações do site'
-                                                : notificacaoAtivada
-                                                    ? 'Clique pra desligar o alerta de cards atrasados'
-                                                    : 'Avisar (com som) quando um card ficar atrasado, a cada 1 minuto'
-                                        }
-                                        className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 transition-colors ${
-                                            notificacaoPermissao === 'denied'
-                                                ? 'text-slate-400 cursor-not-allowed bg-white dark:bg-slate-800'
-                                                : notificacaoAtivada
-                                                    ? 'bg-primary/10 text-primary'
-                                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">
-                                            {notificacaoAtivada ? 'notifications_active' : 'notifications_none'}
-                                        </span>
-                                        Atrasados
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setNotifConfigAberta(v => !v)}
-                                        title="Configurar quem gera notificação"
-                                        className={`flex items-center justify-center w-7 border-l border-slate-200 dark:border-slate-700 transition-colors ${
-                                            notifConfigAberta
-                                                ? 'bg-primary/10 text-primary'
-                                                : 'bg-white dark:bg-slate-800 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
-                                        }`}
-                                    >
-                                        <span className="material-symbols-outlined text-[16px]">expand_more</span>
-                                    </button>
-                                </div>
-                                {notifConfigAberta && (
-                                    <div className="absolute right-0 top-full mt-1.5 z-20 w-72 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-xl ring-1 ring-black/10 dark:ring-white/10 space-y-4">
-                                        <div>
-                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Notificar cards de</p>
-                                            {notificacaoMembrosDisponiveis.length === 0 ? (
-                                                <p className="text-xs text-slate-400 italic">Nenhum membro nos cards carregados ainda.</p>
-                                            ) : (
-                                                <>
-                                                    <FiltroMembros
-                                                        membros={notificacaoMembrosDisponiveis}
-                                                        selecionado={notificacaoMembroFiltro}
-                                                        onSelecionar={id => onMudarNotificacaoMembro?.(id)}
-                                                    />
-                                                    <p className="text-[11px] text-slate-400 mt-2">
-                                                        {notificacaoMembroFiltro ? 'Só cards com esse membro atrasam a notificação.' : 'Sem filtro — todo card atrasado do board notifica.'}
-                                                    </p>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {listasTrello.length > 0 && (
-                                            <div className="pt-3 border-t border-slate-100 dark:border-slate-700">
-                                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Ignorar listas</p>
-                                                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1">
-                                                    {listasTrello.map(l => {
-                                                        const ignorada = notificacaoListasIgnoradas.has(l.id);
-                                                        return (
-                                                            <label key={l.id} className="flex items-center gap-2 text-sm px-1 py-0.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={ignorada}
-                                                                    onChange={() => onToggleNotificacaoLista?.(l.id)}
-                                                                    className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary/40"
-                                                                />
-                                                                <span className={ignorada ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'}>{l.nome}</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <p className="text-[11px] text-slate-400 mt-2">Marcadas não geram notificação, mesmo atrasadas.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
                         )}
                         <button
                             type="button"

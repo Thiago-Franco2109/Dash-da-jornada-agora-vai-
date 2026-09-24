@@ -1,10 +1,10 @@
-import { differenceInCalendarDays, isPast, isToday, parseISO, startOfDay } from 'date-fns';
 import type { CrmPartner, CrmPartnerNote, CrmPipelineStage } from '../types/crm';
 import type { CrmFollowUpAlert, CrmGoal, CrmGoalMetric, CrmPipelineAggregate, CrmViewMode } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
 import { normalizeCrmCity } from './crmData';
 import { isParceiroContratoAtivo } from './parceirosSheet';
+import { nivelDaTarefa } from './trelloNivel';
 
 export const CRM_VIEW_MODES: { id: CrmViewMode; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -93,35 +93,23 @@ export function computeFollowUpAlerts(
     getNote: (id: string) => CrmPartnerNote | undefined,
     upcomingDays = 3,
 ): CrmFollowUpAlert[] {
-    const today = startOfDay(new Date());
+    const agora = new Date();
     const alerts: CrmFollowUpAlert[] = [];
 
     for (const partner of partners) {
         const note = getNote(partner.partnerId);
         if (!note?.nextFollowUp) continue;
 
-        let date: Date;
-        try {
-            date = startOfDay(parseISO(note.nextFollowUp));
-        } catch {
-            continue;
-        }
-
-        const daysOffset = differenceInCalendarDays(date, today);
-        let level: CrmFollowUpAlert['level'] | null = null;
-
-        if (isPast(date) && !isToday(date)) level = 'overdue';
-        else if (isToday(date)) level = 'today';
-        else if (daysOffset <= upcomingDays) level = 'upcoming';
-
-        if (!level) continue;
+        const { nivel, diasOffset } = nivelDaTarefa(note.nextFollowUp, agora);
+        if (nivel === 'sem_prazo') continue;
+        if (nivel === 'upcoming' && (diasOffset ?? 0) > upcomingDays) continue;
 
         alerts.push({
             partnerId: partner.partnerId,
             partner,
             nextFollowUp: note.nextFollowUp,
-            level,
-            daysOffset,
+            level: nivel,
+            daysOffset: diasOffset ?? 0,
             notes: note.notes,
         });
     }

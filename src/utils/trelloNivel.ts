@@ -1,6 +1,14 @@
-import { isPast, isToday, parseISO, startOfDay } from 'date-fns';
+import { differenceInCalendarDays, isToday, parseISO } from 'date-fns';
 
-/** Classificação de urgência por due date — compartilhada entre a aba Trello e o Quadro da Acompanhar Onboarding. */
+/**
+ * Classificação de urgência por due date — compartilhada por TODO o app (CRM e
+ * Trello): sino, alarme estridente, telas de Trello/Onboarding e "Tarefas do dia".
+ *
+ * Granularidade de HORÁRIO, não só de dia: um prazo hoje às 08:00 já é `overdue`
+ * às 14:00, não fica "today" até virar o dia. Antes disso truncava pra meia-noite
+ * (`startOfDay`), o que escondia prazo vencido no mesmo dia — exatamente o que o
+ * alarme estridente precisa detectar.
+ */
 export type Nivel = 'overdue' | 'today' | 'upcoming' | 'sem_prazo';
 
 export const NIVEL_META: Record<Nivel, { label: string; icon: string; header: string; badge: string }> = {
@@ -42,17 +50,26 @@ export const NIVEL_BORDA: Record<Nivel, string> = {
     sem_prazo: 'border-l-slate-300 dark:border-l-slate-700',
 };
 
-export function nivelDaTarefa(due: string | null): { nivel: Nivel; data: Date | null } {
-    if (!due) return { nivel: 'sem_prazo', data: null };
+export function nivelDaTarefa(
+    due: string | null,
+    agora: Date = new Date(),
+): { nivel: Nivel; data: Date | null; diasOffset: number | null } {
+    if (!due) return { nivel: 'sem_prazo', data: null, diasOffset: null };
     let data: Date;
     try {
-        data = startOfDay(parseISO(due));
+        data = parseISO(due);
+        if (Number.isNaN(data.getTime())) throw new Error('data inválida');
     } catch {
-        return { nivel: 'sem_prazo', data: null };
+        return { nivel: 'sem_prazo', data: null, diasOffset: null };
     }
-    if (isToday(data)) return { nivel: 'today', data };
-    if (isPast(data)) return { nivel: 'overdue', data };
-    return { nivel: 'upcoming', data };
+
+    const diasOffset = differenceInCalendarDays(data, agora);
+    const nivel: Nivel =
+        data.getTime() < agora.getTime() ? 'overdue' // já passou do horário — hoje ou antes
+            : isToday(data) ? 'today' // ainda não chegou o horário, mas é hoje
+                : 'upcoming';
+
+    return { nivel, data, diasOffset };
 }
 
 /** Critério de ordenação dos cards — compartilhado entre a aba Trello e o Quadro da Acompanhar Onboarding. */

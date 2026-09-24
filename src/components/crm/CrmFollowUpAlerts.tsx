@@ -1,32 +1,12 @@
 import { useState } from 'react';
 import type { CrmFollowUpAlert } from '../../types/crm';
-import { formatCrmDate } from './crmShared';
+import { formatCrmDateTime } from './crmShared';
+import { NIVEL_META } from '../../utils/trelloNivel';
 
 interface CrmFollowUpAlertsProps {
     alerts: CrmFollowUpAlert[];
     onPartnerClick: (partnerId: string) => void;
 }
-
-const LEVEL_META = {
-    overdue: {
-        label: 'Atrasados',
-        icon: 'error',
-        header: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/50 text-red-800 dark:text-red-300',
-        badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-    },
-    today: {
-        label: 'Hoje',
-        icon: 'today',
-        header: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50 text-amber-900 dark:text-amber-200',
-        badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-    },
-    upcoming: {
-        label: 'Próximos 3 dias',
-        icon: 'schedule',
-        header: 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-900/50 text-sky-900 dark:text-sky-200',
-        badge: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-    },
-};
 
 export default function CrmFollowUpAlerts({ alerts, onPartnerClick }: CrmFollowUpAlertsProps) {
     const [collapsed, setCollapsed] = useState(false);
@@ -69,7 +49,7 @@ export default function CrmFollowUpAlerts({ alerts, onPartnerClick }: CrmFollowU
             {!collapsed && (
                 <div className="p-4 space-y-4">
                     {groups.map(group => {
-                        const meta = LEVEL_META[group.key];
+                        const meta = NIVEL_META[group.key];
                         return (
                             <div key={group.key} className={`rounded-lg border p-3 ${meta.header}`}>
                                 <div className="flex items-center gap-2 mb-2">
@@ -97,7 +77,7 @@ export default function CrmFollowUpAlerts({ alerts, onPartnerClick }: CrmFollowU
                                                     {alert.partner.cidade}
                                                     {alert.partner.analista ? ` · ${alert.partner.analista}` : ''}
                                                     {' · '}
-                                                    {formatCrmDate(alert.nextFollowUp)}
+                                                    {formatCrmDateTime(alert.nextFollowUp)}
                                                     {alert.level === 'overdue' && alert.daysOffset < 0 && (
                                                         <span className="text-red-600 font-bold ml-1">
                                                             ({Math.abs(alert.daysOffset)}d atraso)

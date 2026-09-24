@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { format, parseISO, isPast, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import type { CrmPartner, CrmParseInfo, CrmPartnerNote, CrmPipelineStage } from '../types/crm';
 import { useCrmViewMode } from '../hooks/useCrmViewMode';
@@ -18,6 +18,8 @@ import {
     filterCrmPartners,
     getPromoStatusForPartner,
 } from '../utils/crmPipeline';
+import { nivelDaTarefa } from '../utils/trelloNivel';
+import { paraDatetimeLocal } from './crm/crmShared';
 import CrmViewModeSwitcher from './crm/CrmViewModeSwitcher';
 import CrmFollowUpAlerts from './crm/CrmFollowUpAlerts';
 import CrmPipelineDashboard from './crm/CrmPipelineDashboard';
@@ -224,9 +226,7 @@ export default function CrmView({
         const denied = scope.filter(r => getPromoStatus(r) === 'negado').length;
         const overdue = scope.filter(r => {
             const note = getNote(r.partnerId);
-            if (!note?.nextFollowUp) return false;
-            const d = parseISO(note.nextFollowUp);
-            return isPast(d) && !isToday(d);
+            return !!note?.nextFollowUp && nivelDaTarefa(note.nextFollowUp).nivel === 'overdue';
         }).length;
         return { active, pending, offered, denied, overdue, total: scope.length, cities: cities.length };
     }, [partnersInCity, managerFilter, getNote, cities.length, localStatus, campaignFilter]);
@@ -257,13 +257,13 @@ export default function CrmView({
         const note = getNote(id);
         setEditingId(id);
         setEditNotes(note?.notes ?? '');
-        setEditFollowUp(note?.nextFollowUp ?? '');
+        setEditFollowUp(note?.nextFollowUp ? paraDatetimeLocal(note.nextFollowUp) : '');
         setHighlightId(id);
     };
 
     const saveEdit = () => {
         if (!editingId) return;
-        upsertNote(editingId, { notes: editNotes, nextFollowUp: editFollowUp || null });
+        upsertNote(editingId, { notes: editNotes, nextFollowUp: editFollowUp ? new Date(editFollowUp).toISOString() : null });
         setEditingId(null);
     };
 
@@ -565,7 +565,7 @@ export default function CrmView({
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Próximo follow-up</label>
                             <input
-                                type="date"
+                                type="datetime-local"
                                 value={editFollowUp}
                                 onChange={e => setEditFollowUp(e.target.value)}
                                 className="w-full h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-700 dark:text-slate-200"
