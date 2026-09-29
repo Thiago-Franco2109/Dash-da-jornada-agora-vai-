@@ -59,6 +59,8 @@ import { useDataSync } from './hooks/useDataSync';
 import { useRelevanceMap } from './hooks/useRelevanceMap';
 import { useCampanhas } from './hooks/useCampanhas';
 import { overlayCampanhas, normalizeNome } from './utils/campanhasOverlay';
+import { aplicarPausaOnboarding } from './utils/pausaOverlay';
+import { usePausaOnboarding } from './hooks/usePausaOnboarding';
 import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
@@ -283,6 +285,9 @@ function App() {
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
+  // Pausa do onboarding: desconta da jornada os dias em que a loja não operou
+  // (ver utils/pausaOverlay.ts). Sem isto, quem está parado segue sendo cobrado.
+  const { pausaMap } = usePausaOnboarding();
   // Estado real de campanhas (banco), aplicado por cima do status de trabalho do CS.
   const { campanhasMap } = useCampanhas();
   // Parceiros ativos do banco — suplementam a carteira (novos sem pedido aparecem).
@@ -458,7 +463,8 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      return applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
+      const comCampanhas = applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
+      return aplicarPausaOnboarding(comCampanhas, pausaMap);
     })
       .filter((row: EnrichedPerformanceRow) => {
         const status = row.status?.toLowerCase() || '';
@@ -467,7 +473,7 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap]);
 
   /**
    * Parceiros que assinaram e ainda não lançaram. O CS já oferece campanha pra
@@ -489,8 +495,11 @@ function App() {
       relMap,
       mode,
     });
-    return linhas.map(row => overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
-  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc]);
+    return linhas.map(row => aplicarPausaOnboarding(
+      overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc),
+      pausaMap,
+    ));
+  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap]);
 
   /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
   const jornadaPool = useMemo(

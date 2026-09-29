@@ -8,6 +8,20 @@ import type { StoreAccessData } from '../hooks/useDailyAccessSync';
 import { getPartnerState, updateContactDetail, finishJourney, reopenJourney, type ContactDetail } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
 import { useCityIds } from '../hooks/useCityIds';
+import { usePausaOnboarding } from '../hooks/usePausaOnboarding';
+import { useCrmNotes } from '../hooks/useCrmNotes';
+import { useAuth } from '../context/AuthContext';
+import {
+    MOTIVOS_PAUSA,
+    diasNaPausaAtual,
+    diasPausados,
+    formatarDataBR,
+    motivoPausaDef,
+    motivoPausaLabel,
+    previsaoRetornoSugerida,
+    previsaoVencida,
+    type MotivoPausa,
+} from '../config/pausaOnboarding';
 import type { CrmPartner } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
@@ -254,6 +268,83 @@ export default function PartnerDetailsView({
         ? `https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}/cupons`
         : 'https://admin.bigou.com.br/estabelecimento';
 
+    // ── Pausa do onboarding ──────────────────────────────────────────────
+    // Parceiro que parou de operar (cozinha parada, sem entregador, reforma)
+    // continuava sendo medido contra a meta de 28 dias e reaparecia na fila de
+    // ligação todo dia. Pausar congela o relógio — ver config/pausaOnboarding.ts.
+    const { user } = useAuth();
+    const { pausaMap, pausar, retomar } = usePausaOnboarding();
+    const { getNote, upsertNote } = useCrmNotes();
+
+    const partnerKey = String(partner.estab_id ?? '');
+    const pausa = partnerKey ? pausaMap[partnerKey] : undefined;
+    const pausado = !!pausa?.pausado;
+    const diasEmPausa = diasNaPausaAtual(pausa);
+    const diasDescontados = diasPausados(pausa);
+    const retornoVencido = previsaoVencida(pausa);
+
+    const [modalPausa, setModalPausa] = useState(false);
+    const [motivoPausa, setMotivoPausa] = useState<MotivoPausa>(MOTIVOS_PAUSA[0].motivo);
+    const [obsPausa, setObsPausa] = useState('');
+    const [previsaoPausa, setPrevisaoPausa] = useState('');
+    const [salvandoPausa, setSalvandoPausa] = useState(false);
+
+    const defMotivoPausa = motivoPausaDef(motivoPausa) ?? MOTIVOS_PAUSA[0];
+    const pausaIncompleta = defMotivoPausa.pedeDetalhe && !obsPausa.trim();
+
+    const abrirModalPausa = () => {
+        const inicial = MOTIVOS_PAUSA[0];
+        setMotivoPausa(inicial.motivo);
+        setObsPausa('');
+        setPrevisaoPausa(previsaoRetornoSugerida(inicial));
+        setModalPausa(true);
+    };
+
+    const escolherMotivoPausa = (motivo: MotivoPausa) => {
+        setMotivoPausa(motivo);
+        const def = motivoPausaDef(motivo);
+        if (def) setPrevisaoPausa(previsaoRetornoSugerida(def));
+    };
+
+    /** Previsão de retorno vira follow-up: pausado some das filas, e sem isso ninguém lembraria de voltar. */
+    const agendarRetorno = (dataISO: string) => {
+        const alvo = new Date(`${dataISO}T09:00:00`);
+        if (Number.isNaN(alvo.getTime())) return;
+        const atual = getNote(partnerKey)?.nextFollowUp;
+        // Não atropela cobrança já marcada para depois da volta.
+        if (atual && new Date(atual).getTime() >= alvo.getTime()) return;
+        void upsertNote(partnerKey, { nextFollowUp: alvo.toISOString() });
+    };
+
+    const confirmarPausa = async () => {
+        if (pausaIncompleta || !partnerKey) return;
+        setSalvandoPausa(true);
+        const ok = await pausar(partnerKey, {
+            motivo: motivoPausa,
+            observacao: obsPausa,
+            previsaoRetorno: previsaoPausa || null,
+            pausadoPor: user?.name || user?.email || null,
+        });
+        setSalvandoPausa(false);
+        if (!ok) {
+            window.alert('Não consegui salvar a pausa. Tente de novo em instantes.');
+            return;
+        }
+        if (previsaoPausa) agendarRetorno(previsaoPausa);
+        setModalPausa(false);
+        onRefresh();
+    };
+
+    const handleRetomar = async () => {
+        if (!window.confirm(`Retomar o onboarding de ${partner.estabelecimento}? A contagem de dias ativos volta a correr a partir de hoje.`)) return;
+        const ok = await retomar(partnerKey);
+        if (!ok) {
+            window.alert('Não consegui salvar a retomada. Tente de novo em instantes.');
+            return;
+        }
+        onRefresh();
+    };
+
     const handleToggleJourney = () => {
         if (partner.isFinished) {
             reopenJourney(partner.estab_id || partner.estabelecimento);
@@ -409,6 +500,16 @@ export default function PartnerDetailsView({
                                             Jornada Finalizada
                                         </div>
                                     )}
+
+                                    {pausado && (
+                                        <div
+                                            className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-800/30 text-sm font-black uppercase tracking-widest"
+                                            title={`${motivoPausaLabel(pausa?.motivo)} — ${diasEmPausa === 0 ? 'pausado hoje' : `pausado há ${diasEmPausa} ${diasEmPausa === 1 ? 'dia' : 'dias'}`}`}
+                                        >
+                                            <span className="material-symbols-outlined text-[18px]">pause_circle</span>
+                                            Onboarding pausado
+                                        </div>
+                                    )}
                                 </div>
                                 <p className="text-slate-500 dark:text-slate-400 mt-2 flex items-center">
                                     <span className="material-symbols-outlined text-[16px] mr-1">location_on</span>
@@ -430,6 +531,26 @@ export default function PartnerDetailsView({
                                             </span>
                                             {partner.isFinished ? 'Reabrir Jornada' : 'Finalizar Onboarding'}
                                         </button>
+
+                                        {!isDesempenho && !partner.isFinished && (
+                                            <button
+                                                onClick={pausado ? handleRetomar : abrirModalPausa}
+                                                title={pausado
+                                                    ? 'Voltar a contar os dias da jornada'
+                                                    : 'Parceiro não está operando: congela dias ativos, meta e cobrança'}
+                                                className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-bold transition-all shadow-sm ${
+                                                    pausado
+                                                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/30'
+                                                        : 'bg-amber-500 text-white hover:bg-amber-600'
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[18px] mr-1.5">
+                                                    {pausado ? 'play_circle' : 'pause_circle'}
+                                                </span>
+                                                {pausado ? 'Retomar Onboarding' : 'Pausar Onboarding'}
+                                            </button>
+                                        )}
+
                                         <a
                                             href={`https://admin.bigou.com.br/estabelecimento/cadastro/${partner.estab_id}`}
                                             target="_blank"
@@ -504,13 +625,38 @@ export default function PartnerDetailsView({
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                         {/* Left Column: Basic Info & Current Metrics */}
                         <div className="lg:col-span-2 space-y-6">
-                            {/* Interpretation Box */}
-                            <div className={`p-4 rounded-xl border flex items-start gap-3 ${interpretation.bg} ${interpretation.border}`}>
-                                <span className={`material-symbols-outlined ${interpretation.textClass}`}>{interpretation.icon}</span>
-                                <p className={`text-sm font-medium mt-0.5 ${interpretation.textClass}`}>
-                                    {interpretation.text}
-                                </p>
-                            </div>
+                            {/* Interpretation Box — pausado, a leitura de desempenho não se aplica:
+                                cobrar meta de quem não está operando é o erro que a pausa resolve. */}
+                            {pausado ? (
+                                <div className="p-4 rounded-xl border flex items-start gap-3 bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30">
+                                    <span className="material-symbols-outlined text-amber-700 dark:text-amber-400">pause_circle</span>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold text-amber-800 dark:text-amber-400">
+                                            {diasEmPausa === 0
+                                                ? 'Onboarding pausado hoje'
+                                                : `Onboarding pausado há ${diasEmPausa} ${diasEmPausa === 1 ? 'dia' : 'dias'}`}
+                                            {' — '}{motivoPausaLabel(pausa?.motivo)}
+                                        </p>
+                                        {pausa?.observacao && (
+                                            <p className="text-sm text-amber-800/90 dark:text-amber-300/90 mt-1">“{pausa.observacao}”</p>
+                                        )}
+                                        <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1.5">
+                                            A contagem de dias ativos, a meta e a cobrança estão congeladas.
+                                            {pausa?.previsaoRetorno && (
+                                                <> Previsão de retorno: <strong>{formatarDataBR(pausa.previsaoRetorno)}</strong>{retornoVencido ? ' (vencida — confirme com o parceiro)' : ''}.</>
+                                            )}
+                                            {pausa?.pausadoPor && <> Pausado por {pausa.pausadoPor}.</>}
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={`p-4 rounded-xl border flex items-start gap-3 ${interpretation.bg} ${interpretation.border}`}>
+                                    <span className={`material-symbols-outlined ${interpretation.textClass}`}>{interpretation.icon}</span>
+                                    <p className={`text-sm font-medium mt-0.5 ${interpretation.textClass}`}>
+                                        {interpretation.text}
+                                    </p>
+                                </div>
+                            )}
 
                             <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
                                 <h3 className="text-slate-900 dark:text-white font-bold text-lg mb-4">
@@ -568,6 +714,11 @@ export default function PartnerDetailsView({
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Dias Ativo</p>
                                         <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{partner.dias_desde_lancamento}</p>
                                         <p className="text-xs text-slate-400 mt-1">Lançado: {partner.lancamento}</p>
+                                        {diasDescontados > 0 && (
+                                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                                                {diasDescontados} {diasDescontados === 1 ? 'dia descontado' : 'dias descontados'} por pausa
+                                            </p>
+                                        )}
                                     </div>
                                     <div>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pedidos Reais</p>
@@ -1051,12 +1202,110 @@ export default function PartnerDetailsView({
                             className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain animate-in zoom-in-95 duration-200 border border-slate-750/30"
                             onClick={(e) => e.stopPropagation()}
                         />
-                        <button 
+                        <button
                             className="absolute -top-12 right-0 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition-colors focus:outline-none cursor-pointer"
                             onClick={() => setLightboxImage(null)}
                         >
                             <span className="material-symbols-outlined text-[24px]">close</span>
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Pausar Onboarding */}
+            {modalPausa && (
+                <div
+                    className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => !salvandoPausa && setModalPausa(false)}
+                >
+                    <div
+                        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-lg max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-5 border-b border-slate-200 dark:border-slate-700">
+                            <div className="flex items-start gap-3">
+                                <span className="material-symbols-outlined text-amber-500 text-[28px]">pause_circle</span>
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Pausar onboarding</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                                        {partner.estabelecimento} para de contar dias ativos, sai da fila de cobrança e deixa de ser
+                                        medido contra a meta de 30 pedidos enquanto estiver parado.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-5 space-y-5">
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                                    Por que o parceiro não está operando?
+                                </label>
+                                <div className="space-y-1.5">
+                                    {MOTIVOS_PAUSA.map(m => (
+                                        <button
+                                            key={m.motivo}
+                                            onClick={() => escolherMotivoPausa(m.motivo)}
+                                            className={`w-full flex items-center gap-2.5 text-left rounded-lg border px-3 py-2 text-sm transition-colors ${
+                                                motivoPausa === m.motivo
+                                                    ? 'border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700'
+                                                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <span className="material-symbols-outlined text-[18px]">{m.icon}</span>
+                                            <span className="font-medium">{m.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                                    O que o parceiro falou {defMotivoPausa.pedeDetalhe ? '(obrigatório)' : '(opcional)'}
+                                </label>
+                                <textarea
+                                    value={obsPausa}
+                                    onChange={e => setObsPausa(e.target.value)}
+                                    rows={3}
+                                    placeholder="Ex.: fogão industrial quebrou, técnico só na semana que vem."
+                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                                    Previsão de retorno
+                                </label>
+                                <input
+                                    type="date"
+                                    value={previsaoPausa}
+                                    onChange={e => setPrevisaoPausa(e.target.value)}
+                                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                                    Vira tarefa do dia: como o parceiro sai das filas enquanto pausado, esta é a data em que ele volta
+                                    a aparecer pra você confirmar se retomou. Deixe em branco pra não agendar.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
+                            <button
+                                onClick={() => setModalPausa(false)}
+                                disabled={salvandoPausa}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmarPausa}
+                                disabled={salvandoPausa || pausaIncompleta}
+                                title={pausaIncompleta ? 'Descreva o motivo para pausar' : undefined}
+                                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <span className="material-symbols-outlined text-[18px] mr-1.5">pause_circle</span>
+                                {salvandoPausa ? 'Salvando…' : 'Pausar onboarding'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

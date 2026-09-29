@@ -218,6 +218,16 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
         });
     }
     campos.push({
+        id: 'onboarding_pausado',
+        rotulo: 'Onboarding pausado',
+        grupo: GRUPO.jornada,
+        tipo: 'booleano',
+        operadores: OPERADORES_POR_TIPO.booleano,
+        ajuda: 'Parceiro que não está operando (problema operacional). Os dias de pausa não contam na jornada.',
+        valor: row => !!row.onboarding_pausado,
+        valorPadrao: { tipo: 'nenhum' },
+    });
+    campos.push({
         id: 'city_weight',
         rotulo: 'Peso da cidade',
         grupo: GRUPO.jornada,

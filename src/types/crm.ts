@@ -81,6 +81,12 @@ export interface CrmPartner {
      * de urgência do prazo de 28 dias.
      */
     diasDesdeLancamento?: number;
+    /**
+     * Onboarding pausado: o parceiro não está operando por problema operacional
+     * (ver config/pausaOnboarding.ts). O card mostra isso no lugar do dia da
+     * jornada — cobrar quem já avisou que está parado é o que a pausa evita.
+     */
+    pausa?: { motivo: string; previsaoRetorno: string | null };
 }
 
 export interface CrmParseInfo {

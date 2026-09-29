@@ -57,9 +57,12 @@ function formatIndice(indice: number): string {
  * previsto para hoje vence tudo, depois quem está acabando a jornada mal, e
  * por último a prioridade alta.
  */
-function buildFocus(rows: EnrichedPerformanceRow[]): FocusItem[] {
+function buildFocus(todasAsRows: EnrichedPerformanceRow[]): FocusItem[] {
     const items: FocusItem[] = [];
     const taken = new Set<EnrichedPerformanceRow>();
+    // Parceiro pausado já avisou que não está operando: cobrar de novo hoje é
+    // ruído. Ele volta pela previsão de retorno, que vira tarefa do dia.
+    const rows = todasAsRows.filter(row => !row.onboarding_pausado);
 
     const add = (row: EnrichedPerformanceRow, item: Omit<FocusItem, 'row'>) => {
         if (taken.has(row)) return;

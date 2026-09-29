@@ -98,6 +98,9 @@ export function enrichedRowToCrmPartner(row: EnrichedPerformanceRow): CrmPartner
         logoUrl: row.logo_url,
         // Quem não lançou não tem dia de jornada — o badge "Dia 0/28" mentiria.
         diasDesdeLancamento: row.pre_lancamento ? undefined : row.dias_desde_lancamento,
+        pausa: row.onboarding_pausado && row.pausa
+            ? { motivo: row.pausa.motivo, previsaoRetorno: row.pausa.previsaoRetorno }
+            : undefined,
         preLancamento: row.pre_lancamento && {
             origem: row.pre_lancamento.origem,
             dias: row.pre_lancamento.dias,

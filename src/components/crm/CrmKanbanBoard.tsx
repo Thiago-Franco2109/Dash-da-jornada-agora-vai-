@@ -7,6 +7,7 @@ import { KANBAN_STAGES, getPromoStatusForPartner, sumIndiceGmv, formatGmvTotal }
 import { PartnerAvatar, StatusDropdown, formatCrmDate, formatGmv, getStatusMeta } from './crmShared';
 import { DESFECHOS_LIGACAO, getDesfecho, type DesfechoLigacao, type MotivoLigacao } from '../../config/desfechoLigacao';
 import { urgenciaOnboarding } from '../../utils/preLancamento';
+import { formatarDataBR, motivoPausaChip, motivoPausaLabel } from '../../config/pausaOnboarding';
 import { differenceInCalendarDays, isPast, isToday, parseISO } from 'date-fns';
 
 interface CrmKanbanBoardProps {
@@ -46,6 +47,19 @@ function JornadaDayBadge({ dias }: { dias: number }) {
         <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold ${tone}`} title="Dia da jornada de 28 dias">
             <span className="material-symbols-outlined text-[12px]">hourglass_bottom</span>
             Dia {dias}/28
+        </span>
+    );
+}
+
+/** Parceiro parado: no lugar do dia da jornada, que está congelado mesmo. */
+function PausaChip({ info }: { info: NonNullable<CrmPartner['pausa']> }) {
+    return (
+        <span
+            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+            title={`Onboarding pausado — ${motivoPausaLabel(info.motivo)}${info.previsaoRetorno ? ` · volta em ${formatarDataBR(info.previsaoRetorno)}` : ''}`}
+        >
+            <span className="material-symbols-outlined text-[12px]">pause_circle</span>
+            {motivoPausaChip(info.motivo)}
         </span>
     );
 }
@@ -415,7 +429,9 @@ export default function CrmKanbanBoard({
                                     </div>
 
                                     <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/60">
-                                        {row.preLancamento ? (
+                                        {row.pausa ? (
+                                            <PausaChip info={row.pausa} />
+                                        ) : row.preLancamento ? (
                                             <OnboardingChip info={row.preLancamento} />
                                         ) : row.diasDesdeLancamento != null ? (
                                             <JornadaDayBadge dias={row.diasDesdeLancamento} />

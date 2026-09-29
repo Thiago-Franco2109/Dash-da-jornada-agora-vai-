@@ -2,6 +2,7 @@ import type { PerformanceRow } from '../components/PerformanceTable';
 import { calcularPedidosPorDia, findContractForPartner, isMrrEmRisco, type ContractPayment, type ContractStatus } from '../config/cdContracts';
 import { getManagerForPartner, type ProductModeKey } from '../config/managerMapping';
 import { getPartnerState, type PartnerState } from '../config/partnerState';
+import type { PausaOnboarding } from '../config/pausaOnboarding';
 
 export type CalculatedMetrics = {
     dias_desde_lancamento: number;
@@ -23,6 +24,12 @@ export type CalculatedMetrics = {
     contrato_vencimento?: string;
     pedidos_por_dia?: number;
     mrr_em_risco?: boolean;
+    /** Pausa do onboarding (Supabase `onboarding_pausa`) — ver utils/pausaOverlay.ts. */
+    pausa?: PausaOnboarding;
+    /** Parceiro parado AGORA: sai das filas de cobrança, mas continua na lista. */
+    onboarding_pausado?: boolean;
+    /** Dias já descontados de `dias_desde_lancamento` por pausa. */
+    dias_pausados?: number;
 } & PartnerState;
 
 export type EnrichedPerformanceRow = PerformanceRow & CalculatedMetrics;

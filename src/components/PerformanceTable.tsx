@@ -13,6 +13,7 @@ import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 import type { PromoResumo } from '../hooks/usePromoStatus';
 import { urgenciaOnboarding } from '../utils/preLancamento';
+import { formatarDataBR, motivoPausaChip, motivoPausaLabel } from '../config/pausaOnboarding';
 
 export type CampaignStatusChangeHandler = (
     partnerId: string,
@@ -1027,6 +1028,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 <EtapaTrelloChip info={row.pre_lancamento} />
                                             ) : row.isFinished ? (
                                                 <span className="text-emerald-500 material-symbols-outlined" title="Jornada Concluída">verified</span>
+                                            ) : row.onboarding_pausado ? (
+                                                <span
+                                                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-tighter"
+                                                    title={`Onboarding pausado — ${motivoPausaLabel(row.pausa?.motivo)}${row.pausa?.previsaoRetorno ? ` · volta em ${formatarDataBR(row.pausa.previsaoRetorno)}` : ''}`}
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">pause_circle</span>
+                                                    {motivoPausaChip(row.pausa?.motivo)}
+                                                </span>
                                             ) : (
                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Em curso</span>
                                             )}
