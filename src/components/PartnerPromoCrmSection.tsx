@@ -631,7 +631,11 @@ function CmsManageLink({
                     ? 'text-slate-800 dark:text-slate-100 ring-1 ring-inset ring-slate-300 dark:ring-slate-600'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
             }`}
-            title={localidadeId ? `Campanha no CMS · localidade_id=${localidadeId}` : 'ID da cidade não mapeado — link genérico'}
+            title={
+                localidadeId
+                    ? `Campanha no CMS · localidade_id=${localidadeId}`
+                    : 'Sem localidade_id para este parceiro — o CMS abre sem cidade selecionada. Confira o cadastro do estabelecimento no banco.'
+            }
         >
             <span className="flex flex-col min-w-0 text-left">
                 <span className="text-[13px] font-bold truncate">{label}</span>
@@ -641,7 +645,7 @@ function CmsManageLink({
                     <span className="text-[10px] font-medium opacity-60 truncate">carregando cidade…</span>
                 ) : (
                     <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 truncate">
-                        cidade não mapeada
+                        escolha a cidade no CMS
                     </span>
                 )}
             </span>

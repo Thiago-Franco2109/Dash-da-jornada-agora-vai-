@@ -108,7 +108,7 @@ export default function CrmJornadaView({
 
     const cmsUrlDoCard = (row: CrmPartner): string | undefined => {
         const base = campaignConfig.cmsBaseUrl;
-        return base ? getCmsPromoUrl(base, row.cidade) : undefined;
+        return base ? getCmsPromoUrl(base, row.cidade, row.estabId) : undefined;
     };
 
     const openEdit = (id: string) => {

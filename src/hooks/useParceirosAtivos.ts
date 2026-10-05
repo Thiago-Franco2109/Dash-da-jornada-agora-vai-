@@ -19,8 +19,12 @@ export interface ParceiroAtivo {
 }
 
 let _cache: ParceiroAtivo[] | null = null;
+// Vários pontos do app pedem essa lista ao mesmo tempo (App, useCityIds, CRM).
+// Sem a promise compartilhada, cada um dispara o próprio fetch antes de o cache
+// existir — a mesma consulta ao banco, N vezes, no boot.
+let _fetchPromise: Promise<ParceiroAtivo[]> | null = null;
 
-async function fetchParceirosAtivos(): Promise<ParceiroAtivo[]> {
+async function requestParceirosAtivos(): Promise<ParceiroAtivo[]> {
     const res = await fetch(FN_URL, { credentials: 'include' as RequestCredentials, cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json?.ok === false) {
@@ -30,6 +34,12 @@ async function fetchParceirosAtivos(): Promise<ParceiroAtivo[]> {
         ...p,
         cardapioDigital: p.cardapioDigital === true,
     }));
+}
+
+function fetchParceirosAtivos(): Promise<ParceiroAtivo[]> {
+    if (_fetchPromise) return _fetchPromise;
+    _fetchPromise = requestParceirosAtivos().finally(() => { _fetchPromise = null; });
+    return _fetchPromise;
 }
 
 export function useParceirosAtivos() {

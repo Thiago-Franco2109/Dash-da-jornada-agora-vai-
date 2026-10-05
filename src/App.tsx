@@ -371,7 +371,7 @@ function App() {
   }, [selectedRow, crmPartners, isCD]);
 
   const { setStatus: setOfertasStatus, records: ofertasRecords } = useOfertasDaCasa();
-  const { cityIdMap, loading: cityIdsLoading } = useCityIds();
+  const { getLocalidadeId, loading: cityIdsLoading } = useCityIds();
 
   const handleCampaignStatusChange = async (partnerId: string, campaignId: CampaignTypeId, newStatus: PromoStatus) => {
     // Campanhas descobertas dinamicamente (fora dos 3 tipos conhecidos) são somente-leitura —
@@ -436,13 +436,14 @@ function App() {
     }
   }, [syncError, accessError, logout]);
 
-  // Diagnóstico: cidades do dashboard não mapeadas na planilha de IDs
+  // Diagnóstico: cidades do dashboard sem localidade_id resolvido.
+  // Roda pelo mesmo resolvedor da UI (banco → planilha), senão acusaria como
+  // "não mapeada" toda cidade fora da planilha que o banco resolve sozinho.
   useEffect(() => {
     if (cityIdsLoading || rawRows.length === 0) return;
-    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const uniqueCidadesData = Array.from(new Set(rawRows.map(r => r.cidade).filter(Boolean)));
-    const unmapped = uniqueCidadesData.filter(c => cityIdMap[normalize(c)] === undefined);
-    const mapped   = uniqueCidadesData.filter(c => cityIdMap[normalize(c)] !== undefined);
+    const unmapped = uniqueCidadesData.filter(c => getLocalidadeId(c) === undefined);
+    const mapped   = uniqueCidadesData.filter(c => getLocalidadeId(c) !== undefined);
     console.group('%c[Diagnóstico] Mapeamento de Cidades', 'color:#6366f1;font-weight:bold');
     console.log(`%cMapeadas (${mapped.length}):`, 'color:#10b981', mapped.sort().join(', '));
     if (unmapped.length > 0) {

@@ -267,9 +267,11 @@ export default function PartnerDetailsView({
     const { getCmsPromoUrl, getLocalidadeId, loading: cityIdsLoading } = useCityIds();
 
     const BASE_PROMO_URL = 'https://admin.bigou.com.br/campanha/promocao/cadastro/26';
-    const promoUrl = getCmsPromoUrl(BASE_PROMO_URL, partner.cidade);
-    const ofertasDaCasaUrl = getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, partner.cidade);
-    const localidadeId = getLocalidadeId(partner.cidade);
+    // O estab_id entra junto de propósito: com ele o localidade_id sai do banco,
+    // sem depender de o nome da cidade bater com a planilha de IDs.
+    const promoUrl = getCmsPromoUrl(BASE_PROMO_URL, partner.cidade, partner.estab_id);
+    const ofertasDaCasaUrl = getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, partner.cidade, partner.estab_id);
+    const localidadeId = getLocalidadeId(partner.cidade, partner.estab_id);
 
     // Cupom: vai direto para a aba de cupons do estabelecimento
     const cupomUrl = partner.estab_id

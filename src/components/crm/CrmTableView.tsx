@@ -21,7 +21,7 @@ interface CrmTableViewProps {
     getPromoStatus: (row: CrmPartner) => PromoStatus;
     getOfertasStatus: (id: string) => OfertasDaCasaStatus;
     setOfertasStatus: (id: string, status: OfertasDaCasaStatus, source: 'manual') => void;
-    getCmsPromoUrl: (base: string, city: string) => string;
+    getCmsPromoUrl: (base: string, city: string, estabId?: string | number | null) => string;
     onStatusChange?: (partnerId: string, field: 'promo_status_override' | 'cupom_status_override', newStatus: PromoStatus) => void;
     onPartnerStatusChange: (partnerId: string, newStatus: PromoStatus) => void;
     onEditPartner: (partnerId: string) => void;
@@ -181,7 +181,7 @@ export default function CrmTableView({
                                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                                     ))}
                                                 </select>
-                                                <a href={getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, row.cidade)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline">
+                                                <a href={getCmsPromoUrl(OFERTAS_DA_CASA_CAMPAIGN.cmsBaseUrl, row.cidade, row.estabId)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:underline">
                                                     <span className="material-symbols-outlined text-[14px]">launch</span> CMS
                                                 </a>
                                             </div>
