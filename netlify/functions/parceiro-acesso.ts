@@ -11,6 +11,16 @@ import { checkOrigin } from './_shared/auth';
  *     → session (usuario_id, client_id, dispositivo, data)
  *       → client (nomeia o app)
  *
+ * ⚠️ `session.data` é a hora do LOGIN, não do uso. A sessão do painel fica viva por meses e
+ * é renovada em `session.data_atualizacao` a cada atividade — então o último acesso sai de
+ * `data_atualizacao`, nunca de `data`. Usando `data` o Hadassa Salgados (28543) aparecia
+ * "sem acessar há 26 dias" enquanto vendia todo dia (atividade real: 1 dia). O erro afetava
+ * todo mundo: D'Gusta marcava 752 dias de sumiço e estava usando o painel no mesmo dia.
+ *
+ * Por consequência, a contagem de sessões conta LOGINS, não visitas: 3 logins num ano é o
+ * normal de quem nunca desloga. Serve pra medir dispositivo (cada login traz um user-agent),
+ * não pra medir engajamento — a UI precisa dizer "logins", não "acessos".
+ *
  * `session.dispositivo` guarda o user-agent JÁ PARSEADO pelo backend, no formato
  * "<Browser> <versão> / <SO> <versão>" — ex: "Chrome Mobile 149.0.0 / Android 0.0.0",
  * "Mobile Safari UI/WKWebView 0.0.0 / iOS 18.6.2". Cobertura de 100% nos apps de gestão
@@ -124,9 +134,9 @@ export const handler: Handler = async (event) => {
             `SELECT c.nome AS app,
                     IFNULL(s.dispositivo, '') AS dispositivo,
                     COUNT(*)                  AS sessoes,
-                    SUM(s.data >= DATE_SUB(CURDATE(), INTERVAL ? DAY)) AS sessoesRecentes,
-                    MAX(s.data)                    AS ultima,
-                    DATEDIFF(NOW(), MAX(s.data))   AS diasAtras
+                    SUM(s.data_atualizacao >= DATE_SUB(CURDATE(), INTERVAL ? DAY)) AS sessoesRecentes,
+                    MAX(s.data_atualizacao)                   AS ultima,
+                    DATEDIFF(NOW(), MAX(s.data_atualizacao))  AS diasAtras
              FROM session s
              JOIN client c ON c.id = s.client_id
              WHERE s.client_id IN (?)
@@ -151,7 +161,7 @@ export const handler: Handler = async (event) => {
             else { computador += n; porApp[app].computador += n; }
             recentes += Number(r.sessoesRecentes ?? 0);
 
-            // O acesso mais recente é o MENOR "dias atrás" entre os grupos.
+            // O acesso mais recente é o MENOR "dias atrás" entre os grupos (data_atualizacao).
             const d = r.diasAtras == null ? null : Number(r.diasAtras);
             if (d != null && (diasSemAcesso == null || d < diasSemAcesso)) {
                 diasSemAcesso = d;
@@ -170,6 +180,8 @@ export const handler: Handler = async (event) => {
                 janelaDias: dias,
                 totalSessoes,
                 sessoesRecentes: recentes,
+                /** Deixa explícito pra UI: o número acima são logins, não visitas ao painel. */
+                sessoesSaoLogins: true,
                 celular,
                 computador,
                 pctCelular: totalSessoes > 0 ? Math.round((100 * celular) / totalSessoes) : 0,

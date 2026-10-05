@@ -143,8 +143,9 @@ function BlocoAcesso({ acesso }: { acesso: ParceiroAcesso }) {
                 cor={celular ? 'text-violet-500' : 'text-sky-500'}
                 titulo={celular ? 'Acessa pelo celular' : 'Acessa pelo computador'}
                 sub={`${acesso.pctCelular}% celular · ${100 - acesso.pctCelular}% computador`
-                    + ` — ${acesso.totalSessoes} ${acesso.totalSessoes === 1 ? 'acesso' : 'acessos'} no histórico`
-                    + (acesso.totalSessoes < 5 ? ' (base pequena)' : '')}
+                    // Logins, não visitas: a sessão do painel dura meses (ver a function).
+                    + ` — por ${acesso.totalSessoes} ${acesso.totalSessoes === 1 ? 'login' : 'logins'}`
+                    + (acesso.totalSessoes < 3 ? ' (base pequena)' : '')}
             />
             <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
                 acesso.sumido
@@ -156,8 +157,8 @@ function BlocoAcesso({ acesso }: { acesso: ParceiroAcesso }) {
                 </span>
                 <span>
                     {acesso.diasSemAcesso === 0
-                        ? 'Abriu o painel hoje'
-                        : `Último acesso ao painel há ${acesso.diasSemAcesso} dia${acesso.diasSemAcesso === 1 ? '' : 's'}`}
+                        ? 'Usou o painel hoje'
+                        : `Última atividade no painel há ${acesso.diasSemAcesso} dia${acesso.diasSemAcesso === 1 ? '' : 's'}`}
                     {acesso.sumido && ' — parceiro sumido do painel'}
                 </span>
             </div>

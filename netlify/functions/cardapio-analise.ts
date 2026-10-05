@@ -37,6 +37,18 @@ import { checkOrigin } from './_shared/auth';
  * Promoção EXPIRADA (`data_fim` no passado) fica FORA: decisão de produto — não atuamos
  * nelas por enquanto. O item expirado é tratado como item comum do cardápio.
  *
+ * ⚠️ NEM TODA LINHA DE `item_catalogo` É UM ITEM DE CARDÁPIO. A tabela guarda três coisas,
+ * separadas por `categoria_catalogo`:
+ *   · `cc.variacao = 1` → OPÇÃO de variação/complemento ("Sem Cebola", "Com Cebola", "Bacon").
+ *     Não é produto: cobrar foto de "Sem Cebola" é absurdo, e no Bulky's as 49 linhas
+ *     "sem foto" eram TODAS variações — o cardápio real está 100% fotografado.
+ *   · `cc.campanha = 1` → CÓPIA do prato dentro de uma campanha. O mesmo "Filé de Frango"
+ *     aparece uma vez por campanha (Promo do Dia, Semana do Bacon, …), inflando a contagem
+ *     e multiplicando o mesmo "sem foto".
+ *   · as demais → o cardápio de verdade.
+ * Fotos, itens parados e a mediana olham só o cardápio de verdade. As promoções olham
+ * `especial = 1` (que vive sobretudo nas categorias de campanha), sempre fora de variação.
+ *
  * `item_catalogo.status` é o workflow de APROVAÇÃO (0=rascunho 1=pendente 2=aprovado
  * 3=cancelado), não disponibilidade. Promoção só está "no ar" com status=2 e dentro da janela.
  *
@@ -64,6 +76,8 @@ interface ItemRow extends RowDataPacket {
     expirado: number;
     futuro: number;
     vendas: string | number;
+    ehVariacao: number;
+    ehCampanha: number;
 }
 
 interface Item {
@@ -74,6 +88,10 @@ interface Item {
     especial: boolean;
     noAr: boolean;
     vendas: number;
+    /** Opção de variação/complemento — nunca entra na análise de cardápio. */
+    ehVariacao: boolean;
+    /** Cópia do prato dentro de uma campanha — duplicaria o item no cardápio. */
+    ehCampanha: boolean;
 }
 
 /** Mediana simples. Lista vazia → 0. */
@@ -127,9 +145,12 @@ export const handler: Handler = async (event) => {
                     ic.status,
                     (ic.data_fim    IS NOT NULL AND ic.data_fim    < NOW()) AS expirado,
                     (ic.data_inicio IS NOT NULL AND ic.data_inicio > NOW()) AS futuro,
-                    IFNULL(v.vendas, 0)                                     AS vendas
+                    IFNULL(v.vendas, 0)                                     AS vendas,
+                    cc.variacao                                             AS ehVariacao,
+                    cc.campanha                                             AS ehCampanha
              FROM item_catalogo ic
              JOIN catalogo c ON c.id = ic.catalogo_id
+             JOIN categoria_catalogo cc ON cc.id = ic.categoria_id
              LEFT JOIN (
                    SELECT ip.item_catalogo_id AS item_id, SUM(ip.quantidade) AS vendas
                    FROM pedido p
@@ -167,21 +188,26 @@ export const handler: Handler = async (event) => {
             // "No ar" = aprovada E dentro da janela de datas.
             noAr: Number(r.status) === 2 && Number(r.expirado) === 0 && Number(r.futuro) === 0,
             vendas: Number(r.vendas ?? 0),
+            ehVariacao: Number(r.ehVariacao) === 1,
+            ehCampanha: Number(r.ehCampanha) === 1,
         }));
 
-        const total = itens.length;
-        const semFoto = itens.filter(i => !i.temFoto);
-        const maisVendido = itens.reduce<Item | null>((a, b) => (b.vendas > (a?.vendas ?? -1) ? b : a), null);
+        // O cardápio de verdade: sem variação e sem as cópias de campanha.
+        const cardapio = itens.filter(i => !i.ehVariacao && !i.ehCampanha);
+
+        const total = cardapio.length;
+        const semFoto = cardapio.filter(i => !i.temFoto);
+        const maisVendido = cardapio.reduce<Item | null>((a, b) => (b.vendas > (a?.vendas ?? -1) ? b : a), null);
 
         // Denominador da régua: mediana dos NÃO-promocionais QUE VENDERAM.
         // Mediana de todos os itens é sempre 0 (60-80% do cardápio não vende nada na janela),
         // e comparar contra o campeão é duro demais (loja com campeão de 740 reprovaria tudo).
-        const baseVendas = itens.filter(i => !i.promocional && i.vendas > 0).map(i => i.vendas);
+        const baseVendas = cardapio.filter(i => !i.promocional && i.vendas > 0).map(i => i.vendas);
         const medianaBase = mediana(baseVendas);
 
         // Promoções que o parceiro realmente tem no ar hoje. Expiradas ficam de fora.
         const promosNoAr = itens
-            .filter(i => i.especial && i.noAr)
+            .filter(i => i.especial && i.noAr && !i.ehVariacao)
             .map(i => ({
                 id: i.id,
                 nome: i.nome,
@@ -196,7 +222,7 @@ export const handler: Handler = async (event) => {
         // Item que VENDE e não tem foto é o conserto mais valioso: já provou demanda.
         const semFotoOrdenado = [...semFoto].sort((a, b) => b.vendas - a.vendas);
         // Item com foto que não vende: o problema não é a foto — revisar preço ou tirar do ar.
-        const zerados = itens.filter(i => i.vendas === 0 && i.temFoto);
+        const zerados = cardapio.filter(i => i.vendas === 0 && i.temFoto);
 
         return {
             statusCode: 200,
@@ -211,7 +237,9 @@ export const handler: Handler = async (event) => {
                     comFoto: total - semFoto.length,
                     semFoto: semFoto.length,
                     pctSemFoto: total > 0 ? Math.round((100 * semFoto.length) / total) : 0,
-                    itensSemVenda: itens.filter(i => i.vendas === 0).length,
+                    itensSemVenda: cardapio.filter(i => i.vendas === 0).length,
+                    variacoesIgnoradas: itens.filter(i => i.ehVariacao).length,
+                    copiasDeCampanhaIgnoradas: itens.filter(i => i.ehCampanha).length,
                     medianaBase,
                     promosNoAr: promosNoAr.length,
                     promosFuradas: furadas.length,

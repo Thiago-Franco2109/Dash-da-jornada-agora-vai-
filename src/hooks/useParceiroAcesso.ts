@@ -6,17 +6,23 @@ import { useState, useEffect } from 'react';
  * `predominante` é null só quando o dono nunca entrou no painel (aí `nuncaAcessou` é true).
  *
  * O Suporte Bigou é excluído na function — sem isso todo parceiro devolvia o mesmo número.
- * Como sobra só o acesso do lojista de verdade, `totalSessoes` costuma ser baixo (3 a 7 é
- * comum): a tela precisa mostrar essa base, não só o percentual.
+ *
+ * `diasSemAcesso` vem de `session.data_atualizacao` (atividade), não de `session.data` (login):
+ * o lojista fica logado por meses, então contar login dava "sumido há 752 dias" pra quem
+ * estava usando o painel no mesmo dia.
  */
 
 export interface ParceiroAcesso {
     estabId: number;
     janelaDias: number;
-    /** Sessões do dono no histórico inteiro — a base da classificação de dispositivo. */
+    /**
+     * LOGINS do dono no histórico — base da classificação de dispositivo, não medida de uso.
+     * A sessão do painel dura meses, então 3 logins num ano é o normal de quem não desloga.
+     */
     totalSessoes: number;
-    /** Dessas, quantas caem na janela recente (janelaDias). Contexto de "ainda usa?". */
+    /** Desses, quantos tiveram atividade na janela recente (janelaDias). */
     sessoesRecentes: number;
+    sessoesSaoLogins?: boolean;
     celular: number;
     computador: number;
     pctCelular: number;
