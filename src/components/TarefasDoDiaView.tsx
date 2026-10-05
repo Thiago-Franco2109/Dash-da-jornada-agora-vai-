@@ -121,8 +121,11 @@ export default function TarefasDoDiaView({
 
                             {membrosDisponiveis.length > 0 && (
                                 <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Trello — só tarefas atribuídas a</p>
+                                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Board de onboarding — só cards atribuídos a</p>
                                     <FiltroMembros membros={membrosDisponiveis} selecionado={membroFiltro} onSelecionar={onMudarMembro} />
+                                    <p className="text-[11px] text-slate-400 mt-1.5">
+                                        Vale só pro board de onboarding, que vem inteiro. Nos outros boards o Trello já entrega só os cards do token.
+                                    </p>
                                 </div>
                             )}
 

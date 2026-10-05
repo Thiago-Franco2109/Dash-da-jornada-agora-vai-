@@ -20,7 +20,14 @@ import { loadPersistedSet, savePersistedSet } from '../utils/persistedSet';
  * baldes (atrasado/hoje/próximos), o alarme só o primeiro.
  */
 
-const ONBOARDING_BOARD_ID = (import.meta.env.VITE_TRELLO_BOARD_ID as string | undefined)?.trim() || 'onboarding';
+/**
+ * Rótulo interno do board de onboarding. NÃO é o id real do Trello de
+ * propósito: o id real só existe como env de servidor (TRELLO_BOARD_ID, usada
+ * pela function), não no bundle do navegador — depender de uma `VITE_*` aqui
+ * já quebrou uma vez, silenciosamente. Quem é card de onboarding se decide
+ * pela ORIGEM (veio de useOnboardingTrello), não por comparar id de board.
+ */
+const ONBOARDING_BOARD_ID = 'onboarding';
 
 const STORAGE_KEY_ATIVADO = 'notificacao_unificada_ativada_v1';
 const STORAGE_KEY_MEMBRO = 'notificacao_unificada_membro_v1';
@@ -85,7 +92,7 @@ function suportado(): boolean {
     return typeof window !== 'undefined' && 'Notification' in window;
 }
 
-/** Primeira ativação: se já existia filtro de membro do alarme antigo (só onboarding), carrega ele uma vez. */
+/** Primeira ativação: se já existia filtro de membro do alarme antigo, carrega ele uma vez (segue valendo só pro board de onboarding). */
 function membroInicial(): string | null {
     try {
         const atual = localStorage.getItem(STORAGE_KEY_MEMBRO);
@@ -178,10 +185,12 @@ export function useTarefasPendentes({
 
     // Todos os cards do Trello, de todos os boards, num formato só — board de
     // onboarding (busca completa, qualquer membro) + demais boards via
-    // /members/me/cards (já inclui o board de onboarding de novo pro dono do
-    // token, por isso o filter abaixo exclui esse board dali e o Map dedupe
-    // por id é defesa extra).
+    // /members/me/cards, que já traz de volta os cards do onboarding
+    // atribuídos ao dono do token. Dedupe por id de CARD (não por id de board,
+    // que o cliente não conhece), com a fonte de onboarding vencendo: é ela que
+    // tem a etapa certa e é ela que o filtro de membro entende.
     const trelloUnificado = useMemo<ItemTrelloBase[]>(() => {
+        const idsOnboarding = new Set(onboardingCardsTrello.map(c => c.id));
         const doOnboarding: ItemTrelloBase[] = onboardingCardsTrello.map(c => ({
             id: c.id,
             nome: c.nome,
@@ -196,7 +205,7 @@ export function useTarefasPendentes({
             membros: c.membros,
         }));
         const doResto: ItemTrelloBase[] = trelloTarefas
-            .filter(t => t.boardId !== ONBOARDING_BOARD_ID)
+            .filter(t => !idsOnboarding.has(t.id))
             .map(t => ({
                 id: t.id,
                 nome: t.nome,
@@ -210,9 +219,7 @@ export function useTarefasPendentes({
                 lista: t.lista,
                 membros: t.membros,
             }));
-        const porId = new Map<string, ItemTrelloBase>();
-        for (const item of [...doOnboarding, ...doResto]) porId.set(item.id, item);
-        return [...porId.values()];
+        return [...doOnboarding, ...doResto];
     }, [onboardingCardsTrello, trelloTarefas]);
 
     const boardsDisponiveis = useMemo(() => {
@@ -235,9 +242,14 @@ export function useTarefasPendentes({
         return mapa;
     }, [trelloUnificado]);
 
+    // Só membros do board de onboarding: é o único lugar onde o filtro vale
+    // (ver o filtro em tarefasUnificadas).
     const membrosDisponiveis = useMemo(() => {
         const porId = new Map<string, MembroTrello>();
-        for (const t of trelloUnificado) for (const m of t.membros) porId.set(m.id, m);
+        for (const t of trelloUnificado) {
+            if (t.boardId !== ONBOARDING_BOARD_ID) continue;
+            for (const m of t.membros) porId.set(m.id, m);
+        }
         return [...porId.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     }, [trelloUnificado]);
 
@@ -260,7 +272,13 @@ export function useTarefasPendentes({
         for (const item of trelloUnificado) {
             if (item.closed || item.dueComplete || !item.due) continue;
             if (boardsIgnorados.has(item.boardId) || listasIgnoradas.has(item.listId)) continue;
-            if (membroFiltro && !item.membros.some(m => m.id === membroFiltro)) continue;
+            // Filtro de membro vale SÓ no board de onboarding. Ali o board vem
+            // inteiro (qualquer membro), então escolher "quem sou eu" é o que
+            // separa os meus cards dos dos outros. Nos demais boards a origem é
+            // /members/me/cards, que já vem filtrado pelo dono do TOKEN —
+            // aplicar o filtro de novo zerava tudo, porque quem está marcado no
+            // card lá é o dono do token, não necessariamente quem escolheu aqui.
+            if (membroFiltro && item.boardId === ONBOARDING_BOARD_ID && !item.membros.some(m => m.id === membroFiltro)) continue;
 
             const { nivel, diasOffset } = nivelDaTarefa(item.due, agora);
             if (nivel === 'sem_prazo') continue;
