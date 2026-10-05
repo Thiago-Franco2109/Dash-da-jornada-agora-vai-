@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useCsKpis } from '../../hooks/useCsKpis';
-import { aggregateKpisByManager, type ManagerKpis } from '../../utils/csKpisByManager';
+import { aggregateCityFigures, aggregateKpisByManager, type ManagerKpis } from '../../utils/csKpisByManager';
+import { useCityFocus } from '../../context/CityFocusContext';
 import { getProfileInfo } from '../../config/profiles';
 import type { SessionProfile } from '../../config/managerSession';
 import type { AppView } from '../../types/views';
@@ -134,10 +135,16 @@ interface CeoHomeProps {
 
 export default function CeoHome({ onNavigate }: CeoHomeProps) {
     const { kpis, loading, error, refetch } = useCsKpis(30);
+    const { okrAtivo, filtrarPorCidade } = useCityFocus();
+
+    const cidadesVisiveis = useMemo(
+        () => (kpis ? filtrarPorCidade(kpis.cidades, c => c.cidade) : []),
+        [kpis, filtrarPorCidade],
+    );
 
     const byManager = useMemo(
-        () => (kpis ? aggregateKpisByManager(kpis.cidades) : []),
-        [kpis]
+        () => aggregateKpisByManager(cidadesVisiveis),
+        [cidadesVisiveis]
     );
 
     const maxBar = useMemo(() => {
@@ -171,7 +178,10 @@ export default function CeoHome({ onNavigate }: CeoHomeProps) {
         );
     }
 
-    const alerts = kpis.topRisco.slice(0, ALERT_PREVIEW_SIZE);
+    // Com o foco da OKR ligado, o bloco global do endpoint (base inteira) daria
+    // números que não são os da OKR — aqui a soma vem das cidades em foco.
+    const figures = okrAtivo ? aggregateCityFigures(cidadesVisiveis) : kpis;
+    const alerts = figures.topRisco.slice(0, ALERT_PREVIEW_SIZE);
 
     return (
         <div className="space-y-10">
@@ -186,29 +196,29 @@ export default function CeoHome({ onNavigate }: CeoHomeProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Kpi
                         label="Comissão líquida"
-                        value={brl(kpis.comissao.atual)}
-                        sub={`${kpis.comissao.variacaoPct >= 0 ? '+' : ''}${pct1(kpis.comissao.variacaoPct)} vs. período anterior`}
-                        tone={kpis.comissao.variacaoPct >= 0 ? 'emerald' : 'red'}
-                        icon={kpis.comissao.variacaoPct >= 0 ? 'trending_up' : 'trending_down'}
+                        value={brl(figures.comissao.atual)}
+                        sub={`${figures.comissao.variacaoPct >= 0 ? '+' : ''}${pct1(figures.comissao.variacaoPct)} vs. período anterior`}
+                        tone={figures.comissao.variacaoPct >= 0 ? 'emerald' : 'red'}
+                        icon={figures.comissao.variacaoPct >= 0 ? 'trending_up' : 'trending_down'}
                     />
                     <Kpi
                         label="NRR (receita retida)"
-                        value={pct1(kpis.nrrPct)}
-                        sub={kpis.nrrPct >= 100 ? 'A carteira cresce sozinha' : 'Abaixo de 100%: a carteira encolhe'}
-                        tone={kpis.nrrPct >= 100 ? 'emerald' : 'red'}
+                        value={pct1(figures.nrrPct)}
+                        sub={figures.nrrPct >= 100 ? 'A carteira cresce sozinha' : 'Abaixo de 100%: a carteira encolhe'}
+                        tone={figures.nrrPct >= 100 ? 'emerald' : 'red'}
                         icon="done_all"
                     />
                     <Kpi
                         label="GRR (retenção bruta)"
-                        value={pct1(kpis.grrPct)}
+                        value={pct1(figures.grrPct)}
                         sub="Sem contar expansão"
                         tone="slate"
                         icon="drag_handle"
                     />
                     <Kpi
                         label="Churn de receita"
-                        value={pct1(kpis.churnReceitaPct)}
-                        sub={`${brl(kpis.perdido.valor)} perdidos em ${kpis.perdido.count} parceiros`}
+                        value={pct1(figures.churnReceitaPct)}
+                        sub={`${brl(figures.perdido.valor)} perdidos em ${figures.perdido.count} parceiros`}
                         tone="red"
                         icon="trending_down"
                     />

@@ -33,6 +33,8 @@ import {
     type OkrCategoryFilter,
     type OkrCategoryId,
 } from '../utils/cityOkr';
+import { useCityFocus } from '../context/CityFocusContext';
+import CityFocusChip from './CityFocusChip';
 import { formatSheetMonthLabel, matchesSheetMonthFilter, sheetMonthKey } from '../utils/sheetDates';
 
 interface PedidoMensalViewProps {
@@ -133,6 +135,7 @@ export default function PedidoMensalView({
     const [cityFilter, setCityFilter] = useState('');
     const [partnerFilter, setPartnerFilter] = useState('');
     const [citySearch, setCitySearch] = useState('');
+    const { filtrarPorCidade } = useCityFocus();
 
     const cityOkrMap = useMemo(() => buildCityOkrMap(carteiraRows), [carteiraRows]);
     const hasOkrRegistry = cityOkrMap.size > 0;
@@ -143,7 +146,7 @@ export default function PedidoMensalView({
     }, [cityOkrMap]);
 
     const allPedidoRows = useMemo(() => {
-        let rows = parsePedidoMensalTable(pedidoTable);
+        let rows = filtrarPorCidade(parsePedidoMensalTable(pedidoTable), row => row.cidade);
         if (managerFilter) {
             rows = rows.filter(row => cityBelongsToManager(row.cidade, managerFilter as Manager));
         }
@@ -151,11 +154,11 @@ export default function PedidoMensalView({
             rows = rows.filter(row => cityMatchesOkrFilter(row.cidade, okrFilter, cityOkrMap));
         }
         return rows;
-    }, [pedidoTable, managerFilter, okrFilter, cityOkrMap]);
+    }, [pedidoTable, managerFilter, okrFilter, cityOkrMap, filtrarPorCidade]);
 
     const { allParceiroRows, parceiroParseInfo } = useMemo(() => {
         const { rows, info } = parseParceiroMensalWithInfo(parceiroTable);
-        let filtered = rows;
+        let filtered = filtrarPorCidade(rows, row => row.cidade);
         if (managerFilter) {
             filtered = filtered.filter(row => cityBelongsToManager(row.cidade, managerFilter as Manager));
         }
@@ -163,7 +166,7 @@ export default function PedidoMensalView({
             filtered = filtered.filter(row => cityMatchesOkrFilter(row.cidade, okrFilter, cityOkrMap));
         }
         return { allParceiroRows: filtered, parceiroParseInfo: info };
-    }, [parceiroTable, managerFilter, okrFilter, cityOkrMap]);
+    }, [parceiroTable, managerFilter, okrFilter, cityOkrMap, filtrarPorCidade]);
 
     const months = useMemo(() => {
         const map = new Map<string, { key: string; label: string }>();
@@ -359,6 +362,8 @@ export default function PedidoMensalView({
             </div>
 
             <div className="shrink-0 px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-4 items-end bg-slate-50/50 dark:bg-slate-900/50">
+                <CityFocusChip className="self-end" />
+
                 <label className="flex flex-col gap-1 text-sm min-w-[200px]">
                     <span className="text-slate-600 dark:text-slate-400 font-medium">Categoria OKR</span>
                     <select

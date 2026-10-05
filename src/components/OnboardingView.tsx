@@ -10,6 +10,7 @@ import { FiltroMembros, SeletorOrdenacao, QuadroBoard, type ColunaQuadro } from 
 import CardDetalheModal from './trello/CardDetalheModal';
 import { nivelDaTarefa, compararPorModo, type ModoOrdenacao } from '../utils/trelloNivel';
 import type { MembroTrello } from '../types/trello';
+import CityFocusChip from './CityFocusChip';
 
 interface OnboardingViewProps {
     pendentes: ParceiroPendente[];
@@ -322,7 +323,9 @@ export default function OnboardingView({
                         </span>
                     </div>
 
-                    <div className="relative max-w-md mb-4">
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                    <CityFocusChip />
+                    <div className="relative flex-1 min-w-[220px] max-w-md">
                         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                         <input
                             type="text"
@@ -331,6 +334,7 @@ export default function OnboardingView({
                             value={busca}
                             onChange={(e) => setBusca(e.target.value)}
                         />
+                    </div>
                     </div>
                 </>
             )}

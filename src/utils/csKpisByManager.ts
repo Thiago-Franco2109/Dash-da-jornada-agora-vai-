@@ -38,6 +38,70 @@ function numeradores(city: CsKpiFigures): { nrrNum: number; grrNum: number; den:
 
 const pct = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0);
 
+/**
+ * Soma um conjunto de cidades no mesmo formato do bloco global do endpoint.
+ *
+ * Existe por causa do foco "Cidades OKR": o endpoint entrega o global já
+ * calculado sobre a base inteira, e mostrá-lo ao lado de uma lista recortada
+ * diria "NRR da OKR" exibindo o NRR de todo mundo. NRR/GRR voltam a ser somados
+ * pelos numeradores (ver `numeradores` acima) — porcentagem não se soma.
+ */
+export function aggregateCityFigures(cidades: CsCityKpis[]): CsKpiFigures {
+    const z = { valor: 0, count: 0 };
+    const acc = {
+        atual: 0, anterior: 0, nrrNum: 0, grrNum: 0, den: 0,
+        expansao: { ...z }, contracao: { ...z }, perdido: { ...z }, emQueda: { ...z }, novos: { ...z },
+        estavelCount: 0,
+        totalAtivos: 0, comPedido: 0, semPedido: 0, pedidosCount: 0,
+    };
+    const risco: CsRiscoPartner[] = [];
+
+    for (const city of cidades) {
+        const { nrrNum, grrNum, den } = numeradores(city);
+        acc.atual += city.comissao.atual;
+        acc.anterior += city.comissao.anterior;
+        acc.nrrNum += nrrNum;
+        acc.grrNum += grrNum;
+        acc.den += den;
+        for (const chave of ['expansao', 'contracao', 'perdido', 'emQueda', 'novos'] as const) {
+            acc[chave].valor += city[chave].valor;
+            acc[chave].count += city[chave].count;
+        }
+        acc.estavelCount += city.estavelCount;
+        acc.totalAtivos += city.atividade.totalAtivos;
+        acc.comPedido += city.atividade.comPedido;
+        acc.semPedido += city.atividade.semPedido;
+        acc.pedidosCount += city.atividade.pedidosCount;
+        risco.push(...city.topRisco);
+    }
+
+    return {
+        comissao: {
+            atual: acc.atual,
+            anterior: acc.anterior,
+            variacaoPct: acc.anterior > 0 ? (acc.atual / acc.anterior - 1) * 100 : 0,
+        },
+        nrrPct: pct(acc.nrrNum, acc.den),
+        grrPct: pct(acc.grrNum, acc.den),
+        churnReceitaPct: acc.den > 0 ? (1 - acc.grrNum / acc.den) * 100 : 0,
+        expansao: acc.expansao,
+        contracao: acc.contracao,
+        estavelCount: acc.estavelCount,
+        perdido: acc.perdido,
+        emQueda: acc.emQueda,
+        novos: acc.novos,
+        atividade: {
+            totalAtivos: acc.totalAtivos,
+            comPedido: acc.comPedido,
+            semPedido: acc.semPedido,
+            pedidosCount: acc.pedidosCount,
+            taxaPct: acc.totalAtivos > 0 ? (acc.comPedido / acc.totalAtivos) * 100 : 0,
+        },
+        // O endpoint devolve 10 por cidade e 20 no global — a soma segue o global.
+        topRisco: risco.sort((a, b) => b.perda - a.perda).slice(0, 20),
+    };
+}
+
 /** Soma as cidades de cada gestor numa única leitura de carteira. */
 export function aggregateKpisByManager(cidades: CsCityKpis[]): ManagerKpis[] {
     const buckets = new Map<string, {

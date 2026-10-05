@@ -8,6 +8,7 @@ import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
 import { pctCellClass, CARTEIRA_COLUMNS as COLUMNS } from '../utils/carteiraColumns';
 import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
+import CityFocusChip from './CityFocusChip';
 
 interface CarteiraViewProps {
     rows: CarteiraRow[];
@@ -297,6 +298,7 @@ export default function CarteiraView({
                         ))}
                     </select>
                 </label>
+                <CityFocusChip tamanho="sm" />
                 <label className="flex items-center gap-2 text-sm flex-1 min-w-[200px]">
                     <span className="text-slate-500 font-medium">Cidade</span>
                     <input

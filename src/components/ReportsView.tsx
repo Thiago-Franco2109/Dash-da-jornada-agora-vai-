@@ -3,6 +3,8 @@ import { useState, useMemo, useCallback } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { CAMPAIGN_TYPES, type CampaignTypeId } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
+import CityFocusChip from './CityFocusChip';
+import { useCityFocus } from '../context/CityFocusContext';
 import { useCsKpis, type CsCityKpis } from '../hooks/useCsKpis';
 import { useAtivacoesCampanhas } from '../hooks/useAtivacoesCampanhas';
 import { useAtivacoesMensal } from '../hooks/useAtivacoesMensal';
@@ -84,12 +86,17 @@ export default function ReportsView({ data, managerFilter = '', onNavigateToCrmJ
 
 function OverviewTab({ data, managerFilter, onNavigateToCrmJornada }: { data: EnrichedPerformanceRow[]; managerFilter: string; onNavigateToCrmJornada?: () => void }) {
     const [cityFilter, setCityFilter] = useState('all');
+    const { cidadeNoFoco } = useCityFocus();
+
+    // Cidade de fora do foco da OKR vale como "todas": a lista já chega sem ela,
+    // e manter a escolha só deixaria a tela vazia sem explicar por quê.
+    const cidadeEscolhida = cityFilter !== 'all' && !cidadeNoFoco(cityFilter) ? 'all' : cityFilter;
 
     const filteredData = useMemo(() => {
         return data
             .filter(row => !managerFilter || row.analista === managerFilter)
-            .filter(row => cityFilter === 'all' || row.cidade === cityFilter);
-    }, [data, managerFilter, cityFilter]);
+            .filter(row => cidadeEscolhida === 'all' || row.cidade === cidadeEscolhida);
+    }, [data, managerFilter, cidadeEscolhida]);
 
     // KPI Calculations
     const kpis = useMemo(() => {
@@ -130,8 +137,10 @@ function OverviewTab({ data, managerFilter, onNavigateToCrmJornada }: { data: En
                         <span className="material-symbols-outlined text-slate-400 text-sm">filter_list</span>
                     </div>
 
+                    <CityFocusChip />
+
                     <select
-                        value={cityFilter}
+                        value={cidadeEscolhida}
                         onChange={(e) => setCityFilter(e.target.value)}
                         className="text-xs font-bold px-3 py-2 bg-slate-50 dark:bg-slate-900 border-none rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer text-slate-700 dark:text-slate-200"
                     >
@@ -139,7 +148,7 @@ function OverviewTab({ data, managerFilter, onNavigateToCrmJornada }: { data: En
                         {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
 
-                    {cityFilter !== 'all' && (
+                    {cidadeEscolhida !== 'all' && (
                         <button
                             onClick={() => setCityFilter('all')}
                             className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-500 rounded-lg transition-colors"
@@ -227,20 +236,24 @@ const intBR = (n: number) => n.toLocaleString('pt-BR');
 
 function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
     const { kpis, loading, error, refetch } = useCsKpis(30); // atividade = 28d (padrão do servidor)
+    const { okrAtivo, filtrarPorCidade } = useCityFocus();
     const [segmento, setSegmento] = useState<Segmento>('cidade');
 
-    // Cidades visíveis conforme o filtro de gestor do menu
+    // Cidades visíveis conforme o foco da OKR e o filtro de gestor do menu
     const cidadesVisiveis = useMemo<CsCityKpis[]>(() => {
         if (!kpis) return [];
-        if (!managerFilter) return kpis.cidades;
+        const base = filtrarPorCidade(kpis.cidades, c => c.cidade);
+        if (!managerFilter) return base;
         const mf = managerFilter.trim().toUpperCase();
-        return kpis.cidades.filter(c => getEffectiveManager(c.cidade, '').toUpperCase() === mf);
-    }, [kpis, managerFilter]);
+        return base.filter(c => getEffectiveManager(c.cidade, '').toUpperCase() === mf);
+    }, [kpis, managerFilter, filtrarPorCidade]);
 
     // Totais dos cards: global quando sem filtro (mais preciso), soma das cidades quando filtrado
     const totais = useMemo(() => {
         if (!kpis) return { ativos: 0, comPedido: 0, semPedido: 0, pedidos: 0, taxaPct: 0 };
-        if (!managerFilter) {
+        // O bloco global do endpoint é da base inteira: com o foco da OKR ligado
+        // ele contaria cidades que a tela não está mostrando.
+        if (!managerFilter && !okrAtivo) {
             const a = kpis.atividade;
             return { ativos: a.totalAtivos, comPedido: a.comPedido, semPedido: a.semPedido, pedidos: a.pedidosCount, taxaPct: a.taxaPct };
         }
@@ -257,7 +270,7 @@ function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
             semPedido: acc.ativos - acc.comPedido,
             taxaPct: acc.ativos > 0 ? (acc.comPedido / acc.ativos) * 100 : 0,
         };
-    }, [kpis, managerFilter, cidadesVisiveis]);
+    }, [kpis, managerFilter, okrAtivo, cidadesVisiveis]);
 
     // Linhas da tabela de segmentação
     const rows = useMemo<ActivityRow[]>(() => {
@@ -314,8 +327,11 @@ function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
             <div className="flex items-center justify-between gap-4 flex-wrap">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                     Base ativa (delivery) · pedidos nos últimos <strong>{kpis.activityDays}</strong> dias
-                    {managerFilter ? <> · gestor <strong>{managerFilter}</strong></> : ' · todas as cidades'}
+                    {managerFilter ? <> · gestor <strong>{managerFilter}</strong></> : ''}
+                    {okrAtivo ? ' · cidades da OKR' : (managerFilter ? '' : ' · todas as cidades')}
                 </p>
+                <div className="flex items-center gap-2">
+                <CityFocusChip />
                 <button
                     onClick={refetch}
                     className="text-sm px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5"
@@ -323,6 +339,7 @@ function AtividadeBaseTab({ managerFilter }: { managerFilter: string }) {
                     <span className="material-symbols-outlined text-[18px]">refresh</span>
                     Atualizar
                 </button>
+                </div>
             </div>
 
             {/* CARDS */}

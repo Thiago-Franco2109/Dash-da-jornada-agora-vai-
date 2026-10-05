@@ -8,6 +8,7 @@ import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
 import { pctCellClass, CARTEIRA_COLUMNS } from '../utils/carteiraColumns';
 import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
+import CityFocusChip from './CityFocusChip';
 
 interface CarteiraPorGrupoViewProps {
     rows: CarteiraRow[];
@@ -225,6 +226,7 @@ export default function CarteiraPorGrupoView({
             </div>
 
             <div className="shrink-0 px-6 py-2 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+                <CityFocusChip tamanho="sm" />
                 <label className="flex items-center gap-2 text-sm flex-1 min-w-[200px] max-w-xs">
                     <span className="material-symbols-outlined text-slate-400 text-[18px]">search</span>
                     <input

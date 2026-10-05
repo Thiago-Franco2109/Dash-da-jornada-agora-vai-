@@ -17,6 +17,7 @@ import {
     type OpcaoCampo,
 } from '../config/camposFiltraveis';
 import type { ContextoAvaliacao } from '../utils/avaliarFiltro';
+import CityFocusChip from './CityFocusChip';
 
 /**
  * Construtor de filtros da Lista jornada 28D.
@@ -181,6 +182,9 @@ export default function FilterBar({
         <div ref={barraRef} className="shrink-0 px-6 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
             <div className="flex items-start gap-3">
                 <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+                    {/* Foco da OKR: estado global, por isso fica fora das condições. */}
+                    <CityFocusChip tamanho="sm" />
+
                     {condicoes.map((cond, idx) => {
                         const campo = mapaCampos.get(cond.campoId);
                         if (!campo) return null;

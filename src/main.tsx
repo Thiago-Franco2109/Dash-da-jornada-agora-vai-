@@ -5,13 +5,16 @@ import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
 import { ProductModeProvider } from './context/ProductModeContext.tsx'
 import { ManagerSessionProvider } from './context/ManagerSessionContext.tsx'
+import { CityFocusProvider } from './context/CityFocusContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
       <ManagerSessionProvider>
         <ProductModeProvider>
-          <App />
+          <CityFocusProvider>
+            <App />
+          </CityFocusProvider>
         </ProductModeProvider>
       </ManagerSessionProvider>
     </AuthProvider>

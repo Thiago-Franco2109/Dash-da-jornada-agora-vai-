@@ -2,6 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProductMode } from '../context/ProductModeContext';
 import type { AppView } from '../types/views';
 import NotificationBell from './NotificationBell';
+import CityFocusChip from './CityFocusChip';
 
 interface HeaderProps {
     currentView: AppView;
@@ -83,6 +84,9 @@ export default function Header(props: HeaderProps) {
 
 
             <div className="flex flex-1 justify-end items-center gap-4 pl-4 border-l border-white/20 ml-4">
+                {/* Foco de cidades: fica no cabeçalho porque vale para todas as telas. */}
+                <CityFocusChip variante="header" />
+
                 <NotificationBell
                     count={props.notificationCount ?? 0}
                     onClick={() => props.onNavigate('tarefas_dia')}

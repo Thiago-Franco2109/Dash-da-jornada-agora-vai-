@@ -3,6 +3,7 @@ import type { CrmPartner, CrmPartnerNote } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import { CAMPAIGN_TYPES, getCampaignConfig, type CampaignTypeId } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
+import CityFocusChip from './CityFocusChip';
 import CrmKanbanBoard from './crm/CrmKanbanBoard';
 import CrmFollowUpAlerts from './crm/CrmFollowUpAlerts';
 import { computeFollowUpAlerts, filterCrmPartners, getPromoStatusForPartner } from '../utils/crmPipeline';
@@ -204,6 +205,7 @@ export default function CrmJornadaView({
                             <option value="">Todas as cidades ({cidades.length})</option>
                             {cidades.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
+                        <CityFocusChip />
                         {cityFilter && (
                             <button type="button" onClick={() => setCityFilter('')} className="shrink-0 text-xs font-semibold text-primary hover:underline px-2">
                                 Limpar filtro

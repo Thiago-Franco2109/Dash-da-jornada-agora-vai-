@@ -7,6 +7,7 @@ import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
 import { CAMPAIGN_TYPES, getCampaignConfig, isEditableCampaign } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
+import CityFocusChip from './CityFocusChip';
 import { crmCitiesMatch, normalizeCrmCity } from '../utils/crmData';
 import { useOfertasDaCasa } from '../hooks/useOfertasDaCasa';
 import { computeTopCitiesByGmv, isTopPriorityCity } from '../config/crmCampaigns';
@@ -398,6 +399,7 @@ export default function CrmView({
                             <option key={c} value={c}>{c} ({activeCountByCity.get(c) ?? 0} ativos)</option>
                         ))}
                     </select>
+                    <CityFocusChip />
                     {cityFilter && (
                         <button type="button" onClick={() => { setCityFilter(''); setStageFilter('all'); }} className="shrink-0 text-xs font-semibold text-primary hover:underline px-2">
                             Limpar filtro

@@ -69,6 +69,7 @@ import { useTrelloTarefas } from './hooks/useTrelloTarefas';
 import { useAuth } from './context/AuthContext';
 import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
+import { useCityFocus } from './context/CityFocusContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 import { buildNoCityIndexMap } from './config/managerMapping';
@@ -86,6 +87,14 @@ function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
   const { managerFilter, setManagerFilter } = useManagerSession();
+  /**
+   * Foco "Cidades OKR" (cabeçalho). É aplicado aqui, nas listas que cada tela
+   * recebe, e não dentro delas: assim Jornada, CRM, Carteira e KPIs respondem
+   * sempre sobre o mesmo recorte. Índices de identidade (estab→cidade,
+   * nome→id) ficam de fora de propósito — recortá-los quebraria a ficha de um
+   * parceiro aberto por busca.
+   */
+  const { filtrarPorCidade, cidadeNoFoco } = useCityFocus();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [mappingVersion, setMappingVersion] = useState(0); 
   const [showFinished, setShowFinished] = useState(false);
@@ -106,6 +115,14 @@ function App() {
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
   const [partnerSearchOpen, setPartnerSearchOpen] = useState(false);
   const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
+
+  /**
+   * Cidade escolhida no seletor das telas, respeitando o foco da OKR. Uma
+   * cidade de fora do foco vira "todas" enquanto ele estiver ligado — sem isto
+   * a tela ficaria vazia com um seletor apontando para uma cidade que não está
+   * mais na lista. Desligar o foco devolve a escolha original.
+   */
+  const cityFilterEfetivo = cityFilter && !cidadeNoFoco(cityFilter) ? '' : cityFilter;
 
   const activeSources = isCD ? CD_DATA_SOURCES : PARTNER_DATA_SOURCES;
   const activeCacheKey = isCD ? CACHE_KEYS.cd_novos : CACHE_KEYS.marketplace;
@@ -227,6 +244,24 @@ function App() {
     refreshData: refreshCrmData,
   } = useCrmData({ enabled: crmDataEnabled });
 
+  /**
+   * Listas que as telas consomem já com o foco de cidades aplicado. O `crmPartners`
+   * cru continua existindo porque é índice de identidade (ficha do parceiro,
+   * Top 5 GMV): recortá-lo esvaziaria a ficha de quem foi aberto pela busca.
+   */
+  const crmPartnersNoFoco = useMemo(
+    () => filtrarPorCidade(crmPartners, p => p.cidade),
+    [crmPartners, filtrarPorCidade],
+  );
+  const carteiraRowsNoFoco = useMemo(
+    () => filtrarPorCidade(carteiraRows, r => r.cidade),
+    [carteiraRows, filtrarPorCidade],
+  );
+  const acoesPromocionaisCidadesNoFoco = useMemo(
+    () => filtrarPorCidade(acoesPromocionaisCidades, c => c.cidade),
+    [acoesPromocionaisCidades, filtrarPorCidade],
+  );
+
   const { notesMap: crmNotasMap, getNote: getCrmNote, upsertNote: upsertCrmNote, registerContact: registerCrmContact, erro: crmNotasErro, carregando: crmNotasCarregando } = useCrmNotes();
 
   // As notas saíram do localStorage pro Supabase (dois CS precisam ver a mesma
@@ -272,8 +307,13 @@ function App() {
     enabled: isAuthenticated,
   });
 
+  const onboardingPendentesNoFoco = useMemo(
+    () => filtrarPorCidade(onboardingPendentes, p => p.cidade),
+    [onboardingPendentes, filtrarPorCidade],
+  );
+
   const tarefasPendentes = useTarefasPendentes({
-    crmPartners,
+    crmPartners: crmPartnersNoFoco,
     getCrmNote,
     managerFilter,
     onboardingCardsTrello,
@@ -452,10 +492,11 @@ function App() {
       console.log('%c✅ Todas as cidades estão mapeadas!', 'color:#10b981');
     }
     console.groupEnd();
-  }, [cityIdMap, cityIdsLoading, rawRows]);
+  }, [getLocalidadeId, cityIdsLoading, rawRows]);
 
   // 2. Enrichment & Permanent Filters
-  const enrichedData = useMemo(() => {
+  /** Base enriquecida SEM o foco de cidades — é o que a tela de Gestores precisa. */
+  const enrichedDataCompleto = useMemo(() => {
     const noCityIndexMap = buildNoCityIndexMap(rawRows);
     const rows = rawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
@@ -477,6 +518,16 @@ function App() {
   }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap]);
 
   /**
+   * O que as telas de LISTA enxergam. A de Gestores fica de fora de propósito:
+   * lá se escolhe o analista de cada cidade, e esconder cidades faria parecer
+   * que elas sumiram do cadastro.
+   */
+  const enrichedData = useMemo(
+    () => filtrarPorCidade(enrichedDataCompleto, r => r.cidade),
+    [enrichedDataCompleto, filtrarPorCidade],
+  );
+
+  /**
    * Parceiros que assinaram e ainda não lançaram. O CS já oferece campanha pra
    * eles, então precisam aparecer na lista e no CRM — mas NÃO em `enrichedData`,
    * que alimenta a Central de KPIs, a Home e Contatos: loja que não abriu não
@@ -485,7 +536,7 @@ function App() {
   const preLancamentoRows = useMemo(() => {
     if (isCD) return [];
     const jaLancados = new Set<string>([
-      ...enrichedData.map(r => String(r.estab_id ?? '')),
+      ...enrichedDataCompleto.map(r => String(r.estab_id ?? '')),
       ...parceirosAtivos.map(p => String(p.id)),
     ]);
     const linhas = buildPreLancamentoRows({
@@ -496,11 +547,14 @@ function App() {
       relMap,
       mode,
     });
-    return linhas.map(row => aplicarPausaOnboarding(
+    const prontas = linhas.map(row => aplicarPausaOnboarding(
       overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc),
       pausaMap,
     ));
-  }, [isCD, enrichedData, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap]);
+    // Card do Trello sem cidade não entra no foco da OKR: é cidade desconhecida,
+    // não "talvez seja uma delas" (ver CityFocusContext).
+    return filtrarPorCidade(prontas, row => row.cidade);
+  }, [isCD, enrichedDataCompleto, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap, filtrarPorCidade]);
 
   /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
   const jornadaPool = useMemo(
@@ -536,9 +590,9 @@ function App() {
         if (rel != null) row = { ...row, commercial_relevance: rel };
         extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
       }
-      return [...base, ...extras];
+      return filtrarPorCidade([...base, ...extras], r => r.cidade);
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, mappingVersion],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, mappingVersion, filtrarPorCidade],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;
@@ -561,7 +615,7 @@ function App() {
     if (desempenhoRawRows.length === 0) return [];
     const noCityIndexMap = buildNoCityIndexMap(desempenhoRawRows);
     const enrichMode = isCD ? mode : 'cardapio_digital';
-    return desempenhoRawRows.map(row => {
+    const linhas = desempenhoRawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
       return enrichDesempenhoPartnerData(row, undefined, noCityIndex, enrichMode);
@@ -569,7 +623,8 @@ function App() {
       const status = row.status?.toLowerCase().trim() || '';
       return status !== 'cancelado' && status !== 'cancelada';
     });
-  }, [desempenhoRawRows, mappingVersion, mode, isCD]);
+    return filtrarPorCidade(linhas, row => row.cidade);
+  }, [desempenhoRawRows, mappingVersion, mode, isCD, filtrarPorCidade]);
 
 
   /**
@@ -901,7 +956,7 @@ function App() {
         ) : currentView === 'managers' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <ManagersView
-              data={enrichedData}
+              data={enrichedDataCompleto}
               onMappingChange={() => setMappingVersion(v => v + 1)}
               atribuicoes={atribuicoesCs}
               atribuicoesError={atribuicoesCsError}
@@ -923,7 +978,7 @@ function App() {
           />
         ) : currentView === 'carteira' ? (
           <CarteiraView
-            rows={carteiraRows}
+            rows={carteiraRowsNoFoco}
             isLoading={loadingCarteira}
             isRefreshing={refreshingCarteira}
             error={carteiraError}
@@ -935,7 +990,7 @@ function App() {
           />
         ) : currentView === 'carteira_grupo' ? (
           <CarteiraPorGrupoView
-            rows={carteiraRows}
+            rows={carteiraRowsNoFoco}
             isLoading={loadingCarteira}
             isRefreshing={refreshingCarteira}
             error={carteiraError}
@@ -947,7 +1002,7 @@ function App() {
           />
         ) : currentView === 'acoes_promocionais' ? (
           <AcoesPromocionaisView
-            cidades={acoesPromocionaisCidades}
+            cidades={acoesPromocionaisCidadesNoFoco}
             totais={acoesPromocionaisTotais}
             isLoading={loadingAcoesPromocionais}
             isRefreshing={refreshingAcoesPromocionais}
@@ -959,7 +1014,7 @@ function App() {
           />
         ) : currentView === 'crm' ? (
           <CrmView
-            partners={crmPartners}
+            partners={crmPartnersNoFoco}
             parseInfo={crmParseInfo}
             isLoading={loadingCrm}
             isRefreshing={refreshingCrm}
@@ -969,7 +1024,7 @@ function App() {
             onRefresh={refreshCrmData}
             managerFilter={managerFilter}
             searchQuery={searchQuery}
-            cityFilter={cityFilter}
+            cityFilter={cityFilterEfetivo}
             setCityFilter={setCityFilter}
             onStatusChange={handleStatusChange}
             onCampaignStatusChange={handleCampaignStatusChange}
@@ -982,7 +1037,7 @@ function App() {
             partners={crmJornadaPartners}
             managerFilter={managerFilter}
             searchQuery={searchQuery}
-            cityFilter={cityFilter}
+            cityFilter={cityFilterEfetivo}
             setCityFilter={setCityFilter}
             onCampaignStatusChange={handleCampaignStatusChange}
             getNote={getCrmNote}
@@ -1011,7 +1066,7 @@ function App() {
           />
         ) : currentView === 'onboarding' ? (
           <OnboardingView
-            pendentes={onboardingPendentes}
+            pendentes={onboardingPendentesNoFoco}
             isLoading={loadingOnboarding}
             isRefreshing={refreshingOnboarding}
             error={onboardingError}
@@ -1053,7 +1108,7 @@ function App() {
               lastSyncTime={crmLastSync}
               onRefresh={refreshCrmData}
               searchQuery={searchQuery}
-              cityFilter={cityFilter}
+              cityFilter={cityFilterEfetivo}
               setCityFilter={setCityFilter}
               priorityFilter={priorityFilter}
               setPriorityFilter={setPriorityFilter}
@@ -1099,7 +1154,7 @@ function App() {
               lastSyncTime={isCD ? desempenhoLastSync : crmLastSync}
               onRefresh={isCD ? refreshDesempenhoData : refreshCrmData}
               searchQuery={searchQuery}
-              cityFilter={cityFilter}
+              cityFilter={cityFilterEfetivo}
               setCityFilter={setCityFilter}
               priorityFilter={priorityFilter}
               setPriorityFilter={setPriorityFilter}
@@ -1137,7 +1192,7 @@ function App() {
               lastSyncTime={desempenhoLastSync}
               onRefresh={refreshDesempenhoData}
               searchQuery={searchQuery}
-              cityFilter={cityFilter}
+              cityFilter={cityFilterEfetivo}
               setCityFilter={setCityFilter}
               priorityFilter={priorityFilter}
               setPriorityFilter={setPriorityFilter}

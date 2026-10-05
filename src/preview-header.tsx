@@ -9,20 +9,23 @@ import { createRoot } from 'react-dom/client';
 import Header from './components/Header';
 import { ProductModeProvider } from './context/ProductModeContext';
 import { AuthProvider } from './context/AuthContext';
+import { CityFocusProvider } from './context/CityFocusContext';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <AuthProvider>
-            <ProductModeProvider>
-                <Header
-                    currentView="dashboard"
-                    onNavigate={view => console.log('navigate', view)}
-                    searchQuery=""
-                    setSearchQuery={() => {}}
-                    notificationCount={2}
-                />
-            </ProductModeProvider>
-        </AuthProvider>
+        <CityFocusProvider>
+            <AuthProvider>
+                <ProductModeProvider>
+                    <Header
+                        currentView="dashboard"
+                        onNavigate={view => console.log('navigate', view)}
+                        searchQuery=""
+                        setSearchQuery={() => {}}
+                        notificationCount={2}
+                    />
+                </ProductModeProvider>
+            </AuthProvider>
+        </CityFocusProvider>
     </StrictMode>,
 );

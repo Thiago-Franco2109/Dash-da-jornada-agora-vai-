@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCsKpis, type CsKpiFigures } from '../hooks/useCsKpis';
+import { aggregateCityFigures } from '../utils/csKpisByManager';
+import { useCityFocus } from '../context/CityFocusContext';
+import CityFocusChip from './CityFocusChip';
 
 const brl = (n: number) =>
     n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -102,14 +105,27 @@ function KpiBlocks({ f, activityDays }: { f: CsKpiFigures; activityDays: number 
 
 export default function CsKpisView() {
     const { kpis, loading, error, refetch } = useCsKpis(30);
+    const { okrAtivo, filtrarPorCidade } = useCityFocus();
     const [cidade, setCidade] = useState<string>(''); // '' = Todas
 
-    // KPIs da carteira selecionada (global ou cidade)
-    const current: CsKpiFigures | null = !kpis
-        ? null
-        : cidade
-            ? (kpis.cidades.find(c => c.cidade === cidade) ?? null)
-            : kpis;
+    const cidadesVisiveis = useMemo(
+        () => (kpis ? filtrarPorCidade(kpis.cidades, c => c.cidade) : []),
+        [kpis, filtrarPorCidade],
+    );
+
+    /**
+     * KPIs da carteira selecionada. Com o foco da OKR ligado, "Todas" soma as
+     * cidades da OKR em vez de usar o bloco global do endpoint — ele é calculado
+     * sobre a base inteira e mostraria o NRR de todo mundo sob um rótulo da OKR.
+     */
+    const current: CsKpiFigures | null = useMemo(() => {
+        if (!kpis) return null;
+        if (cidade) return cidadesVisiveis.find(c => c.cidade === cidade) ?? null;
+        return okrAtivo ? aggregateCityFigures(cidadesVisiveis) : kpis;
+    }, [kpis, cidade, cidadesVisiveis, okrAtivo]);
+
+    // Cidade escolhida antes de ligar o foco pode ter saído da lista.
+    const cidadeForaDoFoco = Boolean(cidade) && !cidadesVisiveis.some(c => c.cidade === cidade);
 
     return (
         <div className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-white dark:bg-slate-900">
@@ -118,11 +134,14 @@ export default function CsKpisView() {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Sucesso do Cliente — KPIs</h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {cidade ? <>Carteira de <strong>{cidade}</strong></> : 'Carteira geral (todas as cidades)'}
+                            {cidade
+                                ? <>Carteira de <strong>{cidade}</strong></>
+                                : okrAtivo ? 'Soma das cidades da OKR' : 'Carteira geral (todas as cidades)'}
                             {' · '}últimos {kpis?.windowDays ?? 30} dias vs. os {kpis?.windowDays ?? 30} anteriores
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <CityFocusChip />
                         {kpis && (
                             <select
                                 value={cidade}
@@ -130,8 +149,9 @@ export default function CsKpisView() {
                                 className="text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none"
                                 title="Escolher carteira por cidade"
                             >
-                                <option value="">Todas as cidades</option>
-                                {kpis.cidades.map(c => (
+                                <option value="">{okrAtivo ? 'Todas as cidades da OKR' : 'Todas as cidades'}</option>
+                                {cidadeForaDoFoco && <option value={cidade}>{cidade} (fora da OKR)</option>}
+                                {cidadesVisiveis.map(c => (
                                     <option key={c.cidade} value={c.cidade}>
                                         {c.cidade} — {brl(c.comissao.atual)}
                                     </option>
@@ -160,7 +180,7 @@ export default function CsKpisView() {
                     <>
                         <KpiBlocks f={current} activityDays={kpis.activityDays} />
                         <p className="text-xs text-slate-400 mt-3">
-                            Dados do banco de teste (réplica diária). Cálculo em {kpis.elapsedMs ?? '—'}ms · {kpis.cidades.length} cidades.
+                            Dados do banco de teste (réplica diária). Cálculo em {kpis.elapsedMs ?? '—'}ms · {cidadesVisiveis.length} cidades{okrAtivo ? ' da OKR' : ''}.
                         </p>
                     </>
                 ) : (

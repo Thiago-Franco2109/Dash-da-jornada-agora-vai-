@@ -1,4 +1,6 @@
 
+import CityFocusChip from './CityFocusChip';
+
 interface FilterToolbarProps {
     cityFilter: string;
     setCityFilter: (city: string) => void;
@@ -18,6 +20,8 @@ export default function FilterToolbar({
     return (
         <div className="px-6 py-4 flex gap-3 items-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 overflow-x-auto whitespace-nowrap scrollbar-hide">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 mr-2 shrink-0 border-r border-slate-200 dark:border-slate-700 pr-4">Filtros</span>
+
+            <CityFocusChip />
 
             <div className="relative flex shrink-0 items-center h-9 justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-3 pr-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary">
                 <span className="text-slate-700 dark:text-slate-300 text-sm font-medium mr-1">Cidade:</span>

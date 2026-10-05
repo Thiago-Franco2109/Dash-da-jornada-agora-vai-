@@ -7,6 +7,7 @@ import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import AcaoPromocionalDrillDownModal from './AcaoPromocionalDrillDownModal';
+import CityFocusChip from './CityFocusChip';
 
 const SEM_GRUPO = 'Sem grupo';
 
@@ -213,6 +214,7 @@ export default function AcoesPromocionaisView({
             </div>
 
             <div className="shrink-0 px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center bg-slate-50/50 dark:bg-slate-900/50">
+                <CityFocusChip tamanho="sm" />
                 <label className="flex items-center gap-2 text-sm flex-1 min-w-[200px]">
                     <span className="material-symbols-outlined text-slate-400 text-[18px]">search</span>
                     <input

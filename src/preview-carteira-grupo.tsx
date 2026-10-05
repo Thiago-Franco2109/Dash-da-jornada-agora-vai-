@@ -13,14 +13,19 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
 import { useCarteiraData } from './hooks/useCarteiraData';
+import { CityFocusProvider, useCityFocus } from './context/CityFocusContext';
 import './index.css';
 
 export function PreviewCarteiraPorGrupo() {
     const { rows, isLoading, isRefreshing, error, lastSyncTime, isUsingCache, refreshData } = useCarteiraData({ enabled: true });
+    // Mesmo recorte que o App aplica antes de passar a lista para a tela —
+    // sem isto o chip da barra não mudaria nada aqui.
+    const { filtrarPorCidade } = useCityFocus();
+    const rowsNoFoco = filtrarPorCidade(rows, r => r.cidade);
     return (
         <div className="h-screen flex">
             <CarteiraPorGrupoView
-                rows={rows}
+                rows={rowsNoFoco}
                 isLoading={isLoading}
                 isRefreshing={isRefreshing}
                 error={error}
@@ -34,6 +39,8 @@ export function PreviewCarteiraPorGrupo() {
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>
-        <PreviewCarteiraPorGrupo />
+        <CityFocusProvider>
+            <PreviewCarteiraPorGrupo />
+        </CityFocusProvider>
     </StrictMode>,
 );

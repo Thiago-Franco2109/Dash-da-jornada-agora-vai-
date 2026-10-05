@@ -14,18 +14,23 @@ import { createRoot } from 'react-dom/client';
 import OnboardingView from './components/OnboardingView';
 import { useOnboardingPendente } from './hooks/useOnboardingPendente';
 import { useOnboardingTrello } from './hooks/useOnboardingTrello';
+import { CityFocusProvider, useCityFocus } from './context/CityFocusContext';
 import './index.css';
 
 export function PreviewOnboarding() {
     const fonte = new URLSearchParams(window.location.search).get('fonte');
     const produto = fonte === 'cd' ? 'cd' : undefined;
     const { pendentes, isLoading, isRefreshing, error, lastSyncTime, refreshData } = useOnboardingPendente({ produto });
+    // Mesmo recorte que o App aplica antes de passar a lista para a tela —
+    // sem isto o chip da barra não mudaria nada aqui.
+    const { filtrarPorCidade } = useCityFocus();
+    const pendentesNoFoco = filtrarPorCidade(pendentes, p => p.cidade);
     const { etapasPorEstabId, cards, listas, refreshTrello } = useOnboardingTrello();
 
     return (
         <div className="h-screen flex bg-white dark:bg-slate-900">
             <OnboardingView
-                pendentes={pendentes}
+                pendentes={pendentesNoFoco}
                 isLoading={isLoading}
                 isRefreshing={isRefreshing}
                 error={error}
@@ -40,4 +45,10 @@ export function PreviewOnboarding() {
     );
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><PreviewOnboarding /></StrictMode>);
+createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+        <CityFocusProvider>
+            <PreviewOnboarding />
+        </CityFocusProvider>
+    </StrictMode>,
+);
