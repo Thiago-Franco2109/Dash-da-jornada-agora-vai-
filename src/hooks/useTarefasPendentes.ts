@@ -34,7 +34,19 @@ const STORAGE_KEY_MEMBRO = 'notificacao_unificada_membro_v1';
 const STORAGE_KEY_MEMBRO_LEGADO = 'onboarding_notificacao_membro_v1';
 const STORAGE_KEY_BOARDS_IGNORADOS = 'notificacao_bell_boards_ignorados_v1';
 const STORAGE_KEY_LISTAS_IGNORADAS = 'notificacao_bell_listas_ignoradas_v1';
-const INTERVALO_MS = 60_000;
+/**
+ * Três relógios distintos de propósito:
+ * - ALARME: com que frequência grita enquanto existir atrasado. Curto porque
+ *   é só som + notificação local, não custa rede nem re-render.
+ * - RECLASSIFICACAO: de quanto em quanto tempo um prazo "hoje" vira
+ *   "atrasado" sozinho. Mexe em estado, então re-renderiza quem consome.
+ * - DADOS: refetch do Trello. O mais caro de todos (a function faz
+ *   /members/me/cards + 1 chamada por board), e a Trello limita 100 req/10s
+ *   por token — por isso fica no minuto, não acompanha o alarme.
+ */
+const INTERVALO_ALARME_MS = 10_000;
+const INTERVALO_RECLASSIFICACAO_MS = 60_000;
+const INTERVALO_DADOS_MS = 60_000;
 const TAG_NOTIFICACAO = 'tarefas-pendentes';
 
 export interface TarefaUnificada {
@@ -64,12 +76,21 @@ interface ItemTrelloBase {
     membros: MembroTrello[];
 }
 
+/**
+ * Um AudioContext só, reaproveitado: tocando a cada 10s, abrir e fechar um
+ * context por bipe esbarraria no teto de contexts simultâneos do navegador.
+ */
+let ctxAlarme: AudioContext | null = null;
+
 /** Bipe duplo — mesmo som já validado no alarme do board de onboarding. */
 function tocarAlerta() {
     try {
         const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioCtx) return;
-        const ctx = new AudioCtx();
+        if (!ctxAlarme) ctxAlarme = new AudioCtx();
+        const ctx = ctxAlarme;
+        // O navegador suspende o context quando a aba fica muito tempo oculta.
+        if (ctx.state === 'suspended') void ctx.resume();
         [660, 660].forEach((freq, i) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
@@ -84,7 +105,6 @@ function tocarAlerta() {
             osc.start(inicio);
             osc.stop(inicio + 0.18);
         });
-        setTimeout(() => ctx.close(), 700);
     } catch { /* navegador bloqueou áudio sem interação prévia — a notificação nativa já traz som próprio */ }
 }
 
@@ -311,7 +331,7 @@ export function useTarefasPendentes({
     // Relógio próprio: reclassifica a cada 1min mesmo sem novo dado chegar —
     // um prazo "hoje" vira "atrasado" na hora certa, não só no próximo fetch.
     useEffect(() => {
-        const id = setInterval(() => setAgora(new Date()), INTERVALO_MS);
+        const id = setInterval(() => setAgora(new Date()), INTERVALO_RECLASSIFICACAO_MS);
         return () => clearInterval(id);
     }, []);
 
@@ -329,43 +349,59 @@ export function useTarefasPendentes({
         const id = setInterval(() => {
             refreshOnboardingRef.current();
             refreshTrelloRef.current();
-        }, INTERVALO_MS);
+        }, INTERVALO_DADOS_MS);
         return () => clearInterval(id);
     }, [ativado]);
 
-    // Dispara a cada reclassificação (relógio ou dado novo) enquanto existir
-    // item atrasado — tag+renotify SUBSTITUEM a notificação anterior (não
-    // empilha no centro do sistema) mas ainda tocam som de novo a cada vez,
-    // e só param quando o conjunto de atrasados esvaziar (usuário reagendou).
+    // Alarme em relógio PRÓPRIO (a cada 10s), não preso ao recálculo da lista:
+    // assim ele insiste no ritmo que o CS pediu sem obrigar o app a
+    // re-renderizar na mesma cadência. Lê os atrasados de uma ref pra não
+    // precisar recriar o intervalo a cada mudança de lista.
+    //
+    // tag+renotify SUBSTITUEM a notificação anterior (não empilha no centro do
+    // sistema) mas tocam som de novo a cada vez, e só param quando o conjunto
+    // de atrasados esvaziar — ou seja, quando o CS reagendar.
     const onNotificacaoClickRef = useRef(onNotificacaoClick);
     useEffect(() => { onNotificacaoClickRef.current = onNotificacaoClick; }, [onNotificacaoClick]);
 
+    const atrasadosRef = useRef<TarefaUnificada[]>([]);
+    useEffect(() => {
+        atrasadosRef.current = tarefasUnificadas.filter(t => t.nivel === 'overdue');
+    }, [tarefasUnificadas]);
+
     useEffect(() => {
         if (!ativado || permissao !== 'granted') return;
-        const atrasados = tarefasUnificadas.filter(t => t.nivel === 'overdue');
-        if (atrasados.length === 0) return;
 
-        const titulo = atrasados.length === 1 ? '1 tarefa atrasada' : `${atrasados.length} tarefas atrasadas`;
-        const nomes = atrasados.slice(0, 4).map(t => t.titulo).join(' · ');
-        const corpo = atrasados.length > 4 ? `${nomes} · +${atrasados.length - 4} mais` : nomes;
+        const gritar = () => {
+            const atrasados = atrasadosRef.current;
+            if (atrasados.length === 0) return;
 
-        try {
-            const opcoes: NotificationOptions & { renotify?: boolean } = {
-                body: corpo,
-                icon: '/favicon.png',
-                tag: TAG_NOTIFICACAO,
-                renotify: true,
-                requireInteraction: true,
-                silent: false,
-            };
-            const notif = new Notification(titulo, opcoes);
-            notif.onclick = () => {
-                window.focus();
-                onNotificacaoClickRef.current?.();
-            };
-        } catch { /* ignore */ }
-        tocarAlerta();
-    }, [tarefasUnificadas, ativado, permissao]);
+            const titulo = atrasados.length === 1 ? '1 tarefa atrasada' : `${atrasados.length} tarefas atrasadas`;
+            const nomes = atrasados.slice(0, 4).map(t => t.titulo).join(' · ');
+            const corpo = atrasados.length > 4 ? `${nomes} · +${atrasados.length - 4} mais` : nomes;
+
+            try {
+                const opcoes: NotificationOptions & { renotify?: boolean } = {
+                    body: corpo,
+                    icon: '/favicon.png',
+                    tag: TAG_NOTIFICACAO,
+                    renotify: true,
+                    requireInteraction: true,
+                    silent: false,
+                };
+                const notif = new Notification(titulo, opcoes);
+                notif.onclick = () => {
+                    window.focus();
+                    onNotificacaoClickRef.current?.();
+                };
+            } catch { /* ignore */ }
+            tocarAlerta();
+        };
+
+        gritar();
+        const id = setInterval(gritar, INTERVALO_ALARME_MS);
+        return () => clearInterval(id);
+    }, [ativado, permissao]);
 
     return {
         tarefasUnificadas,
