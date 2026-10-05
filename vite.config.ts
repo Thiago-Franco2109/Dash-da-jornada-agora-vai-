@@ -134,6 +134,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
     'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar', 'trello-card-editar',
+    'cardapio-analise', 'parceiro-acesso',
   ])
   return {
     name: 'db-functions-dev',

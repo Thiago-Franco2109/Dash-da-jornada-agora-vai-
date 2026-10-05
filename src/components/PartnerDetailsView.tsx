@@ -26,6 +26,9 @@ import type { CrmPartner } from '../types/crm';
 import type { PromoStatus } from '../hooks/useStatusOverride';
 import type { CampaignTypeId } from '../config/campaignTypes';
 import PartnerPromoCrmSection from './PartnerPromoCrmSection';
+import PartnerCardapioSection from './PartnerCardapioSection';
+import { useCardapioAnalise } from '../hooks/useCardapioAnalise';
+import { useParceiroAcesso } from '../hooks/useParceiroAcesso';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
 
@@ -256,6 +259,11 @@ export default function PartnerDetailsView({
     const progressPercentage = Math.min(100, Math.round((partner.total_pedidos / 30) * 100));
     
     const { relevance, updateRelevance, loading: relevanceLoading } = usePartnerRelevance(partner.estab_id || partner.estabelecimento);
+
+    // Cardápio e acesso do lojista: só o estab_id numérico serve — parceiro que vem só
+    // da planilha não existe no banco do CMS e os hooks devolvem null sem chamar nada.
+    const { data: cardapioAnalise, loading: cardapioLoading, error: cardapioError } = useCardapioAnalise(partner.estab_id);
+    const { data: parceiroAcesso } = useParceiroAcesso(partner.estab_id);
     const { getCmsPromoUrl, getLocalidadeId, loading: cityIdsLoading } = useCityIds();
 
     const BASE_PROMO_URL = 'https://admin.bigou.com.br/campanha/promocao/cadastro/26';
@@ -851,17 +859,37 @@ export default function PartnerDetailsView({
                                     <div>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center justify-between">
                                             Item Mais Vendido
-                                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Em breve</span>
                                         </p>
-                                        <p className="mt-1 text-base font-medium text-slate-400 dark:text-slate-500">---</p>
+                                        {cardapioAnalise?.maisVendido ? (
+                                            <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
+                                                {cardapioAnalise.maisVendido.nome}
+                                                <span className="ml-2 text-sm font-normal text-slate-500 dark:text-slate-400">
+                                                    {cardapioAnalise.maisVendido.vendas} vendas
+                                                </span>
+                                            </p>
+                                        ) : (
+                                            <p className="mt-1 text-base font-medium text-slate-400 dark:text-slate-500">
+                                                {cardapioLoading ? 'Carregando…' : '---'}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center justify-between">
                                             Fotos no Cardápio
-                                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Em breve</span>
                                         </p>
-                                        <p className="mt-1 text-base font-medium text-slate-400 dark:text-slate-500">---</p>
+                                        {cardapioAnalise && cardapioAnalise.resumo.totalItens > 0 ? (
+                                            <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
+                                                {cardapioAnalise.resumo.comFoto} de {cardapioAnalise.resumo.totalItens}
+                                                <span className={`ml-2 text-sm font-normal ${cardapioAnalise.resumo.pctSemFoto > 30 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                    {cardapioAnalise.resumo.pctSemFoto}% sem foto
+                                                </span>
+                                            </p>
+                                        ) : (
+                                            <p className="mt-1 text-base font-medium text-slate-400 dark:text-slate-500">
+                                                {cardapioLoading ? 'Carregando…' : '---'}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="pt-4 border-t border-indigo-100 dark:border-indigo-800/30">
@@ -872,6 +900,16 @@ export default function PartnerDetailsView({
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Diagnóstico do cardápio (itens sem foto, promoções no ar, acesso do lojista) */}
+                        <div className="lg:col-span-3 mt-2">
+                            <PartnerCardapioSection
+                                analise={cardapioAnalise}
+                                acesso={parceiroAcesso}
+                                loading={cardapioLoading}
+                                error={cardapioError}
+                            />
                         </div>
 
                         {/* Análise do Cardápio – full width funnel */}
