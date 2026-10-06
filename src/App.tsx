@@ -936,6 +936,9 @@ function App() {
               permissao={tarefasPendentes.permissao}
               onAtivar={tarefasPendentes.ativar}
               onDesativar={tarefasPendentes.desativar}
+              volume={tarefasPendentes.volume}
+              onMudarVolume={tarefasPendentes.mudarVolume}
+              onTestarSom={tarefasPendentes.testarSom}
               membroFiltro={tarefasPendentes.membroFiltro}
               membrosDisponiveis={tarefasPendentes.membrosDisponiveis}
               onMudarMembro={tarefasPendentes.mudarMembroFiltro}

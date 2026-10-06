@@ -15,6 +15,9 @@ interface TarefasDoDiaViewProps {
     permissao: NotificationPermission | 'unsupported';
     onAtivar: () => void;
     onDesativar: () => void;
+    volume: number;
+    onMudarVolume: (volume: number) => void;
+    onTestarSom: () => void;
     membroFiltro: string | null;
     membrosDisponiveis: MembroTrello[];
     onMudarMembro: (id: string | null) => void;
@@ -37,6 +40,9 @@ export default function TarefasDoDiaView({
     permissao,
     onAtivar,
     onDesativar,
+    volume,
+    onMudarVolume,
+    onTestarSom,
     membroFiltro,
     membrosDisponiveis,
     onMudarMembro,
@@ -119,13 +125,36 @@ export default function TarefasDoDiaView({
                                     <span className="material-symbols-outlined text-[18px]">{ativado ? 'notifications_active' : 'notifications_off'}</span>
                                     {ativado ? 'Alarme ligado — avisa a cada 10s' : 'Alarme desligado — clique para ligar'}
                                 </button>
-                                {/* Sem permissão do SO o alarme continua: o sino treme e o bipe toca
+                                <div className="mt-3 flex flex-wrap items-center gap-3">
+                                    <span className="material-symbols-outlined text-[18px] text-slate-400">volume_up</span>
+                                    <input
+                                        type="range"
+                                        min={0.05}
+                                        max={1}
+                                        step={0.05}
+                                        value={volume}
+                                        onChange={e => onMudarVolume(Number(e.target.value))}
+                                        aria-label="Volume do alarme"
+                                        className="h-1.5 w-40 cursor-pointer accent-primary"
+                                    />
+                                    <span className="w-9 text-xs font-bold tabular-nums text-slate-500">{Math.round(volume * 100)}%</span>
+                                    <button
+                                        type="button"
+                                        onClick={onTestarSom}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+                                        Testar som
+                                    </button>
+                                </div>
+
+                                {/* Sem permissão do SO o alarme continua: o sino treme e o som toca
                                     enquanto a aba estiver aberta. Só o balão do sistema é que não aparece. */}
                                 {ativado && permissao !== 'granted' && (
                                     <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
                                         {permissao === 'unsupported'
-                                            ? 'Este navegador não mostra notificações do sistema — o aviso fica no sino aqui em cima, que treme a cada 10s, e no bipe.'
-                                            : 'Notificações do sistema bloqueadas no navegador — o aviso fica no sino aqui em cima, que treme a cada 10s, e no bipe.'}
+                                            ? 'Este navegador não mostra notificações do sistema — o aviso fica no sino aqui em cima, que treme a cada 10s, e no som.'
+                                            : 'Notificações do sistema bloqueadas no navegador — o aviso fica no sino aqui em cima, que treme a cada 10s, e no som.'}
                                     </p>
                                 )}
                             </div>

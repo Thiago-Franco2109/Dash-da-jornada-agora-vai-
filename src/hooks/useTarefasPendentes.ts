@@ -45,6 +45,11 @@ const STORAGE_KEY_LISTAS_IGNORADAS = 'notificacao_bell_listas_ignoradas_v1';
  *   /members/me/cards + 1 chamada por board), e a Trello limita 100 req/10s
  *   por token — por isso fica no minuto, não acompanha o alarme.
  */
+/** Arquivo em public/ — servido como asset estático, não entra no bundle JS. */
+const SOM_ALARME = '/alarme-atrasados.mp3';
+const STORAGE_KEY_VOLUME = 'notificacao_unificada_volume_v1';
+const VOLUME_PADRAO = 0.7;
+
 const INTERVALO_ALARME_MS = 10_000;
 const INTERVALO_RECLASSIFICACAO_MS = 60_000;
 const INTERVALO_DADOS_MS = 60_000;
@@ -78,35 +83,21 @@ interface ItemTrelloBase {
 }
 
 /**
- * Um AudioContext só, reaproveitado: tocando a cada 10s, abrir e fechar um
- * context por bipe esbarraria no teto de contexts simultâneos do navegador.
+ * Um elemento de áudio só, reaproveitado: tocando a cada 10s, criar um por
+ * disparo encheria a memória à toa. `currentTime = 0` reinicia o som caso o
+ * disparo anterior ainda esteja tocando.
  */
-let ctxAlarme: AudioContext | null = null;
+let audioAlarme: HTMLAudioElement | null = null;
 
-/** Bipe duplo — mesmo som já validado no alarme do board de onboarding. */
-function tocarAlerta() {
+function tocarAlerta(volume: number) {
     try {
-        const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) return;
-        if (!ctxAlarme) ctxAlarme = new AudioCtx();
-        const ctx = ctxAlarme;
-        // O navegador suspende o context quando a aba fica muito tempo oculta.
-        if (ctx.state === 'suspended') void ctx.resume();
-        [660, 660].forEach((freq, i) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'square';
-            osc.frequency.value = freq;
-            const inicio = ctx.currentTime + i * 0.25;
-            gain.gain.setValueAtTime(0, inicio);
-            gain.gain.linearRampToValueAtTime(0.25, inicio + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.18);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(inicio);
-            osc.stop(inicio + 0.18);
-        });
-    } catch { /* navegador bloqueou áudio sem interação prévia — a notificação nativa já traz som próprio */ }
+        if (!audioAlarme) audioAlarme = new Audio(SOM_ALARME);
+        audioAlarme.volume = Math.min(1, Math.max(0, volume));
+        audioAlarme.currentTime = 0;
+        // play() rejeita quando o navegador ainda não viu interação na página —
+        // nesse caso o alerta visual (sino tremendo) segue valendo sozinho.
+        void audioAlarme.play().catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
 }
 
 function suportado(): boolean {
@@ -168,6 +159,14 @@ export function useTarefasPendentes({
     onNotificacaoClick,
 }: UseTarefasPendentesParams) {
     const [ativado, setAtivado] = useState<boolean>(ativadoInicial);
+    const [volume, setVolumeState] = useState<number>(() => {
+        try {
+            const salvo = Number(localStorage.getItem(STORAGE_KEY_VOLUME));
+            return Number.isFinite(salvo) && salvo > 0 ? Math.min(1, salvo) : VOLUME_PADRAO;
+        } catch {
+            return VOLUME_PADRAO;
+        }
+    });
     const [permissao, setPermissao] = useState<NotificationPermission | 'unsupported'>(
         suportado() ? Notification.permission : 'unsupported',
     );
@@ -175,6 +174,18 @@ export function useTarefasPendentes({
     const [boardsIgnorados, setBoardsIgnorados] = useState<Set<string>>(() => loadPersistedSet(STORAGE_KEY_BOARDS_IGNORADOS));
     const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(() => loadPersistedSet(STORAGE_KEY_LISTAS_IGNORADAS));
     const [agora, setAgora] = useState(() => new Date());
+
+    // O alarme lê o volume por ref: mexer no slider não pode recriar o
+    // intervalo, senão o ciclo de 10s reiniciaria a cada arrastada.
+    const volumeRef = useRef(volume);
+    useEffect(() => { volumeRef.current = volume; }, [volume]);
+
+    const mudarVolume = useCallback((novo: number) => {
+        setVolumeState(novo);
+        try { localStorage.setItem(STORAGE_KEY_VOLUME, String(novo)); } catch { /* ignore */ }
+    }, []);
+
+    const testarSom = useCallback(() => tocarAlerta(volumeRef.current), []);
 
     const mudarMembroFiltro = useCallback((id: string | null) => {
         setMembroFiltro(id);
@@ -424,7 +435,7 @@ export function useTarefasPendentes({
             }
 
             for (const ouvinte of ouvintesRef.current) ouvinte();
-            tocarAlerta();
+            tocarAlerta(volumeRef.current);
         };
 
         gritar();
@@ -440,6 +451,9 @@ export function useTarefasPendentes({
         permissao,
         ativar,
         desativar,
+        volume,
+        mudarVolume,
+        testarSom,
         membroFiltro,
         mudarMembroFiltro,
         membrosDisponiveis,

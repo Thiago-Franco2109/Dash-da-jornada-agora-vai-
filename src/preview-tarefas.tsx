@@ -66,8 +66,9 @@ const membrosMock: MembroTrello[] = [
     { id: 'm2', nome: 'Laís', iniciais: 'L', avatarUrl: null },
 ];
 
-function PreviewTarefas() {
+export function PreviewTarefas() {
     const [ativado, setAtivado] = useState(false);
+    const [volume, setVolume] = useState(0.7);
     const [membroFiltro, setMembroFiltro] = useState<string | null>(null);
     const [boardsIgnorados, setBoardsIgnorados] = useState<Set<string>>(new Set());
     const [listasIgnoradas, setListasIgnoradas] = useState<Set<string>>(new Set());
@@ -84,6 +85,9 @@ function PreviewTarefas() {
             permissao="granted"
             onAtivar={() => setAtivado(true)}
             onDesativar={() => setAtivado(false)}
+            volume={volume}
+            onMudarVolume={setVolume}
+            onTestarSom={() => { const a = new Audio('/alarme-atrasados.mp3'); a.volume = volume; void a.play().catch(() => {}); }}
             membroFiltro={membroFiltro}
             membrosDisponiveis={membrosMock}
             onMudarMembro={setMembroFiltro}
