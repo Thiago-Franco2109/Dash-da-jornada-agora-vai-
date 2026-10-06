@@ -914,6 +914,7 @@ function App() {
         setSearchQuery={setSearchQuery}
         onOpenPartnerSearch={() => setPartnerSearchOpen(true)}
         notificationCount={tarefasPendentes.contagemPorNivel.overdue + tarefasPendentes.contagemPorNivel.today}
+        inscreverAlerta={tarefasPendentes.inscreverAlerta}
       />
       <div className="flex flex-1 min-h-0 relative">
         <NavigationSidebar 

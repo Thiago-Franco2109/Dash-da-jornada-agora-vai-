@@ -187,13 +187,11 @@ export function useTarefasPendentes({
     }, []);
 
     const ativar = useCallback(async () => {
-        if (!suportado()) return;
-        let perm = Notification.permission;
-        if (perm === 'default') {
-            perm = await Notification.requestPermission();
-            setPermissao(perm);
+        // Pede a permissão do SO, mas não condiciona o alarme a ela: negada,
+        // o aviso dentro do sistema (sino + bipe) continua valendo.
+        if (suportado() && Notification.permission === 'default') {
+            setPermissao(await Notification.requestPermission());
         }
-        if (perm !== 'granted') return;
         setAtivado(true);
         try { localStorage.setItem(STORAGE_KEY_ATIVADO, 'on'); } catch { /* ignore */ }
     }, []);
@@ -369,32 +367,47 @@ export function useTarefasPendentes({
         atrasadosRef.current = tarefasUnificadas.filter(t => t.nivel === 'overdue');
     }, [tarefasUnificadas]);
 
+    // Canal pra UI reagir a cada disparo (o sino treme). É inscrição em vez de
+    // state pra só o sino re-renderizar a cada 10s, não o app inteiro.
+    const ouvintesRef = useRef(new Set<() => void>());
+    const inscreverAlerta = useCallback((ouvinte: () => void) => {
+        const ouvintes = ouvintesRef.current;
+        ouvintes.add(ouvinte);
+        return () => { ouvintes.delete(ouvinte); };
+    }, []);
+
     useEffect(() => {
-        if (!ativado || permissao !== 'granted') return;
+        // Repara que NÃO exige permissão: o aviso dentro do sistema (sino
+        // tremendo + bipe) é o que não falha. A notificação do SO entra por
+        // cima quando existe permissão, não como condição pro alarme.
+        if (!ativado) return;
 
         const gritar = () => {
             const atrasados = atrasadosRef.current;
             if (atrasados.length === 0) return;
 
-            const titulo = atrasados.length === 1 ? '1 tarefa atrasada' : `${atrasados.length} tarefas atrasadas`;
-            const nomes = atrasados.slice(0, 4).map(t => t.titulo).join(' · ');
-            const corpo = atrasados.length > 4 ? `${nomes} · +${atrasados.length - 4} mais` : nomes;
+            if (permissao === 'granted') {
+                const titulo = atrasados.length === 1 ? '1 tarefa atrasada' : `${atrasados.length} tarefas atrasadas`;
+                const nomes = atrasados.slice(0, 4).map(t => t.titulo).join(' · ');
+                const corpo = atrasados.length > 4 ? `${nomes} · +${atrasados.length - 4} mais` : nomes;
+                try {
+                    const opcoes: NotificationOptions & { renotify?: boolean } = {
+                        body: corpo,
+                        icon: '/favicon.png',
+                        tag: TAG_NOTIFICACAO,
+                        renotify: true,
+                        requireInteraction: true,
+                        silent: false,
+                    };
+                    const notif = new Notification(titulo, opcoes);
+                    notif.onclick = () => {
+                        window.focus();
+                        onNotificacaoClickRef.current?.();
+                    };
+                } catch { /* ignore */ }
+            }
 
-            try {
-                const opcoes: NotificationOptions & { renotify?: boolean } = {
-                    body: corpo,
-                    icon: '/favicon.png',
-                    tag: TAG_NOTIFICACAO,
-                    renotify: true,
-                    requireInteraction: true,
-                    silent: false,
-                };
-                const notif = new Notification(titulo, opcoes);
-                notif.onclick = () => {
-                    window.focus();
-                    onNotificacaoClickRef.current?.();
-                };
-            } catch { /* ignore */ }
+            for (const ouvinte of ouvintesRef.current) ouvinte();
             tocarAlerta();
         };
 
@@ -406,6 +419,7 @@ export function useTarefasPendentes({
     return {
         tarefasUnificadas,
         contagemPorNivel,
+        inscreverAlerta,
         ativado,
         permissao,
         ativar,

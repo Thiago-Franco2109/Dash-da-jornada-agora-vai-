@@ -11,6 +11,7 @@ interface HeaderProps {
     setSearchQuery: (query: string) => void;
     onOpenPartnerSearch?: () => void;
     notificationCount?: number;
+    inscreverAlerta?: (ouvinte: () => void) => () => void;
 }
 
 export default function Header(props: HeaderProps) {
@@ -90,6 +91,7 @@ export default function Header(props: HeaderProps) {
                 <NotificationBell
                     count={props.notificationCount ?? 0}
                     onClick={() => props.onNavigate('tarefas_dia')}
+                    inscreverAlerta={props.inscreverAlerta}
                 />
 
                 <button

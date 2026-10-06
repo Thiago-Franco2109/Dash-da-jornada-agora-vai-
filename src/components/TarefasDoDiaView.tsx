@@ -102,11 +102,7 @@ export default function TarefasDoDiaView({
                     {configAberta && (
                         <div className="px-4 pb-4 space-y-4 border-t border-slate-100 dark:border-slate-800 pt-3">
                             <div>
-                                {permissao === 'unsupported' ? (
-                                    <p className="text-xs text-slate-400">Este navegador não suporta notificações.</p>
-                                ) : permissao === 'denied' ? (
-                                    <p className="text-xs text-red-600 dark:text-red-400">Notificações bloqueadas nas configurações do navegador.</p>
-                                ) : ativado ? (
+                                {ativado ? (
                                     <button type="button" onClick={onDesativar} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:underline">
                                         <span className="material-symbols-outlined text-[16px]">notifications_off</span>
                                         Desativar alarme de atrasados
@@ -116,6 +112,15 @@ export default function TarefasDoDiaView({
                                         <span className="material-symbols-outlined text-[16px]">notifications_active</span>
                                         Ativar alarme de atrasados
                                     </button>
+                                )}
+                                {/* Sem permissão do SO o alarme continua: o sino treme e o bipe toca
+                                    enquanto a aba estiver aberta. Só o balão do sistema é que não aparece. */}
+                                {ativado && permissao !== 'granted' && (
+                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
+                                        {permissao === 'unsupported'
+                                            ? 'Este navegador não mostra notificações do sistema — o aviso fica no sino aqui em cima, que treme a cada 10s, e no bipe.'
+                                            : 'Notificações do sistema bloqueadas no navegador — o aviso fica no sino aqui em cima, que treme a cada 10s, e no bipe.'}
+                                    </p>
                                 )}
                             </div>
 

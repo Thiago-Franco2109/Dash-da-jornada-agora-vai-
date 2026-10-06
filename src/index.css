@@ -31,6 +31,30 @@ body {
   animation: slide-in-right 0.3s ease-out forwards;
 }
 
+/* Sino tremendo a cada disparo do alarme de atrasados: é o aviso que não
+   depende de permissão do sistema operacional nem da aba estar em foco. */
+@keyframes sino-tremendo {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30%, 50%, 70% { transform: rotate(-14deg); }
+  20%, 40%, 60%, 80% { transform: rotate(14deg); }
+}
+
+.animate-sino-tremendo {
+  animation: sino-tremendo 0.8s ease-in-out;
+  transform-origin: top center;
+}
+
+/* Quem pediu menos movimento continua recebendo o alerta, só que piscando. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sino-tremendo {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+  .animate-sino-tremendo {
+    animation: sino-tremendo 0.8s steps(2, end) 2;
+  }
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
