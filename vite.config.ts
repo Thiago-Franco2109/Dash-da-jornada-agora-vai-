@@ -134,6 +134,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
     'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar', 'trello-card-editar',
+    'trello-card-anexar', 'trello-anexo',
     'cardapio-analise', 'parceiro-acesso',
   ])
   return {
@@ -169,7 +170,9 @@ function dbFunctionsDevPlugin(): Plugin {
           )
           res.statusCode = result.statusCode ?? 200
           for (const [k, v] of Object.entries(result.headers ?? {})) res.setHeader(k, v as string)
-          res.end(result.body ?? '')
+          // Resposta binária (ex.: trello-anexo serve imagem) chega em base64,
+          // igual a Netlify espera em produção — aqui precisa decodificar.
+          res.end(result.isBase64Encoded ? Buffer.from(result.body ?? '', 'base64') : (result.body ?? ''))
         } catch (err: unknown) {
           res.statusCode = 500
           res.setHeader('Content-Type', 'application/json')

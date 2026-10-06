@@ -38,6 +38,7 @@ interface TrelloAttachment {
     date: string;
     bytes: number | null;
     mimeType: string;
+    previews?: { id: string; width: number }[];
 }
 
 interface TrelloCommentAction {
@@ -98,20 +99,25 @@ export const handler: Handler = async (event) => {
 
     const started = Date.now();
     try {
-        const card = await trelloFetch<TrelloCardDetalheBruto>(`/cards/${cardId}`, key!, token!, {
-            fields: 'name,desc,due,dueComplete,closed,shortUrl,idList,idBoard,labels',
-            members: 'true',
-            member_fields: 'fullName,initials,avatarUrl',
-            checklists: 'all',
-            checklist_fields: 'name,pos',
-            checkItem_fields: 'name,state,idMember',
-            attachments: 'true',
-            attachment_fields: 'name,url,date,bytes,mimeType',
-            actions: 'commentCard',
-            actions_limit: '200',
-            action_fields: 'data,date,type',
-            action_memberCreator_fields: 'fullName,initials,avatarUrl',
-        });
+        // `meuId` existe só pra UI saber quais comentários são do dono do token
+        // (só esses podem ser editados/excluídos — ver trello-card-comentar.ts).
+        const [card, eu] = await Promise.all([
+            trelloFetch<TrelloCardDetalheBruto>(`/cards/${cardId}`, key!, token!, {
+                fields: 'name,desc,due,dueComplete,closed,shortUrl,idList,idBoard,labels',
+                members: 'true',
+                member_fields: 'fullName,initials,avatarUrl',
+                checklists: 'all',
+                checklist_fields: 'name,pos',
+                checkItem_fields: 'name,state,idMember',
+                attachments: 'true',
+                attachment_fields: 'name,url,date,bytes,mimeType,previews',
+                actions: 'commentCard',
+                actions_limit: '200',
+                action_fields: 'data,date,type',
+                action_memberCreator_fields: 'fullName,initials,avatarUrl',
+            }),
+            trelloFetch<{ id: string }>('/members/me', key!, token!, { fields: 'id' }),
+        ]);
 
         const detalhe = {
             id: card.id,
@@ -130,14 +136,21 @@ export const handler: Handler = async (event) => {
                     nome: cl.name,
                     itens: cl.checkItems.map(it => ({ id: it.id, nome: it.name, feito: it.state === 'complete' })),
                 })),
-            anexos: card.attachments.map(a => ({
-                id: a.id,
-                nome: a.name,
-                url: a.url,
-                data: a.date,
-                bytes: a.bytes,
-                tipo: a.mimeType,
-            })),
+            anexos: card.attachments.map(a => {
+                // Preview de ~250px pra miniatura na lista de anexos; o <img>
+                // carrega via trello-anexo.ts, que a URL crua dá 401 no browser.
+                const ordenados = [...(a.previews ?? [])].sort((x, y) => x.width - y.width);
+                const miniatura = ordenados.find(p => p.width >= 250) ?? ordenados[ordenados.length - 1];
+                return {
+                    id: a.id,
+                    nome: a.name,
+                    url: a.url,
+                    data: a.date,
+                    bytes: a.bytes,
+                    tipo: a.mimeType,
+                    previewId: miniatura?.id ?? null,
+                };
+            }),
             comentarios: card.actions
                 .filter(a => a.type === 'commentCard')
                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -145,6 +158,7 @@ export const handler: Handler = async (event) => {
                     id: a.id,
                     texto: a.data.text,
                     data: a.date,
+                    autorId: a.memberCreator.id,
                     autor: { nome: a.memberCreator.fullName, iniciais: a.memberCreator.initials, avatarUrl: a.memberCreator.avatarUrl },
                 })),
         };
@@ -152,7 +166,7 @@ export const handler: Handler = async (event) => {
         return {
             statusCode: 200,
             headers: jsonHeaders,
-            body: JSON.stringify({ ok: true, card: detalhe, elapsedMs: Date.now() - started }),
+            body: JSON.stringify({ ok: true, card: detalhe, meuId: eu.id, elapsedMs: Date.now() - started }),
         };
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Erro desconhecido';

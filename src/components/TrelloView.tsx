@@ -497,10 +497,13 @@ export default function TrelloView() {
                 key={cardDetalhe.cardIdAberto ?? 'fechado'}
                 aberto={cardDetalhe.aberto}
                 card={cardDetalhe.card}
+                meuId={cardDetalhe.meuId}
                 isLoading={cardDetalhe.isLoading}
                 error={cardDetalhe.error}
                 onFechar={cardDetalhe.fechar}
                 onComentar={cardDetalhe.comentar}
+                onEditarComentario={cardDetalhe.editarComentario}
+                onExcluirComentario={cardDetalhe.excluirComentario}
                 enviandoComentario={cardDetalhe.enviandoComentario}
                 erroComentario={cardDetalhe.erroComentario}
                 onEditarPrazo={cardDetalhe.editarPrazo}

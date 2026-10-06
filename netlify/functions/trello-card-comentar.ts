@@ -3,15 +3,16 @@ import { checkOrigin } from './_shared/auth';
 import { trelloFetch, type TrelloMemberBruto } from './_shared/trello';
 
 /**
- * Posta um comentário num card do Trello — POST /1/cards/{id}/actions/comments.
+ * Ciclo de vida do comentário num card do Trello:
+ *   criar   -> POST   /1/cards/{id}/actions/comments
+ *   editar  -> PUT    /1/cards/{idCard}/actions/{idAction}/comments
+ *   excluir -> DELETE /1/actions/{idAction}
  *
- * PRIMEIRA function de escrita no Trello desse projeto (as outras são todas
- * read-only). O token já tem permissão de write em Board (testado: `GET
- * /1/tokens/{token}` retorna write:true pra Board/Organization/Member) —
- * então isso posta como o usuário dono do TRELLO_TOKEN, visível pra equipe
- * inteira no board real. Sem confirmação extra além do STOPGAP de origem
- * (mesmo padrão das outras functions) — o texto do comentário é decidido
- * pelo usuário na hora, não é uma escrita automática/em lote.
+ * Escreve no Trello como o dono do TRELLO_TOKEN, visível pra equipe inteira no
+ * board real. Sem confirmação extra além do STOPGAP de origem (mesmo padrão das
+ * outras functions) — é o usuário decidindo o conteúdo na hora, não escrita
+ * automática/em lote. Editar/excluir só funcionam em comentário do próprio
+ * dono do token: o Trello recusa os outros com 401.
  *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
@@ -38,24 +39,31 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: erroHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
-    let body: { cardId?: unknown; texto?: unknown };
+    let body: { cardId?: unknown; texto?: unknown; acao?: unknown; comentarioId?: unknown };
     try {
         body = JSON.parse(event.body || '{}');
     } catch {
         return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'JSON inválido no corpo da requisição' }) };
     }
 
+    const acao = body.acao === 'editar' || body.acao === 'excluir' ? body.acao : 'criar';
     const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : '';
+    const comentarioId = typeof body.comentarioId === 'string' ? body.comentarioId.trim() : '';
     const texto = typeof body.texto === 'string' ? body.texto.trim() : '';
 
     if (!cardId) {
         return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'cardId é obrigatório' }) };
     }
-    if (!texto) {
-        return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'Comentário vazio' }) };
+    if (acao !== 'criar' && !comentarioId) {
+        return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'comentarioId é obrigatório' }) };
     }
-    if (texto.length > TAMANHO_MAX_COMENTARIO) {
-        return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: `Comentário muito longo (máx. ${TAMANHO_MAX_COMENTARIO} caracteres)` }) };
+    if (acao !== 'excluir') {
+        if (!texto) {
+            return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'Comentário vazio' }) };
+        }
+        if (texto.length > TAMANHO_MAX_COMENTARIO) {
+            return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: `Comentário muito longo (máx. ${TAMANHO_MAX_COMENTARIO} caracteres)` }) };
+        }
     }
 
     const key = process.env.TRELLO_API_KEY;
@@ -75,16 +83,26 @@ export const handler: Handler = async (event) => {
     }
 
     try {
-        const criado = await trelloFetch<TrelloActionCriada>(
-            `/cards/${cardId}/actions/comments`,
-            key!,
-            token!,
-            {
-                text: texto,
-                member_creator_fields: 'fullName,initials,avatarUrl',
-            },
-            'POST',
-        );
+        if (acao === 'excluir') {
+            await trelloFetch(`/actions/${comentarioId}`, key!, token!, {}, 'DELETE');
+            return { statusCode: 200, headers: jsonHeaders, body: JSON.stringify({ ok: true, comentarioId }) };
+        }
+
+        const salvo = acao === 'editar'
+            ? await trelloFetch<TrelloActionCriada>(
+                `/cards/${cardId}/actions/${comentarioId}/comments`,
+                key!,
+                token!,
+                { text: texto, member_creator_fields: 'fullName,initials,avatarUrl' },
+                'PUT',
+            )
+            : await trelloFetch<TrelloActionCriada>(
+                `/cards/${cardId}/actions/comments`,
+                key!,
+                token!,
+                { text: texto, member_creator_fields: 'fullName,initials,avatarUrl' },
+                'POST',
+            );
 
         return {
             statusCode: 200,
@@ -92,13 +110,14 @@ export const handler: Handler = async (event) => {
             body: JSON.stringify({
                 ok: true,
                 comentario: {
-                    id: criado.id,
-                    texto: criado.data.text,
-                    data: criado.date,
+                    id: salvo.id,
+                    texto: salvo.data.text,
+                    data: salvo.date,
+                    autorId: salvo.memberCreator.id,
                     autor: {
-                        nome: criado.memberCreator.fullName,
-                        iniciais: criado.memberCreator.initials,
-                        avatarUrl: criado.memberCreator.avatarUrl,
+                        nome: salvo.memberCreator.fullName,
+                        iniciais: salvo.memberCreator.initials,
+                        avatarUrl: salvo.memberCreator.avatarUrl,
                     },
                 },
             }),

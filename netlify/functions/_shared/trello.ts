@@ -9,7 +9,7 @@ export async function trelloFetch<T>(
     key: string,
     token: string,
     params: Record<string, string> = {},
-    method: 'GET' | 'POST' | 'PUT' = 'GET',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
 ): Promise<T> {
     const query = new URLSearchParams({ key, token, ...params }).toString();
     const res = await fetch(`https://api.trello.com/1${path}?${query}`, { method });
@@ -17,6 +17,52 @@ export async function trelloFetch<T>(
         throw new Error(`Trello API ${res.status}: ${res.statusText}`);
     }
     return res.json();
+}
+
+/**
+ * Upload de arquivo pro Trello (multipart/form-data). Não dá pra reaproveitar
+ * o trelloFetch porque binário só entra por form-data, não por query string.
+ */
+export async function trelloUpload<T>(
+    path: string,
+    key: string,
+    token: string,
+    arquivo: { bytes: Uint8Array; nome: string; mimeType: string },
+    params: Record<string, string> = {},
+): Promise<T> {
+    const query = new URLSearchParams({ key, token, ...params }).toString();
+    const form = new FormData();
+    form.append('file', new Blob([arquivo.bytes], { type: arquivo.mimeType }), arquivo.nome);
+    const res = await fetch(`https://api.trello.com/1${path}?${query}`, { method: 'POST', body: form });
+    if (!res.ok) {
+        throw new Error(`Trello API ${res.status}: ${res.statusText}`);
+    }
+    return res.json();
+}
+
+/**
+ * Baixa os bytes de um anexo do Trello.
+ *
+ * Só funciona com o header `Authorization: OAuth` — key/token na query string
+ * dão 401 nessas URLs de download (testado contra a API real), diferente do
+ * resto da API. É por isso que o navegador não consegue carregar a imagem
+ * direto: precisa passar por essa function (ver trello-anexo.ts).
+ */
+export async function trelloBaixarAnexo(
+    url: string,
+    key: string,
+    token: string,
+): Promise<{ bytes: Buffer; contentType: string }> {
+    const res = await fetch(url, {
+        headers: { Authorization: `OAuth oauth_consumer_key="${key}", oauth_token="${token}"` },
+    });
+    if (!res.ok) {
+        throw new Error(`Trello anexo ${res.status}: ${res.statusText}`);
+    }
+    return {
+        bytes: Buffer.from(await res.arrayBuffer()),
+        contentType: res.headers.get('content-type') || 'application/octet-stream',
+    };
 }
 
 /**
