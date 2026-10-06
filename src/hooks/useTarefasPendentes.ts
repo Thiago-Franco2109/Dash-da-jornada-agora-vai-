@@ -30,6 +30,7 @@ import { loadPersistedSet, savePersistedSet } from '../utils/persistedSet';
 const ONBOARDING_BOARD_ID = 'onboarding';
 
 const STORAGE_KEY_ATIVADO = 'notificacao_unificada_ativada_v1';
+const STORAGE_KEY_ATIVADO_LEGADO = 'onboarding_notificacao_atrasados_v1';
 const STORAGE_KEY_MEMBRO = 'notificacao_unificada_membro_v1';
 const STORAGE_KEY_MEMBRO_LEGADO = 'onboarding_notificacao_membro_v1';
 const STORAGE_KEY_BOARDS_IGNORADOS = 'notificacao_bell_boards_ignorados_v1';
@@ -112,6 +113,23 @@ function suportado(): boolean {
     return typeof window !== 'undefined' && 'Notification' in window;
 }
 
+/**
+ * Herda o liga/desliga do alarme antigo (que só cobria o onboarding) na
+ * primeira carga. Sem isso, quem já tinha o alarme ligado antes da unificação
+ * ficou mudo sem perceber — foi exatamente o que aconteceu.
+ */
+function ativadoInicial(): boolean {
+    try {
+        const atual = localStorage.getItem(STORAGE_KEY_ATIVADO);
+        if (atual != null) return atual === 'on';
+        const legado = localStorage.getItem(STORAGE_KEY_ATIVADO_LEGADO) === 'on';
+        if (legado) localStorage.setItem(STORAGE_KEY_ATIVADO, 'on');
+        return legado;
+    } catch {
+        return false;
+    }
+}
+
 /** Primeira ativação: se já existia filtro de membro do alarme antigo, carrega ele uma vez (segue valendo só pro board de onboarding). */
 function membroInicial(): string | null {
     try {
@@ -149,9 +167,7 @@ export function useTarefasPendentes({
     upcomingDays = 3,
     onNotificacaoClick,
 }: UseTarefasPendentesParams) {
-    const [ativado, setAtivado] = useState<boolean>(() => {
-        try { return localStorage.getItem(STORAGE_KEY_ATIVADO) === 'on'; } catch { return false; }
-    });
+    const [ativado, setAtivado] = useState<boolean>(ativadoInicial);
     const [permissao, setPermissao] = useState<NotificationPermission | 'unsupported'>(
         suportado() ? Notification.permission : 'unsupported',
     );

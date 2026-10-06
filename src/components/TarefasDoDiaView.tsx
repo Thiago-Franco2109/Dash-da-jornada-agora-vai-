@@ -102,17 +102,23 @@ export default function TarefasDoDiaView({
                     {configAberta && (
                         <div className="px-4 pb-4 space-y-4 border-t border-slate-100 dark:border-slate-800 pt-3">
                             <div>
-                                {ativado ? (
-                                    <button type="button" onClick={onDesativar} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:underline">
-                                        <span className="material-symbols-outlined text-[16px]">notifications_off</span>
-                                        Desativar alarme de atrasados
-                                    </button>
-                                ) : (
-                                    <button type="button" onClick={onAtivar} className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
-                                        <span className="material-symbols-outlined text-[16px]">notifications_active</span>
-                                        Ativar alarme de atrasados
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={ativado}
+                                    onClick={ativado ? onDesativar : onAtivar}
+                                    className={`inline-flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-colors ${
+                                        ativado
+                                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+                                    }`}
+                                >
+                                    <span className={`relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors ${ativado ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+                                        <span className={`absolute top-0.5 size-4 rounded-full bg-white shadow transition-all ${ativado ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </span>
+                                    <span className="material-symbols-outlined text-[18px]">{ativado ? 'notifications_active' : 'notifications_off'}</span>
+                                    {ativado ? 'Alarme ligado — avisa a cada 10s' : 'Alarme desligado — clique para ligar'}
+                                </button>
                                 {/* Sem permissão do SO o alarme continua: o sino treme e o bipe toca
                                     enquanto a aba estiver aberta. Só o balão do sistema é que não aparece. */}
                                 {ativado && permissao !== 'granted' && (
@@ -158,6 +164,24 @@ export default function TarefasDoDiaView({
                         </div>
                     )}
                 </div>
+
+                {/* Ter atrasado e alarme desligado é o pior dos mundos: a pessoa
+                    acha que está sendo avisada e não está. Ver useTarefasPendentes. */}
+                {!ativado && contagemPorNivel.overdue > 0 && (
+                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/25">
+                        <span className="material-symbols-outlined text-amber-600 dark:text-amber-400">notifications_off</span>
+                        <p className="flex-1 min-w-[200px] text-sm font-semibold text-amber-900 dark:text-amber-200">
+                            {contagemPorNivel.overdue === 1 ? '1 tarefa atrasada' : `${contagemPorNivel.overdue} tarefas atrasadas`} e o alarme está desligado — nada vai te avisar.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={onAtivar}
+                            className="shrink-0 rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-amber-700"
+                        >
+                            Ligar alarme
+                        </button>
+                    </div>
+                )}
 
                 {tarefas.length === 0 ? (
                     <div className="py-16 text-center bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
