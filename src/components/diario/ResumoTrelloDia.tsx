@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTrelloAtividadeHoje } from '../../hooks/useTrelloAtividadeHoje';
+import type { AtividadeTrelloHoje } from '../../hooks/useTrelloAtividadeHoje';
 import { formatarHora } from '../../utils/diarioDatas';
 
 /**
@@ -12,23 +12,26 @@ import { formatarHora } from '../../utils/diarioDatas';
  *
  * Entra RESUMIDO, não item a item: são ~190 ações por dia, e numa timeline
  * única as 4 ou 5 anotações escritas à mão sumiriam no meio delas.
+ *
+ * A busca mora na DiarioView, não aqui: o relatório do dia consome o mesmo
+ * resumo, e duas instâncias do hook fariam duas chamadas à API do Trello pro
+ * mesmo dia — além de poderem divergir entre si.
  */
 
 interface ResumoTrelloDiaProps {
-    /** YYYY-MM-DD no fuso de Brasília. */
-    dia: string;
+    /** Já filtrado pelo dia certo pela DiarioView; `null` enquanto carrega. */
+    atividade: AtividadeTrelloHoje | null;
+    carregando: boolean;
+    erro: string | null;
+    onAtualizar: () => void;
 }
 
 const MAX_LISTAS = 5;
 
-export default function ResumoTrelloDia({ dia }: ResumoTrelloDiaProps) {
-    const { data, isLoading, error, refresh } = useTrelloAtividadeHoje({ data: dia, anexos: true });
+export default function ResumoTrelloDia({ atividade, carregando, erro, onAtualizar }: ResumoTrelloDiaProps) {
     const [aberto, setAberto] = useState(false);
 
-    // O hook mantém o dado do dia anterior enquanto busca o novo; sem esta
-    // checagem a tela mostraria o resumo de ontem com o título de hoje.
-    const doDia = data?.data === dia ? data : null;
-    const carregando = isLoading || !doDia;
+    const doDia = atividade;
 
     return (
         <div className="bg-white dark:bg-slate-800 rounded-[1.75rem] border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
@@ -43,7 +46,7 @@ export default function ResumoTrelloDia({ dia }: ResumoTrelloDiaProps) {
                     </p>
                 </div>
                 <button
-                    onClick={refresh}
+                    onClick={onAtualizar}
                     className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-slate-400 transition-colors"
                     title="Atualizar"
                 >
@@ -51,13 +54,13 @@ export default function ResumoTrelloDia({ dia }: ResumoTrelloDiaProps) {
                 </button>
             </div>
 
-            {error ? (
+            {erro ? (
                 <div className="px-6 pb-5">
                     <p className="text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 rounded-xl px-3 py-2.5">
-                        Não deu pra ler o Trello: {error}. Suas anotações abaixo continuam valendo.
+                        Não deu pra ler o Trello: {erro}. Suas anotações abaixo continuam valendo.
                     </p>
                 </div>
-            ) : carregando ? (
+            ) : carregando || !doDia ? (
                 <div className="px-6 pb-5 flex gap-2">
                     {[0, 1, 2].map(i => (
                         <div key={i} className="h-16 flex-1 bg-slate-100 dark:bg-slate-700/40 rounded-2xl animate-pulse" />

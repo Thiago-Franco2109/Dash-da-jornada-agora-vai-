@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import type { AnotacaoDiario, NovaAnotacao } from '../types/diario';
 import { useDiario, useDiarioEscrita } from '../hooks/useDiario';
+import { useTrelloAtividadeHoje } from '../hooks/useTrelloAtividadeHoje';
 import { getCategoriaDiario } from '../config/diarioCategorias';
 import {
     hojeSP, deslocarDia, formatarHora, formatarDiaExtenso, rotuloDia, instanteParaDia,
 } from '../utils/diarioDatas';
 import AnotacaoForm from './diario/AnotacaoForm';
 import ResumoTrelloDia from './diario/ResumoTrelloDia';
+import RelatorioDiarioModal from './diario/RelatorioDiarioModal';
 
 /**
  * Diário do CS — o registro do que a pessoa fez, dia a dia.
@@ -29,15 +31,37 @@ interface DiarioViewProps {
 export default function DiarioView({ perfil, partners }: DiarioViewProps) {
     const [dia, setDia] = useState(hojeSP());
     const [editando, setEditando] = useState<string | null>(null);
+    const [relatorioAberto, setRelatorioAberto] = useState(false);
 
     const { anotacoes, carregando, erro } = useDiario(perfil, dia, dia);
     const { criar, atualizar, remover, salvando, erro: erroEscrita } = useDiarioEscrita(perfil);
+
+    // A busca do Trello mora aqui, e não dentro do resumo, porque o relatório do
+    // dia consome o mesmo dado — duas instâncias do hook bateriam duas vezes na
+    // API pro mesmo dia e ainda poderiam divergir.
+    const {
+        data: atividadeBruta, isLoading: carregandoTrello, error: erroTrello, refresh: atualizarTrello,
+    } = useTrelloAtividadeHoje({ data: dia, anexos: true });
+    // O hook segura o dado do dia anterior enquanto busca o novo; sem esta
+    // checagem o resumo de ontem apareceria sob o título de hoje.
+    const atividade = atividadeBruta?.data === dia ? atividadeBruta : null;
 
     const hoje = hojeSP();
     const ehHoje = dia === hoje;
     const noFuturo = dia > hoje;
 
     const emRelatorio = anotacoes.filter(a => !a.privado).length;
+
+    // estab_id -> cidade, pro relatório escrever "Parceiro (Cidade)" como no
+    // semanal. Casado por id: nome se repete entre cidades.
+    const cidadePorParceiro = useMemo(() => {
+        const mapa = new Map<string, string>();
+        for (const p of partners) {
+            const id = p.estab_id ? String(p.estab_id) : '';
+            if (id && p.cidade) mapa.set(id, p.cidade);
+        }
+        return mapa;
+    }, [partners]);
 
     return (
         <div className="flex-1 bg-slate-50 dark:bg-slate-900 min-h-screen overflow-y-auto">
@@ -114,6 +138,16 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
                         {anotacoes.length} {anotacoes.length === 1 ? 'anotação' : 'anotações'}
                         {anotacoes.length > 0 && ` · ${emRelatorio} no relatório`}
                     </span>
+
+                    {perfil && (
+                        <button
+                            onClick={() => setRelatorioAberto(true)}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 hover:brightness-110 transition-all"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">description</span>
+                            Relatório do dia
+                        </button>
+                    )}
                 </div>
 
                 {!perfil ? (
@@ -124,7 +158,12 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
                     </div>
                 ) : (
                     <>
-                        <ResumoTrelloDia dia={dia} />
+                        <ResumoTrelloDia
+                            atividade={atividade}
+                            carregando={carregandoTrello}
+                            erro={erroTrello}
+                            onAtualizar={atualizarTrello}
+                        />
 
                         {/* ANOTAR */}
                         <div className="bg-white dark:bg-slate-800 rounded-[1.75rem] border border-slate-200 dark:border-slate-700 shadow-sm p-6">
@@ -227,6 +266,17 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
                     </>
                 )}
             </div>
+
+            {relatorioAberto && (
+                <RelatorioDiarioModal
+                    dia={dia}
+                    perfil={perfil}
+                    anotacoes={anotacoes}
+                    atividade={atividade}
+                    cidadePorParceiro={cidadePorParceiro}
+                    onFechar={() => setRelatorioAberto(false)}
+                />
+            )}
         </div>
     );
 }

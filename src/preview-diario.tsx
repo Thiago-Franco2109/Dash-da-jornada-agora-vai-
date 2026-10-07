@@ -33,6 +33,15 @@ interface LinhaFake {
     atualizado_em: string;
 }
 
+// ── Parceiros pro seletor e pra resolução de cidade ──────────────────────
+const parceirosAmostra = [
+    { estab_id: '28575', estabelecimento: 'Rango Bom', cidade: 'Além Paraíba' },
+    { estab_id: '27606', estabelecimento: 'Cantinho da Sonia', cidade: 'Muriaé' },
+    { estab_id: '28531', estabelecimento: 'Brasa Burguer', cidade: 'Santos Dumont' },
+    { estab_id: '28509', estabelecimento: 'Sublime Açaí Express', cidade: 'Ubá' },
+];
+const parceiros = parceirosAmostra as unknown as EnrichedPerformanceRow[];
+
 const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 /** Instante ISO (UTC) a partir de uma hora de Brasília — comparável por string. */
 const em = (hora: string, dia = hoje) => new Date(`${dia}T${hora}:00.000-03:00`).toISOString();
@@ -71,6 +80,31 @@ let linhas: LinhaFake[] = [
         privado: false, atualizado_em: em('16:20', ontem),
     },
 ];
+
+/**
+ * `?muitas=40` semeia anotações extras, pra conferir o relatório no estado em
+ * que ele passa dos 2000 caracteres do Discord e sai fatiado em várias partes —
+ * que é o caso real do relatório semanal e não acontece com 4 linhas de amostra.
+ */
+const extras = Number(new URLSearchParams(window.location.search).get('muitas') ?? 0);
+if (extras > 0) {
+    // Usa os mesmos parceiros do seletor, ciclicamente: assim o relatório
+    // resolve a cidade de verdade pelo id, em vez de testar um caminho vazio.
+    linhas = [...linhas, ...Array.from({ length: extras }, (_, i) => {
+        const p = parceirosAmostra[i % parceirosAmostra.length];
+        return {
+            id: `extra-${i}`,
+            perfil: 'THIAGO',
+            ocorrido_em: em(`${String(8 + (i % 10)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`),
+            texto: `Fechei a promoção subsidiada e alinhei a arte da campanha, começa na sexta. (amostra ${i})`,
+            categoria: 'captacao',
+            partner_id: p.estab_id,
+            partner_nome: p.estabelecimento,
+            privado: false,
+            atualizado_em: em('12:00'),
+        };
+    })];
+}
 
 function chainFake(tabela: string) {
     let alvoId: string | null = null;
@@ -179,14 +213,6 @@ window.fetch = ((entrada: RequestInfo | URL, init?: RequestInit) => {
     }
     return fetchOriginal(entrada as RequestInfo, init);
 }) as typeof window.fetch;
-
-// ── Parceiros pro seletor ────────────────────────────────────────────────
-const parceiros = [
-    { estab_id: '28575', estabelecimento: 'Rango Bom', cidade: 'Além Paraíba' },
-    { estab_id: '27606', estabelecimento: 'Cantinho da Sonia', cidade: 'Muriaé' },
-    { estab_id: '28531', estabelecimento: 'Brasa Burguer', cidade: 'Santos Dumont' },
-    { estab_id: '28509', estabelecimento: 'Sublime Açaí Express', cidade: 'Ubá' },
-] as unknown as EnrichedPerformanceRow[];
 
 /** Espelha o que o App faz: Ctrl/Cmd+J abre a anotação rápida de qualquer tela. */
 export function PreviewDiario() {
