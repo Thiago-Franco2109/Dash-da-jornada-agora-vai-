@@ -10,6 +10,7 @@ export type AppView =
     | 'crm'
     | 'crm_jornada'
     | 'tarefas_dia'
+    | 'diario'
     | 'cd_desempenho'
     | 'churn'
     | 'cs_kpis'

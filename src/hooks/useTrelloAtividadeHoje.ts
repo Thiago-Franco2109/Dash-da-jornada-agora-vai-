@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * Resumo da atividade do dono do token no Trello hoje (comentários + cards
- * movidos) — ver netlify/functions/trello-atividade-hoje.ts.
+ * Resumo da atividade do dono do token no Trello num dia (comentários, cards
+ * movidos e, opcionalmente, anexos) — ver netlify/functions/trello-atividade-hoje.ts.
+ *
+ * Sem argumento nenhum é "hoje, sem anexos", que é o que o cabeçalho da tela
+ * Trello consome. O diário passa `data` (pra poder voltar em dias anteriores) e
+ * `anexos` (o print de confirmação conta como trabalho feito).
  */
 
 const FN_URL = '/.netlify/functions/trello-atividade-hoje';
 
 export interface MovimentacaoTrello {
     id: string;
-    tipo: 'comentario' | 'movido';
+    tipo: 'comentario' | 'movido' | 'anexo';
     quando: string;
     cardNome: string;
     cardUrl: string;
@@ -19,6 +23,14 @@ export interface MovimentacaoTrello {
     /** Só em movimentações de lista. */
     listaAntes?: string;
     listaDepois?: string;
+    /** Só em anexos. */
+    anexoNome?: string;
+}
+
+/** Cards distintos (não ações) por lista de destino ou por board. */
+export interface ContagemPorNome {
+    nome: string;
+    cards: number;
 }
 
 export interface AtividadeTrelloHoje {
@@ -26,11 +38,31 @@ export interface AtividadeTrelloHoje {
     totalMovimentacoes: number;
     comentarios: number;
     cardsMovidos: number;
+    anexos: number;
+    porLista: ContagemPorNome[];
+    porBoard: ContagemPorNome[];
+    /** A API do Trello corta em 1000 ações — aí o resumo está incompleto. */
+    truncado: boolean;
     movimentacoes: MovimentacaoTrello[];
 }
 
-async function fetchAtividadeHoje(): Promise<AtividadeTrelloHoje> {
-    const res = await fetch(FN_URL, { credentials: 'include' as RequestCredentials, cache: 'no-store' });
+export interface OpcoesAtividade {
+    /** YYYY-MM-DD no fuso de Brasília. Default: hoje. */
+    data?: string;
+    /** Inclui `addAttachmentToCard` na contagem. Default: false. */
+    anexos?: boolean;
+}
+
+async function fetchAtividade({ data, anexos }: OpcoesAtividade): Promise<AtividadeTrelloHoje> {
+    const params = new URLSearchParams();
+    if (data) params.set('data', data);
+    if (anexos) params.set('anexos', '1');
+    const query = params.toString();
+
+    const res = await fetch(query ? `${FN_URL}?${query}` : FN_URL, {
+        credentials: 'include' as RequestCredentials,
+        cache: 'no-store',
+    });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json?.ok === false) {
         throw new Error(json?.error || `Erro ${res.status} ao carregar atividade do Trello.`);
@@ -38,7 +70,8 @@ async function fetchAtividadeHoje(): Promise<AtividadeTrelloHoje> {
     return json as AtividadeTrelloHoje;
 }
 
-export function useTrelloAtividadeHoje() {
+export function useTrelloAtividadeHoje(opcoes: OpcoesAtividade = {}) {
+    const { data: dia, anexos } = opcoes;
     const [data, setData] = useState<AtividadeTrelloHoje | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -49,7 +82,7 @@ export function useTrelloAtividadeHoje() {
         if (carregouUmaVez.current) setIsRefreshing(true);
         else setIsLoading(true);
         try {
-            const atividade = await fetchAtividadeHoje();
+            const atividade = await fetchAtividade({ data: dia, anexos });
             setData(atividade);
             setError(null);
         } catch (err) {
@@ -59,7 +92,7 @@ export function useTrelloAtividadeHoje() {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, []);
+    }, [dia, anexos]);
 
     useEffect(() => {
         refresh();

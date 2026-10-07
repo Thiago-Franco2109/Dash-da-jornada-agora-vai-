@@ -41,6 +41,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         ] : [] },
         { label: 'CS Operations', items: [
             { id: 'trello' as AppView, icon: 'task_alt', label: 'Trello' },
+            { id: 'diario' as AppView, icon: 'menu_book', label: 'Diário' },
             { id: 'cs_kpis' as AppView, icon: 'monitoring', label: 'KPIs CS' },
             { id: 'reports' as AppView, icon: 'assessment', label: 'Relatórios' },
             ...(!isCD ? [{ id: 'carteira_grupo' as AppView, icon: 'workspaces', label: 'Cidades' }] : []),

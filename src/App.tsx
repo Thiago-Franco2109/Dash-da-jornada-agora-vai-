@@ -26,6 +26,8 @@ import OnboardingCompletoAlert from './components/OnboardingCompletoAlert';
 import CrmView from './components/CrmView';
 import CrmJornadaView from './components/CrmJornadaView';
 import TarefasDoDiaView from './components/TarefasDoDiaView';
+import DiarioView from './components/DiarioView';
+import AnotacaoRapida from './components/diario/AnotacaoRapida';
 import type { AppView } from './types/views';
 import type { CrmPartner } from './types/crm';
 import { computeTopCitiesByGmv } from './config/crmCampaigns';
@@ -86,7 +88,7 @@ import { findPartner } from './utils/partnerIdentity';
 function App() {
   const { isAuthenticated, isLoading: loadingAuth, logout } = useAuth();
   const { mode, theme, isCD } = useProductMode();
-  const { managerFilter, setManagerFilter } = useManagerSession();
+  const { profile, managerFilter, setManagerFilter } = useManagerSession();
   /**
    * Foco "Cidades OKR" (cabeçalho). É aplicado aqui, nas listas que cada tela
    * recebe, e não dentro delas: assim Jornada, CRM, Carteira e KPIs respondem
@@ -114,6 +116,8 @@ function App() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'indice_desempenho', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState<EnrichedPerformanceRow | null>(null);
   const [partnerSearchOpen, setPartnerSearchOpen] = useState(false);
+  /** Anotação rápida do diário (Ctrl/Cmd+J), disponível de qualquer tela. */
+  const [anotacaoRapidaOpen, setAnotacaoRapidaOpen] = useState(false);
   const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
 
   /**
@@ -887,6 +891,12 @@ function App() {
         e.preventDefault();
         setPartnerSearchOpen(prev => !prev);
       }
+      // Ctrl/Cmd+J anota no diário sem sair da tela: o hábito de "acabei de
+      // fazer, anoto agora" não sobrevive a atravessar o menu.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setAnotacaoRapidaOpen(prev => !prev);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -951,6 +961,8 @@ function App() {
               upsertCrmNote={upsertCrmNote}
               onRefreshTrello={() => { refreshOnboardingTrello(); refreshTrelloTarefas(); }}
             />
+        ) : currentView === 'diario' ? (
+            <DiarioView perfil={profile} partners={searchablePartners} />
         ) : currentView === 'settings' ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
             <SettingsView />
@@ -1407,6 +1419,14 @@ function App() {
         onSelect={navigateToPartner}
         isLoading={partnerSearchOpen && (isCD ? loadingDesempenho : loadingCrm) && searchablePartners.length === 0}
       />
+
+      {anotacaoRapidaOpen && (
+        <AnotacaoRapida
+          onFechar={() => setAnotacaoRapidaOpen(false)}
+          perfil={profile}
+          partners={searchablePartners}
+        />
+      )}
 
       {statusSaveError && (
         <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 p-4 max-w-sm bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-500/20 rounded-xl text-red-800 dark:text-red-400 shadow-lg">
