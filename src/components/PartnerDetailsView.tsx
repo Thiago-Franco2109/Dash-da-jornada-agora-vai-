@@ -30,6 +30,7 @@ import PartnerCardapioSection from './PartnerCardapioSection';
 import { useCardapioAnalise } from '../hooks/useCardapioAnalise';
 import { useParceiroAcesso } from '../hooks/useParceiroAcesso';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
+import PartnerPedidosSection from './PartnerPedidosSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
 
 interface PartnerDetailsViewProps {
@@ -46,7 +47,7 @@ interface PartnerDetailsViewProps {
     onNavigateToCrm?: () => void;
 }
 
-type TabKey = 'geral' | 'contatos' | 'promocoes' | 'funcionamento' | 'historico';
+type TabKey = 'geral' | 'pedidos' | 'contatos' | 'promocoes' | 'funcionamento' | 'historico';
 
 const CHECKLIST_TEMPLATES = {
     w1: [
@@ -598,6 +599,13 @@ export default function PartnerDetailsView({
                         <span className="material-symbols-outlined text-[18px]">dashboard</span>
                         Visão Geral
                     </button>
+                    <button
+                        className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'pedidos' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                        onClick={() => setActiveTab('pedidos')}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                        Pedidos
+                    </button>
                     <button 
                         className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'contatos' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
                         onClick={() => setActiveTab('contatos')}
@@ -929,6 +937,12 @@ export default function PartnerDetailsView({
                             )}
                         </div>
                     </div>
+                )}
+
+                {/* Relatório de pedidos: a section faz o próprio fetch, então as 3 queries
+                    do banco só saem quando a aba é aberta. */}
+                {activeTab === 'pedidos' && (
+                    <PartnerPedidosSection partner={partner} />
                 )}
 
                 {activeTab === 'contatos' && (

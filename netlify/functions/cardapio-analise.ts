@@ -119,8 +119,11 @@ export const handler: Handler = async (event) => {
     }
     const estabId = Number(estabIdRaw);
     const dias = Math.min(Math.max(Number(q.dias) || 60, 7), 180);
-    // +1 porque a janela termina ONTEM (p.data < CURDATE()), não hoje.
-    const diasSql = dias + 1;
+    // `data >= CURDATE()-dias AND data < CURDATE()` já cobre exatamente `dias` dias,
+    // de ontem pra trás. Aqui havia um +1 que esticava a janela em um dia e fazia o
+    // "N pedidos nos últimos 60 dias" desta tela divergir do da aba Pedidos
+    // (pedido-relatorio), que lê a mesma loja com o mesmo rótulo.
+    const diasSql = dias;
 
     let connection;
     const started = Date.now();
