@@ -9,9 +9,10 @@ import { useState } from 'react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import TarefasDoDiaView from './components/TarefasDoDiaView';
-import type { TarefaUnificada } from './hooks/useTarefasPendentes';
+import type { TarefaUnificada, TarefaSemPrazo } from './hooks/useTarefasPendentes';
 import type { CrmFollowUpAlert } from './types/crm';
 import type { MembroTrello } from './types/trello';
+import { compararPorModo } from './utils/trelloNivel';
 import './index.css';
 
 const agora = new Date();
@@ -36,17 +37,17 @@ const crmHoje = {
     notes: '',
 } as unknown as CrmFollowUpAlert;
 
-const tarefas: TarefaUnificada[] = [
+/**
+ * De propósito FORA de ordem e com vários vencendo no mesmo dia: é o caso que o
+ * desempate por dia (daysOffset) embaralhava. Ordenado com o comparador real,
+ * cada balde tem que sair do mais próximo de vencer pro mais distante.
+ */
+const tarefasBrutas: TarefaUnificada[] = [
     {
-        id: 'crm:p1', tipo: 'crm', titulo: crmAtrasado.partner.estabelecimento,
-        subtitulo: `${crmAtrasado.partner.cidade} · ${crmAtrasado.partner.analista}`,
-        due: crmAtrasado.nextFollowUp, nivel: 'overdue', diasOffset: 0, crm: crmAtrasado,
-    },
-    {
-        id: 'trello:t1', tipo: 'trello', titulo: 'Ligar pro Damone',
-        subtitulo: 'Prospecção · Fazendo',
-        due: horasAtras(2), nivel: 'overdue', diasOffset: 0,
-        trelloCardId: 't1', trelloCardUrl: 'https://trello.com/c/mock1',
+        id: 'trello:t2', tipo: 'trello', titulo: 'Enviar arte pro parceiro',
+        subtitulo: '[SC] Parceiros em Queda · A fazer',
+        due: horasNaFrente(30), nivel: 'upcoming', diasOffset: 1,
+        trelloCardId: 't2', trelloCardUrl: 'https://trello.com/c/mock2',
     },
     {
         id: 'crm:p2', tipo: 'crm', titulo: crmHoje.partner.estabelecimento,
@@ -54,11 +55,34 @@ const tarefas: TarefaUnificada[] = [
         due: crmHoje.nextFollowUp, nivel: 'today', diasOffset: 0, crm: crmHoje,
     },
     {
-        id: 'trello:t2', tipo: 'trello', titulo: 'Enviar arte pro parceiro',
-        subtitulo: '[SC] Parceiros em Queda · A fazer',
-        due: horasNaFrente(30), nivel: 'upcoming', diasOffset: 1,
-        trelloCardId: 't2', trelloCardUrl: 'https://trello.com/c/mock2',
+        id: 'trello:t3', tipo: 'trello', titulo: 'Cobrar foto do cardápio (vence ANTES do iTable)',
+        subtitulo: 'Prospecção · Fazendo',
+        due: horasNaFrente(1), nivel: 'today', diasOffset: 0,
+        trelloCardId: 't3', trelloCardUrl: 'https://trello.com/c/mock3',
     },
+    {
+        id: 'crm:p1', tipo: 'crm', titulo: crmAtrasado.partner.estabelecimento,
+        subtitulo: `${crmAtrasado.partner.cidade} · ${crmAtrasado.partner.analista}`,
+        due: crmAtrasado.nextFollowUp, nivel: 'overdue', diasOffset: 0, crm: crmAtrasado,
+    },
+    {
+        id: 'trello:t1', tipo: 'trello', titulo: 'Ligar pro Damone (atrasado há menos tempo)',
+        subtitulo: 'Prospecção · Fazendo',
+        due: horasAtras(2), nivel: 'overdue', diasOffset: 0,
+        trelloCardId: 't1', trelloCardUrl: 'https://trello.com/c/mock1',
+    },
+];
+
+const tarefas = [...tarefasBrutas].sort((a, b) => compararPorModo(
+    { nivel: a.nivel, daysOffset: a.diasOffset, due: a.due },
+    { nivel: b.nivel, daysOffset: b.diasOffset, due: b.due },
+    'urgencia',
+));
+
+const semPrazo: TarefaSemPrazo[] = [
+    { id: 'trello:s1', titulo: '28501 - Pizzaria do Zé', subtitulo: '[ONBOARDING] Carteira SC · Day + 2', trelloCardId: 's1', trelloCardUrl: 'https://trello.com/c/mocks1' },
+    { id: 'trello:s2', titulo: '27110 - Burger da Esquina', subtitulo: '[ONBOARDING] Carteira SC · Day + 2', trelloCardId: 's2', trelloCardUrl: 'https://trello.com/c/mocks2' },
+    { id: 'trello:s3', titulo: '19002 - Açaí do Parque', subtitulo: '[SC] Parceiros em Queda · A fazer', trelloCardId: 's3', trelloCardUrl: 'https://trello.com/c/mocks3' },
 ];
 
 const membrosMock: MembroTrello[] = [
@@ -76,6 +100,7 @@ export function PreviewTarefas() {
     return (
         <TarefasDoDiaView
             tarefas={tarefas}
+            tarefasSemPrazo={semPrazo}
             contagemPorNivel={{
                 overdue: tarefas.filter(t => t.nivel === 'overdue').length,
                 today: tarefas.filter(t => t.nivel === 'today').length,

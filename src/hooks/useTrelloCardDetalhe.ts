@@ -126,7 +126,12 @@ async function postAnexo(cardId: string, arquivo: File): Promise<AnexoDetalhe & 
     return json.anexo;
 }
 
-async function putPrazo(cardId: string, due: string | null): Promise<{ due: string | null; dueComplete: boolean }> {
+/**
+ * Define (ou limpa, com `null`) o prazo de um card pelo id. Exportada porque a
+ * triagem de "sem prazo" em Tarefas do dia precisa marcar data sem abrir o
+ * modal — abrir carregaria o card inteiro só pra mexer numa data.
+ */
+export async function salvarPrazoCard(cardId: string, due: string | null): Promise<{ due: string | null; dueComplete: boolean }> {
     const res = await fetch('/.netlify/functions/trello-card-editar', {
         method: 'POST',
         credentials: 'include' as RequestCredentials,
@@ -245,7 +250,7 @@ export function useTrelloCardDetalhe() {
         setSalvandoPrazo(true);
         setErroPrazo(null);
         try {
-            const atualizado = await putPrazo(cardIdAberto, due);
+            const atualizado = await salvarPrazoCard(cardIdAberto, due);
             setCard(prev => (prev ? { ...prev, ...atualizado } : prev));
         } catch (err) {
             setErroPrazo(err instanceof Error ? err.message : 'Falha ao alterar o prazo');

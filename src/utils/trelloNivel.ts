@@ -72,6 +72,35 @@ export function nivelDaTarefa(
     return { nivel, data, diasOffset };
 }
 
+/**
+ * "Quanto falta" em texto curto, pra bater o olho e ver o que vence primeiro
+ * sem ler a data inteira. Mesma granularidade de HORÁRIO do nivelDaTarefa:
+ * dentro do mesmo dia a diferença aparece em horas/minutos, não some.
+ */
+export function rotuloPrazo(due: string | null, agora: Date = new Date()): string {
+    if (!due) return '';
+    let data: Date;
+    try {
+        data = parseISO(due);
+        if (Number.isNaN(data.getTime())) return '';
+    } catch {
+        return '';
+    }
+
+    const minutos = Math.round((data.getTime() - agora.getTime()) / 60_000);
+    const dias = differenceInCalendarDays(data, agora);
+
+    if (minutos < 0) {
+        const atrasoMin = Math.abs(minutos);
+        if (Math.abs(dias) >= 1) return `${Math.abs(dias)}d atrasado`;
+        if (atrasoMin >= 60) return `${Math.floor(atrasoMin / 60)}h atrasado`;
+        return `${atrasoMin}min atrasado`;
+    }
+    if (dias === 0) return minutos >= 60 ? `em ${Math.floor(minutos / 60)}h` : `em ${minutos}min`;
+    if (dias === 1) return 'amanhã';
+    return `em ${dias}d`;
+}
+
 /** Critério de ordenação dos cards — compartilhado entre a aba Trello e o Quadro da Acompanhar Onboarding. */
 export type ModoOrdenacao = 'urgencia' | 'prazo_asc' | 'prazo_desc';
 
@@ -97,7 +126,13 @@ interface ItemOrdenavel {
  */
 export function compararPorModo(a: ItemOrdenavel, b: ItemOrdenavel, modo: ModoOrdenacao): number {
     if (modo === 'urgencia') {
-        return NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel] || (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
+        const porNivel = NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel];
+        if (porNivel !== 0) return porNivel;
+        // Desempate pelo INSTANTE do prazo. Com daysOffset (dia cheio), tudo que
+        // vence no mesmo dia empatava — a fatia "hoje" inteira saía em ordem
+        // arbitrária, com o que vence às 09:00 podendo cair depois das 18:00.
+        if (a.due && b.due) return new Date(a.due).getTime() - new Date(b.due).getTime();
+        return (a.daysOffset ?? 0) - (b.daysOffset ?? 0);
     }
     const semPrazoA = a.due == null;
     const semPrazoB = b.due == null;

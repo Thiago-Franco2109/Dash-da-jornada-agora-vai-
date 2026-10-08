@@ -4,7 +4,7 @@ import type { TarefaTrello } from './useTrelloTarefas';
 import type { CrmPartner, CrmPartnerNote, CrmFollowUpAlert } from '../types/crm';
 import type { MembroTrello } from '../types/trello';
 import { computeFollowUpAlerts } from '../utils/crmPipeline';
-import { nivelDaTarefa, NIVEL_INDICE, type Nivel } from '../utils/trelloNivel';
+import { nivelDaTarefa, compararPorModo, type Nivel } from '../utils/trelloNivel';
 import { loadPersistedSet, savePersistedSet } from '../utils/persistedSet';
 
 /**
@@ -66,6 +66,19 @@ export interface TarefaUnificada {
     crm?: CrmFollowUpAlert;
     trelloCardId?: string;
     trelloCardUrl?: string;
+}
+
+/**
+ * Card do Trello que não tem prazo nenhum. Fica FORA da lista do dia e do
+ * alarme (não há quando cobrar), mas precisa aparecer em algum lugar pra
+ * receber uma data — senão some do radar pra sempre.
+ */
+export interface TarefaSemPrazo {
+    id: string;
+    titulo: string;
+    subtitulo: string;
+    trelloCardId: string;
+    trelloCardUrl: string;
 }
 
 interface ItemTrelloBase {
@@ -342,9 +355,13 @@ export function useTarefasPendentes({
             });
         }
 
-        return [...doCrm, ...doTrello].sort(
-            (a, b) => NIVEL_INDICE[a.nivel] - NIVEL_INDICE[b.nivel] || a.diasOffset - b.diasOffset,
-        );
+        // Mesmo comparador da aba Trello: atrasado > hoje > próximos e, dentro
+        // de cada balde, pelo INSTANTE do prazo (quem vence antes aparece antes).
+        return [...doCrm, ...doTrello].sort((a, b) => compararPorModo(
+            { nivel: a.nivel, daysOffset: a.diasOffset, due: a.due },
+            { nivel: b.nivel, daysOffset: b.diasOffset, due: b.due },
+            'urgencia',
+        ));
     }, [crmPartners, getCrmNote, managerFilter, upcomingDays, trelloUnificado, boardsIgnorados, listasIgnoradas, membroFiltro, agora]);
 
     const contagemPorNivel = useMemo(() => {
@@ -352,6 +369,29 @@ export function useTarefasPendentes({
         for (const t of tarefasUnificadas) counts[t.nivel as 'overdue' | 'today' | 'upcoming']++;
         return counts;
     }, [tarefasUnificadas]);
+
+    // Mesmos filtros da lista do dia (board/lista ignorados, membro), só que
+    // pegando justamente o que ela descarta: card aberto e sem due.
+    const tarefasSemPrazo = useMemo<TarefaSemPrazo[]>(() => {
+        const itens: TarefaSemPrazo[] = [];
+        for (const item of trelloUnificado) {
+            if (item.closed || item.due) continue;
+            if (boardsIgnorados.has(item.boardId) || listasIgnoradas.has(item.listId)) continue;
+            if (membroFiltro && item.boardId === ONBOARDING_BOARD_ID && !item.membros.some(m => m.id === membroFiltro)) continue;
+
+            itens.push({
+                id: `trello:${item.id}`,
+                titulo: item.nome,
+                subtitulo: `${item.board} · ${item.lista}`,
+                trelloCardId: item.id,
+                trelloCardUrl: item.cardUrl,
+            });
+        }
+        // Agrupa visualmente por board/lista: triagem rende mais percorrendo
+        // uma lista de cada vez do que pulando de board em board.
+        return itens.sort((a, b) =>
+            a.subtitulo.localeCompare(b.subtitulo, 'pt-BR') || a.titulo.localeCompare(b.titulo, 'pt-BR'));
+    }, [trelloUnificado, boardsIgnorados, listasIgnoradas, membroFiltro]);
 
     // Relógio próprio: reclassifica a cada 1min mesmo sem novo dado chegar —
     // um prazo "hoje" vira "atrasado" na hora certa, não só no próximo fetch.
@@ -445,6 +485,7 @@ export function useTarefasPendentes({
 
     return {
         tarefasUnificadas,
+        tarefasSemPrazo,
         contagemPorNivel,
         inscreverAlerta,
         ativado,

@@ -941,6 +941,7 @@ function App() {
         ) : currentView === 'tarefas_dia' ? (
             <TarefasDoDiaView
               tarefas={tarefasPendentes.tarefasUnificadas}
+              tarefasSemPrazo={tarefasPendentes.tarefasSemPrazo}
               contagemPorNivel={tarefasPendentes.contagemPorNivel}
               ativado={tarefasPendentes.ativado}
               permissao={tarefasPendentes.permissao}
