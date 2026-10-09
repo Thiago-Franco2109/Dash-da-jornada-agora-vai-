@@ -12,9 +12,11 @@ import { checkOrigin } from './_shared/auth';
  *   KR2 Adoção   70% dos parceiros ativos recebendo pedido nos últimos 7 dias
  *   KR3 Churn    95% dos contratos vivos no início do trimestre ainda vivos
  *
- * A resposta traz o número E a lista de quem está de fora — a aba existe para
- * trabalhar a OKR, não só para exibir o placar: sem a lista nominal o CS não
- * tem o que fazer com a porcentagem.
+ * A resposta traz as LISTAS nominais, não as porcentagens: a aba existe para
+ * trabalhar a OKR, não só para exibir o placar, e a soma precisa descontar as
+ * lojas que o CS tirou da conta (Supabase `okr_excluido`). Quem soma é
+ * `src/utils/okrFiguras.ts` — somar aqui também criaria uma segunda verdade,
+ * calculada sobre a base cheia e pronta para divergir da tela.
  *
  * ── Quais cidades ────────────────────────────────────────────────────────
  * A lista NÃO mora aqui: vem em `?cidades=` com os prefixos normalizados de
@@ -127,10 +129,6 @@ function tempoParado(p: { diasSemPedido: number | null; lancamento: string }, co
     return p.diasSemPedido ?? (p.lancamento ? diasEntre(p.lancamento, corte) : 9999);
 }
 
-function pct(parte: number, total: number): number {
-    return total > 0 ? Math.round((parte / total) * 1000) / 10 : 0;
-}
-
 interface ParceiroOkr {
     id: number;
     nome: string;
@@ -230,7 +228,6 @@ export const handler: Handler = async (event) => {
         // zerado. Um formato especial para o caso vazio só obrigaria a tela a
         // tratar dois contratos diferentes para dizer a mesma coisa.
         if (contratos.length === 0) {
-            const zero = { pct: 0 };
             return {
                 statusCode: 200,
                 headers: jsonHeaders,
@@ -239,10 +236,9 @@ export const handler: Handler = async (event) => {
                     trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte: corte },
                     cidades: [...new Set(daOkr.map(l => String(l.nome)))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
                     parametros: { janelaNovos, pedidosNovos, diasAdocao, metaKr1: PADRAO.metaKr1, metaKr2: PADRAO.metaKr2, metaKr3: PADRAO.metaKr3, desdeAdocao: somarDias(corte, -diasAdocao + 1) },
-                    kr1: { ...zero, meta: PADRAO.metaKr1, coorte: 0, fechados: 0, atingiram: 0, parceiros: [] },
-                    kr2: { ...zero, meta: PADRAO.metaKr2, base: 0, recebendo: 0, parceiros: [] },
-                    kr3: { ...zero, meta: PADRAO.metaKr3, base: 0, perdidos: 0, saidas: [] },
-                    porCidade: [],
+                    kr1: { meta: PADRAO.metaKr1, parceiros: [] },
+                    kr2: { meta: PADRAO.metaKr2, parceiros: [] },
+                    kr3: { meta: PADRAO.metaKr3, parceiros: [] },
                     elapsedMs: Date.now() - started,
                 }),
             };
@@ -329,9 +325,6 @@ export const handler: Handler = async (event) => {
             })
             .sort((a, b) => b.lancamento.localeCompare(a.lancamento));
 
-        const kr1Fechados = coorte.filter(c => c.concluida);
-        const kr1Atingiram = kr1Fechados.filter(c => c.atingiu);
-
         // ── KR2 ──────────────────────────────────────────────────────────
         // Base = quem está ativo HOJE (delivery = 1) e já tinha lançado até o
         // corte. Suspensão (delivery = 4) não tem histórico no banco, então
@@ -386,55 +379,47 @@ export const handler: Handler = async (event) => {
             adocao.sort((a, b) => tempoParado(b, corte) - tempoParado(a, corte));
         }
 
-        const kr2Recebendo = adocao.filter(a => a.recebendo);
-
         // ── KR3 ──────────────────────────────────────────────────────────
         // Base = contrato vivo na virada do trimestre (lançou até lá e não
         // tinha saído). Quem lançou DENTRO do trimestre não entra: o KR mede
         // manter o que já existia, e contar os novos diluiria a conta.
-        const baseChurn = parceiros.filter(p =>
-            p.lancamento && p.lancamento <= inicio && (!p.saida || p.saida > inicio),
-        );
-        const perdidos = baseChurn
-            .filter(p => p.saida && p.saida >= inicio && p.saida <= corte)
-            .map(p => ({ id: p.id, nome: p.nome, cidade: p.cidade, saida: p.saida!, motivo: null as string | null }))
-            .sort((a, b) => b.saida.localeCompare(a.saida));
+        const churn = parceiros
+            .filter(p => p.lancamento && p.lancamento <= inicio && (!p.saida || p.saida > inicio))
+            .map(p => ({
+                id: p.id,
+                nome: p.nome,
+                cidade: p.cidade,
+                // null = continua na base; data = saiu DENTRO do trimestre.
+                saida: p.saida && p.saida >= inicio && p.saida <= corte ? p.saida : null,
+                motivo: null as string | null,
+            }))
+            .sort((a, b) => (b.saida ?? '').localeCompare(a.saida ?? ''));
 
         // Motivo do cancelamento mora em status_venda.observacao — só vale a
         // pena buscar para quem realmente saiu.
-        if (perdidos.length > 0) {
+        const sairam = churn.filter(p => p.saida);
+        if (sairam.length > 0) {
             const [motivos] = await connection.query<RowDataPacket[]>(
                 `SELECT ve.estabelecimento_id AS estab, sv.observacao, sv.data
                  FROM status_venda sv
                  JOIN venda_estabelecimento ve ON ve.venda_id = sv.venda_id
                  WHERE sv.status IN (2, 3, 5) AND ve.estabelecimento_id IN (?)
                  ORDER BY sv.data`,
-                [perdidos.map(p => p.id)],
+                [sairam.map(p => p.id)],
             );
             const motivoPorEstab = new Map<number, string>();
             for (const m of motivos) {
                 const texto = String(m.observacao ?? '').trim();
                 if (texto) motivoPorEstab.set(Number(m.estab), texto); // ORDER BY data: fica o último
             }
-            for (const p of perdidos) p.motivo = motivoPorEstab.get(p.id) ?? null;
+            for (const p of sairam) p.motivo = motivoPorEstab.get(p.id) ?? null;
         }
 
-        // ── recorte por cidade ───────────────────────────────────────────
-        const nomesCidades = [...new Set(parceiros.map(p => p.cidade).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        const porCidade = nomesCidades.map(cidade => {
-            const c1 = coorte.filter(c => c.cidade === cidade);
-            const c1Fechados = c1.filter(c => c.concluida);
-            const c2 = adocao.filter(a => a.cidade === cidade);
-            const c3 = baseChurn.filter(p => p.cidade === cidade);
-            const c3Perdidos = perdidos.filter(p => p.cidade === cidade);
-            return {
-                cidade,
-                kr1: { coorte: c1.length, fechados: c1Fechados.length, atingiram: c1Fechados.filter(c => c.atingiu).length, pct: pct(c1Fechados.filter(c => c.atingiu).length, c1Fechados.length) },
-                kr2: { base: c2.length, recebendo: c2.filter(a => a.recebendo).length, pct: pct(c2.filter(a => a.recebendo).length, c2.length) },
-                kr3: { base: c3.length, perdidos: c3Perdidos.length, pct: pct(c3.length - c3Perdidos.length, c3.length) },
-            };
-        });
-
+        // A resposta traz as LISTAS, não as porcentagens. Quem soma é
+        // `src/utils/okrFiguras.ts`, porque a conta precisa descontar as lojas
+        // que o CS tirou da conta (Supabase `okr_excluido`) — e uma soma aqui
+        // seria uma segunda verdade, calculada sobre a base cheia, pronta para
+        // divergir do que a tela mostra.
         return {
             statusCode: 200,
             headers: jsonHeaders,
@@ -445,29 +430,9 @@ export const handler: Handler = async (event) => {
                 // no cadastro (uma delas inativa, sem nenhum estabelecimento).
                 cidades: [...new Set(daOkr.map(l => String(l.nome)))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
                 parametros: { janelaNovos, pedidosNovos, diasAdocao, metaKr1: PADRAO.metaKr1, metaKr2: PADRAO.metaKr2, metaKr3: PADRAO.metaKr3, desdeAdocao },
-                kr1: {
-                    meta: PADRAO.metaKr1,
-                    coorte: coorte.length,
-                    fechados: kr1Fechados.length,
-                    atingiram: kr1Atingiram.length,
-                    pct: pct(kr1Atingiram.length, kr1Fechados.length),
-                    parceiros: coorte,
-                },
-                kr2: {
-                    meta: PADRAO.metaKr2,
-                    base: adocao.length,
-                    recebendo: kr2Recebendo.length,
-                    pct: pct(kr2Recebendo.length, adocao.length),
-                    parceiros: adocao,
-                },
-                kr3: {
-                    meta: PADRAO.metaKr3,
-                    base: baseChurn.length,
-                    perdidos: perdidos.length,
-                    pct: pct(baseChurn.length - perdidos.length, baseChurn.length),
-                    saidas: perdidos,
-                },
-                porCidade,
+                kr1: { meta: PADRAO.metaKr1, parceiros: coorte },
+                kr2: { meta: PADRAO.metaKr2, parceiros: adocao },
+                kr3: { meta: PADRAO.metaKr3, parceiros: churn },
                 elapsedMs: Date.now() - started,
             }),
         };

@@ -38,19 +38,13 @@ export interface OkrParceiroAdocao {
     diasSemPedido: number | null;
 }
 
-export interface OkrSaida {
+export interface OkrParceiroChurn {
     id: number;
     nome: string;
     cidade: string;
-    saida: string;
+    /** null = segue na base; data = saiu dentro do trimestre. */
+    saida: string | null;
     motivo: string | null;
-}
-
-export interface OkrPorCidade {
-    cidade: string;
-    kr1: { coorte: number; fechados: number; atingiram: number; pct: number };
-    kr2: { base: number; recebendo: number; pct: number };
-    kr3: { base: number; perdidos: number; pct: number };
 }
 
 export interface OkrTrimestre {
@@ -66,10 +60,11 @@ export interface OkrTrimestre {
         metaKr3: number;
         desdeAdocao: string;
     };
-    kr1: { meta: number; coorte: number; fechados: number; atingiram: number; pct: number; parceiros: OkrParceiroNovo[] };
-    kr2: { meta: number; base: number; recebendo: number; pct: number; parceiros: OkrParceiroAdocao[] };
-    kr3: { meta: number; base: number; perdidos: number; pct: number; saidas: OkrSaida[] };
-    porCidade: OkrPorCidade[];
+    // Listas nominais, sem porcentagem: quem soma é utils/okrFiguras.ts, que
+    // precisa descontar as lojas fora da conta antes de fechar o número.
+    kr1: { meta: number; parceiros: OkrParceiroNovo[] };
+    kr2: { meta: number; parceiros: OkrParceiroAdocao[] };
+    kr3: { meta: number; parceiros: OkrParceiroChurn[] };
     elapsedMs?: number;
 }
 

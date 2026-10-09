@@ -5,11 +5,14 @@ import {
     trimestresRecentes,
     rotuloTrimestre,
     type OkrParceiroAdocao,
+    type OkrParceiroChurn,
     type OkrParceiroNovo,
-    type OkrPorCidade,
-    type OkrSaida,
 } from '../hooks/useOkrTrimestre';
+import { useExclusaoOkr } from '../hooks/useExclusaoOkr';
+import { calcularFiguras, identificarNoRecorte, type LinhaCidade } from '../utils/okrFiguras';
+import { MOTIVOS_EXCLUSAO, motivoExclusaoDef, type ExclusaoOkr, type MotivoExclusao } from '../config/exclusaoOkr';
 import { rotuloOkrDaCidade } from '../config/cidadesOkr';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * A aba da OKR do trimestre — os três KRs, só nas cidades da OKR.
@@ -21,9 +24,21 @@ import { rotuloOkrDaCidade } from '../config/cidadesOkr';
  * Cada KR é um cartão com a porcentagem e, logo abaixo, a LISTA NOMINAL de
  * quem está de fora — é isso que transforma o placar em trabalho. O cartão
  * selecionado manda no painel de baixo.
+ *
+ * Cada linha pode sair da conta (Supabase `okr_excluido`, ver
+ * config/exclusaoOkr.ts). A loja excluída não some: vai para a lista "fora da
+ * conta", com motivo e autor, e o número de excluídos aparece ao lado da
+ * porcentagem — quem lê precisa saber que o denominador foi mexido.
  */
 
 type KrId = 'kr1' | 'kr2' | 'kr3';
+
+/** O mínimo para identificar uma loja na hora de tirá-la da conta. */
+interface ParceiroAlvo {
+    id: number;
+    nome: string;
+    cidade: string;
+}
 
 /** '2026-10-07' → '07/10'. */
 function diaMes(iso: string): string {
@@ -69,7 +84,7 @@ function BarraMeta({ pct, meta, tom }: { pct: number | null; meta: number; tom: 
 }
 
 function KrCard({
-    id, titulo, rotulo, pct, meta, principal, detalhe, selecionado, onSelect,
+    id, titulo, rotulo, pct, meta, principal, detalhe, foraDaConta, selecionado, onSelect,
 }: {
     id: KrId;
     titulo: string;
@@ -78,6 +93,7 @@ function KrCard({
     meta: number;
     principal: string;
     detalhe: string;
+    foraDaConta: number;
     selecionado: boolean;
     onSelect: (id: KrId) => void;
 }) {
@@ -101,7 +117,12 @@ function KrCard({
             <p className={`text-3xl font-black tabular-nums mt-2 ${TONS[tom].texto}`}>{pctTexto(pct)}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{principal}</p>
             <BarraMeta pct={pct} meta={meta} tom={tom} />
-            <p className="text-[11px] text-slate-400 mt-2">{detalhe}</p>
+            <p className="text-[11px] text-slate-400 mt-2">
+                {detalhe}
+                {foraDaConta > 0 && (
+                    <span className="text-slate-400"> · <strong className="font-semibold">{foraDaConta} fora da conta</strong></span>
+                )}
+            </p>
         </button>
     );
 }
@@ -127,21 +148,42 @@ function TituloLista({ children, contagem }: { children: React.ReactNode; contag
     );
 }
 
-function LinhaParceiro({ nome, id, cidade, direita }: { nome: string; id: number; cidade: string; direita: React.ReactNode }) {
+function LinhaParceiro({ parceiro, direita, onTirar }: {
+    parceiro: ParceiroAlvo;
+    direita: React.ReactNode;
+    onTirar?: (p: ParceiroAlvo) => void;
+}) {
     return (
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm group">
             <div className="min-w-0">
                 <p className="font-medium text-slate-800 dark:text-slate-100 truncate">
-                    {nome} <span className="text-[11px] text-slate-300 dark:text-slate-600 tabular-nums">#{id}</span>
+                    {parceiro.nome} <span className="text-[11px] text-slate-300 dark:text-slate-600 tabular-nums">#{parceiro.id}</span>
                 </p>
-                <p className="text-xs text-slate-400 truncate">{cidadeCurta(cidade)}</p>
+                <p className="text-xs text-slate-400 truncate">{cidadeCurta(parceiro.cidade)}</p>
             </div>
-            <div className="shrink-0 text-right">{direita}</div>
+            <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right">{direita}</div>
+                {onTirar && (
+                    <button
+                        type="button"
+                        onClick={() => onTirar(parceiro)}
+                        title="Tirar esta loja da conta da OKR"
+                        className="p-1 rounded-lg text-slate-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">do_not_disturb_on</span>
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
 
-function PainelNovos({ parceiros, meta, janela }: { parceiros: OkrParceiroNovo[]; meta: number; janela: number }) {
+function PainelNovos({ parceiros, meta, janela, onTirar }: {
+    parceiros: OkrParceiroNovo[];
+    meta: number;
+    janela: number;
+    onTirar: (p: ParceiroAlvo) => void;
+}) {
     const fechados = parceiros.filter(p => p.concluida);
     const andamento = parceiros.filter(p => !p.concluida);
     const falharam = fechados.filter(p => !p.atingiu);
@@ -158,9 +200,8 @@ function PainelNovos({ parceiros, meta, janela }: { parceiros: OkrParceiroNovo[]
                     ) : andamento.map(p => (
                         <LinhaParceiro
                             key={p.id}
-                            nome={p.nome}
-                            id={p.id}
-                            cidade={p.cidade}
+                            parceiro={p}
+                            onTirar={onTirar}
                             direita={
                                 <>
                                     <p className={`font-bold tabular-nums ${p.atingiu ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
@@ -191,9 +232,8 @@ function PainelNovos({ parceiros, meta, janela }: { parceiros: OkrParceiroNovo[]
                     ) : falharam.map(p => (
                         <LinhaParceiro
                             key={p.id}
-                            nome={p.nome}
-                            id={p.id}
-                            cidade={p.cidade}
+                            parceiro={p}
+                            onTirar={onTirar}
                             direita={
                                 <>
                                     <p className="font-bold tabular-nums text-red-600 dark:text-red-400">{p.pedidos}/{meta}</p>
@@ -218,11 +258,16 @@ function PainelNovos({ parceiros, meta, janela }: { parceiros: OkrParceiroNovo[]
 /**
  * Parceiro "ativo" parado há mais de dois meses não é adoção fria: é loja que
  * sumiu do app e continua contando no denominador (ver a memória do recesso
- * diário). Separar os dois no tom evita tratar os 47 como a mesma conversa.
+ * diário). É daqui que costuma sair o botão de tirar da conta.
  */
 const DIAS_ZUMBI = 60;
 
-function PainelAdocao({ parceiros, dias, desde }: { parceiros: OkrParceiroAdocao[]; dias: number; desde: string }) {
+function PainelAdocao({ parceiros, dias, desde, onTirar }: {
+    parceiros: OkrParceiroAdocao[];
+    dias: number;
+    desde: string;
+    onTirar: (p: ParceiroAlvo) => void;
+}) {
     const parados = parceiros.filter(p => !p.recebendo);
     const sumidos = parados.filter(p => p.diasSemPedido === null || p.diasSemPedido > DIAS_ZUMBI).length;
     return (
@@ -236,9 +281,8 @@ function PainelAdocao({ parceiros, dias, desde }: { parceiros: OkrParceiroAdocao
                 ) : parados.map(p => (
                     <LinhaParceiro
                         key={p.id}
-                        nome={p.nome}
-                        id={p.id}
-                        cidade={p.cidade}
+                        parceiro={p}
+                        onTirar={onTirar}
                         direita={
                             p.diasSemPedido === null ? (
                                 <>
@@ -270,7 +314,12 @@ function PainelAdocao({ parceiros, dias, desde }: { parceiros: OkrParceiroAdocao
     );
 }
 
-function PainelChurn({ saidas, base, inicio }: { saidas: OkrSaida[]; base: number; inicio: string }) {
+function PainelChurn({ parceiros, inicio, onTirar }: {
+    parceiros: OkrParceiroChurn[];
+    inicio: string;
+    onTirar: (p: ParceiroAlvo) => void;
+}) {
+    const saidas = parceiros.filter(p => p.saida);
     return (
         <div>
             <TituloLista contagem={saidas.length}>
@@ -278,16 +327,15 @@ function PainelChurn({ saidas, base, inicio }: { saidas: OkrSaida[]; base: numbe
             </TituloLista>
             <Lista>
                 {saidas.length === 0 ? (
-                    <Vazio texto={`Nenhum dos ${base} contratos da virada do trimestre saiu. 🎉`} />
+                    <Vazio texto={`Nenhum dos ${parceiros.length} contratos da virada do trimestre saiu. 🎉`} />
                 ) : saidas.map(s => (
                     <LinhaParceiro
                         key={s.id}
-                        nome={s.nome}
-                        id={s.id}
-                        cidade={s.cidade}
+                        parceiro={s}
+                        onTirar={onTirar}
                         direita={
                             <>
-                                <p className="font-bold tabular-nums text-red-600 dark:text-red-400">{diaMes(s.saida)}</p>
+                                <p className="font-bold tabular-nums text-red-600 dark:text-red-400">{diaMes(s.saida!)}</p>
                                 <p className="text-xs text-slate-400 max-w-[18rem] truncate" title={s.motivo ?? undefined}>
                                     {s.motivo ?? 'sem motivo registrado'}
                                 </p>
@@ -297,7 +345,7 @@ function PainelChurn({ saidas, base, inicio }: { saidas: OkrSaida[]; base: numbe
                 ))}
             </Lista>
             <p className="text-[11px] text-slate-400 mt-2">
-                Base do KR: os {base} contratos vivos em {diaMes(inicio)}. Quem lançou depois não entra —
+                Base do KR: os {parceiros.length} contratos vivos em {diaMes(inicio)}. Quem lançou depois não entra —
                 o KR mede manter o que já existia.
             </p>
         </div>
@@ -305,7 +353,7 @@ function PainelChurn({ saidas, base, inicio }: { saidas: OkrSaida[]; base: numbe
 }
 
 function TabelaCidades({ linhas, krSelecionado, metas }: {
-    linhas: OkrPorCidade[];
+    linhas: LinhaCidade[];
     krSelecionado: KrId;
     metas: { kr1: number; kr2: number; kr3: number };
 }) {
@@ -333,9 +381,9 @@ function TabelaCidades({ linhas, krSelecionado, metas }: {
                     {linhas.map(l => (
                         <tr key={l.cidade}>
                             <td className="px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{cidadeCurta(l.cidade)}</td>
-                            {celula(l.kr1.fechados > 0 ? l.kr1.pct : null, metas.kr1, `${l.kr1.atingiram}/${l.kr1.fechados}`, krSelecionado === 'kr1')}
-                            {celula(l.kr2.base > 0 ? l.kr2.pct : null, metas.kr2, `${l.kr2.recebendo}/${l.kr2.base}`, krSelecionado === 'kr2')}
-                            {celula(l.kr3.base > 0 ? l.kr3.pct : null, metas.kr3, `${l.kr3.base - l.kr3.perdidos}/${l.kr3.base}`, krSelecionado === 'kr3')}
+                            {celula(l.kr1.pct, metas.kr1, `${l.kr1.atingiram}/${l.kr1.fechados}`, krSelecionado === 'kr1')}
+                            {celula(l.kr2.pct, metas.kr2, `${l.kr2.recebendo}/${l.kr2.base}`, krSelecionado === 'kr2')}
+                            {celula(l.kr3.pct, metas.kr3, `${l.kr3.base - l.kr3.perdidos}/${l.kr3.base}`, krSelecionado === 'kr3')}
                         </tr>
                     ))}
                 </tbody>
@@ -344,17 +392,185 @@ function TabelaCidades({ linhas, krSelecionado, metas }: {
     );
 }
 
+/**
+ * Modal de "tirar da conta". O motivo é obrigatório de propósito: esse número
+ * vai para o CEO, e tirar uma loja sem dizer por quê é a diferença entre
+ * limpar a base e maquiar o KR.
+ */
+function ModalTirarDaConta({ parceiro, salvando, onConfirmar, onFechar }: {
+    parceiro: ParceiroAlvo;
+    salvando: boolean;
+    onConfirmar: (motivo: MotivoExclusao, observacao: string) => void;
+    onFechar: () => void;
+}) {
+    const [motivo, setMotivo] = useState<MotivoExclusao | ''>('');
+    const [observacao, setObservacao] = useState('');
+    const def = motivo ? motivoExclusaoDef(motivo) : null;
+    const faltaDetalhe = Boolean(def?.pedeDetalhe) && observacao.trim().length === 0;
+
+    return (
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            onClick={onFechar}
+        >
+            <div
+                className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                    <h2 className="font-bold text-slate-900 dark:text-white">Tirar da conta da OKR</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                        {parceiro.nome} <span className="text-xs text-slate-400 tabular-nums">#{parceiro.id}</span> · {cidadeCurta(parceiro.cidade)}
+                    </p>
+                </div>
+
+                <div className="px-5 py-4 space-y-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Sai dos <strong>três KRs</strong> ao mesmo tempo, para todo mundo que abrir o painel. Continua
+                        visível na lista "fora da conta" e dá para devolver quando quiser.
+                    </p>
+                    <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Motivo</span>
+                        <select
+                            value={motivo}
+                            onChange={e => setMotivo(e.target.value as MotivoExclusao)}
+                            className="mt-1 w-full text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none"
+                        >
+                            <option value="">Escolha o motivo…</option>
+                            {MOTIVOS_EXCLUSAO.map(m => (
+                                <option key={m.motivo} value={m.motivo}>{m.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                            Observação {def?.pedeDetalhe ? '(obrigatória)' : '(opcional)'}
+                        </span>
+                        <textarea
+                            value={observacao}
+                            onChange={e => setObservacao(e.target.value)}
+                            rows={2}
+                            placeholder="O que você apurou sobre essa loja?"
+                            className="mt-1 w-full text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none resize-none"
+                        />
+                    </label>
+                </div>
+
+                <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={onFechar}
+                        className="text-sm px-3 py-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        disabled={!motivo || faltaDetalhe || salvando}
+                        onClick={() => motivo && onConfirmar(motivo, observacao)}
+                        className="text-sm px-3 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {salvando ? 'Tirando…' : 'Tirar da conta'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PainelForaDaConta({ exclusoes, noRecorte, onDevolver }: {
+    exclusoes: ExclusaoOkr[];
+    noRecorte: (id: number) => { nome: string; cidade: string } | null;
+    onDevolver: (id: string) => void;
+}) {
+    return (
+        <div className="mt-6">
+            <TituloLista contagem={exclusoes.length}>Fora da conta</TituloLista>
+            <Lista>
+                {exclusoes.map(e => {
+                    const def = motivoExclusaoDef(e.motivo);
+                    const vivo = noRecorte(Number(e.partnerId));
+                    const nome = vivo?.nome ?? e.nome ?? `#${e.partnerId}`;
+                    const cidade = vivo?.cidade ?? e.cidade ?? '';
+                    return (
+                        <div key={e.partnerId} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                            <div className="min-w-0">
+                                <p className="font-medium text-slate-600 dark:text-slate-300 truncate">
+                                    {nome} <span className="text-[11px] text-slate-300 dark:text-slate-600 tabular-nums">#{e.partnerId}</span>
+                                </p>
+                                <p className="text-xs text-slate-400 truncate">
+                                    {cidade ? `${cidadeCurta(cidade)} · ` : ''}
+                                    {e.excluidoPor ? `por ${e.excluidoPor}` : 'autor não registrado'} em {diaMes(e.excluidoEm.slice(0, 10))}
+                                    {e.observacao ? ` · ${e.observacao}` : ''}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 inline-flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[14px]">{def.icon}</span>
+                                    {def.chip}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => onDevolver(e.partnerId)}
+                                    title="Devolver esta loja para a conta da OKR"
+                                    className="p-1 rounded-lg text-slate-300 dark:text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                >
+                                    <span className="material-symbols-outlined text-[18px]">undo</span>
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </Lista>
+            <p className="text-[11px] text-slate-400 mt-2">
+                Estas lojas não entram em nenhum dos três KRs. Devolver recalcula os números na hora.
+            </p>
+        </div>
+    );
+}
+
 export default function OkrView() {
     const [trimestre, setTrimestre] = useState(trimestreAtual);
     const [kr, setKr] = useState<KrId>('kr2');
+    const [alvo, setAlvo] = useState<ParceiroAlvo | null>(null);
+    const [salvando, setSalvando] = useState(false);
     const { dados, loading, error, refetch } = useOkrTrimestre(trimestre);
+    const { exclusoes, idsExcluidos, carregando: carregandoExclusoes, erro: erroExclusao, excluir, reincluir } = useExclusaoOkr();
+    const { user } = useAuth();
 
     const opcoes = useMemo(() => trimestresRecentes(4), []);
-    const ehAtual = trimestre === trimestreAtual();
+    // Vem do trimestre que o servidor realmente calculou, não do estado local:
+    // os dois podem discordar (a function cai no trimestre corrente quando o
+    // parâmetro não resolve), e quem manda no rótulo é o dado que está na tela.
+    const ehAtual = (dados?.trimestre.id ?? trimestre) === trimestreAtual();
+
+    const figuras = useMemo(
+        () => (dados ? calcularFiguras(dados, idsExcluidos) : null),
+        [dados, idsExcluidos],
+    );
+
+    const listaExcluidos = useMemo(
+        () => Object.values(exclusoes).sort((a, b) => b.excluidoEm.localeCompare(a.excluidoEm)),
+        [exclusoes],
+    );
 
     const diasRestantes = dados
         ? Math.max(Math.round((Date.parse(`${dados.trimestre.fim}T00:00:00Z`) - Date.parse(`${dados.trimestre.corte}T00:00:00Z`)) / 86400000), 0)
         : 0;
+
+    const confirmarExclusao = async (motivo: MotivoExclusao, observacao: string) => {
+        if (!alvo) return;
+        setSalvando(true);
+        await excluir(alvo.id, {
+            motivo,
+            observacao,
+            nome: alvo.nome,
+            cidade: alvo.cidade,
+            excluidoPor: user?.name || user?.email || null,
+        });
+        setSalvando(false);
+        setAlvo(null);
+    };
 
     return (
         <div className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-white dark:bg-slate-900">
@@ -400,27 +616,35 @@ export default function OkrView() {
             </div>
 
             <div className="p-6">
-                {loading ? (
+                {loading || carregandoExclusoes ? (
                     <p className="text-sm text-slate-400">Calculando os KRs no banco…</p>
                 ) : error ? (
                     <div className="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 text-amber-700 dark:text-amber-300 text-sm">
                         Não foi possível carregar a OKR: {error}
                     </div>
-                ) : !dados ? (
+                ) : !dados || !figuras ? (
                     <p className="text-sm text-slate-400">Sem dados para este trimestre.</p>
                 ) : (
                     <>
+                        {erroExclusao && (
+                            <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-3 text-amber-700 dark:text-amber-300 text-sm">
+                                As exclusões não estão sendo salvas ({erroExclusao}). Falta criar a tabela okr_excluido no
+                                Supabase — ver supabase/okr_excluido.sql.
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <KrCard
                                 id="kr1"
                                 rotulo="KR1 · Novos"
                                 titulo={`${dados.parametros.pedidosNovos} pedidos nos primeiros ${dados.parametros.janelaNovos} dias`}
-                                pct={dados.kr1.fechados > 0 ? dados.kr1.pct : null}
+                                pct={figuras.kr1.pct}
                                 meta={dados.kr1.meta}
-                                principal={dados.kr1.fechados > 0
-                                    ? `${dados.kr1.atingiram} de ${dados.kr1.fechados} com janela fechada`
+                                principal={figuras.kr1.fechados > 0
+                                    ? `${figuras.kr1.atingiram} de ${figuras.kr1.fechados} com janela fechada`
                                     : 'nenhuma janela fechou ainda'}
-                                detalhe={`${dados.kr1.coorte} lançados no trimestre · ${dados.kr1.coorte - dados.kr1.fechados} ainda na janela`}
+                                detalhe={`${figuras.kr1.coorte} lançados no trimestre · ${figuras.kr1.naJanela} ainda na janela`}
+                                foraDaConta={figuras.foraDaConta.kr1}
                                 selecionado={kr === 'kr1'}
                                 onSelect={setKr}
                             />
@@ -428,10 +652,11 @@ export default function OkrView() {
                                 id="kr2"
                                 rotulo="KR2 · Adoção"
                                 titulo={`Recebendo pedido nos últimos ${dados.parametros.diasAdocao} dias`}
-                                pct={dados.kr2.base > 0 ? dados.kr2.pct : null}
+                                pct={figuras.kr2.pct}
                                 meta={dados.kr2.meta}
-                                principal={`${dados.kr2.recebendo} de ${dados.kr2.base} parceiros ativos`}
-                                detalhe={`${dados.kr2.base - dados.kr2.recebendo} sem nenhum pedido na janela`}
+                                principal={`${figuras.kr2.recebendo} de ${figuras.kr2.base} parceiros ativos`}
+                                detalhe={`${figuras.kr2.base - figuras.kr2.recebendo} sem nenhum pedido na janela`}
+                                foraDaConta={figuras.foraDaConta.kr2}
                                 selecionado={kr === 'kr2'}
                                 onSelect={setKr}
                             />
@@ -439,12 +664,13 @@ export default function OkrView() {
                                 id="kr3"
                                 rotulo="KR3 · Churn"
                                 titulo="Contratos mantidos até o fim do trimestre"
-                                pct={dados.kr3.base > 0 ? dados.kr3.pct : null}
+                                pct={figuras.kr3.pct}
                                 meta={dados.kr3.meta}
-                                principal={`${dados.kr3.base - dados.kr3.perdidos} de ${dados.kr3.base} contratos da virada`}
-                                detalhe={dados.kr3.perdidos === 0
+                                principal={`${figuras.kr3.base - figuras.kr3.perdidos} de ${figuras.kr3.base} contratos da virada`}
+                                detalhe={figuras.kr3.perdidos === 0
                                     ? 'nenhuma saída no trimestre'
-                                    : `${dados.kr3.perdidos} saída${dados.kr3.perdidos > 1 ? 's' : ''} no trimestre`}
+                                    : `${figuras.kr3.perdidos} saída${figuras.kr3.perdidos > 1 ? 's' : ''} no trimestre`}
+                                foraDaConta={figuras.foraDaConta.kr3}
                                 selecionado={kr === 'kr3'}
                                 onSelect={setKr}
                             />
@@ -452,7 +678,7 @@ export default function OkrView() {
 
                         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-6 mb-2">Por cidade</p>
                         <TabelaCidades
-                            linhas={dados.porCidade}
+                            linhas={figuras.porCidade}
                             krSelecionado={kr}
                             metas={{ kr1: dados.kr1.meta, kr2: dados.kr2.meta, kr3: dados.kr3.meta }}
                         />
@@ -460,22 +686,36 @@ export default function OkrView() {
                         <div className="mt-6">
                             {kr === 'kr1' && (
                                 <PainelNovos
-                                    parceiros={dados.kr1.parceiros}
+                                    parceiros={figuras.novos}
                                     meta={dados.parametros.pedidosNovos}
                                     janela={dados.parametros.janelaNovos}
+                                    onTirar={setAlvo}
                                 />
                             )}
                             {kr === 'kr2' && (
                                 <PainelAdocao
-                                    parceiros={dados.kr2.parceiros}
+                                    parceiros={figuras.adocao}
                                     dias={dados.parametros.diasAdocao}
                                     desde={dados.parametros.desdeAdocao}
+                                    onTirar={setAlvo}
                                 />
                             )}
                             {kr === 'kr3' && (
-                                <PainelChurn saidas={dados.kr3.saidas} base={dados.kr3.base} inicio={dados.trimestre.inicio} />
+                                <PainelChurn
+                                    parceiros={figuras.churn}
+                                    inicio={dados.trimestre.inicio}
+                                    onTirar={setAlvo}
+                                />
                             )}
                         </div>
+
+                        {listaExcluidos.length > 0 && (
+                            <PainelForaDaConta
+                                exclusoes={listaExcluidos}
+                                noRecorte={id => identificarNoRecorte(dados, id)}
+                                onDevolver={reincluir}
+                            />
+                        )}
 
                         {!ehAtual && (
                             <p className="text-xs text-amber-600 dark:text-amber-400/80 mt-6">
@@ -491,6 +731,15 @@ export default function OkrView() {
                     </>
                 )}
             </div>
+
+            {alvo && (
+                <ModalTirarDaConta
+                    parceiro={alvo}
+                    salvando={salvando}
+                    onConfirmar={confirmarExclusao}
+                    onFechar={() => setAlvo(null)}
+                />
+            )}
         </div>
     );
 }
