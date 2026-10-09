@@ -19,6 +19,9 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
         { items: [
             { id: 'home', icon: 'home', label: 'Início' },
         ] },
+        { label: 'OKR', items: !isCD ? [
+            { id: 'okr' as AppView, icon: 'flag_circle', label: 'OKR do trimestre' },
+        ] : [] },
         { label: 'Onboarding', items: [
             { id: 'onboarding', icon: 'pending_actions', label: 'Acompanhar Onboarding' },
         ] },

@@ -16,6 +16,7 @@ import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
 import CsKpisView from './components/CsKpisView';
+import OkrView from './components/OkrView';
 import TrelloView from './components/TrelloView';
 import CarteiraView from './components/CarteiraView';
 import CarteiraPorGrupoView from './components/CarteiraPorGrupoView';
@@ -934,6 +935,8 @@ function App() {
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-all duration-300">
           {currentView === 'home' ? (
             <HomeView rows={homeRows} onPartnerClick={handleRowClick} onNavigate={setCurrentView} />
+        ) : currentView === 'okr' ? (
+            <OkrView />
         ) : currentView === 'cs_kpis' ? (
             <CsKpisView />
         ) : currentView === 'trello' ? (

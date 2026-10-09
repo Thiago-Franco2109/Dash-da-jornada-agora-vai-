@@ -136,6 +136,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar', 'trello-card-editar',
     'trello-card-anexar', 'trello-anexo',
     'cardapio-analise', 'parceiro-acesso', 'pedido-relatorio',
+    'okr-trimestre',
   ])
   return {
     name: 'db-functions-dev',
