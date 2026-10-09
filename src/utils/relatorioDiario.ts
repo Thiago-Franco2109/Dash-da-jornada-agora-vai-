@@ -40,7 +40,7 @@ const MAX_LISTAS = 6;
  * colapsa em espaço: no Discord um bullet multilinha fica torto, e a anotação
  * é curta por natureza.
  */
-function bullet(a: AnotacaoDiario, cidadePorParceiro?: Map<string, string>): string {
+export function bulletAnotacao(a: AnotacaoDiario, cidadePorParceiro?: Map<string, string>): string {
     const texto = a.texto.replace(/\s+/g, ' ').trim();
     if (!a.partnerNome) return `• ${texto}`;
 
@@ -49,7 +49,7 @@ function bullet(a: AnotacaoDiario, cidadePorParceiro?: Map<string, string>): str
     return `• ${quem} — ${texto}`;
 }
 
-function secaoTrello(atividade: AtividadeTrelloHoje): string {
+export function secaoTrello(atividade: AtividadeTrelloHoje): string {
     const numeros = [
         atividade.cardsMovidos > 0 && `${atividade.cardsMovidos} cards movidos`,
         atividade.comentarios > 0 && `${atividade.comentarios} comentários`,
@@ -71,6 +71,32 @@ function secaoTrello(atividade: AtividadeTrelloHoje): string {
     return linhas.join('\n');
 }
 
+/**
+ * Uma seção por categoria que tem anotação, na ordem de CATEGORIAS_DIARIO:
+ * começa pelo que é resultado (captação, onboarding) e termina no bastidor
+ * (análise, administrativo). Compartilhado entre o relatório do dia e o da
+ * semana, pra não existirem dois formatos divergindo com o tempo.
+ */
+export function secoesPorCategoria(
+    anotacoes: AnotacaoDiario[],
+    cidadePorParceiro?: Map<string, string>,
+): string[] {
+    const secoes: string[] = [];
+    for (const categoria of CATEGORIAS_DIARIO) {
+        const daCategoria = anotacoes
+            .filter(a => getCategoriaDiario(a.categoria).id === categoria.id)
+            .sort((x, y) => x.ocorridoEm.localeCompare(y.ocorridoEm));
+        if (daCategoria.length === 0) continue;
+
+        secoes.push([
+            `${categoria.emoji} ${categoria.secao.toUpperCase()}`,
+            '',
+            ...daCategoria.map(a => bulletAnotacao(a, cidadePorParceiro)),
+        ].join('\n'));
+    }
+    return secoes;
+}
+
 export function montarRelatorioDiario({
     perfil, dia, anotacoes, atividade, cidadePorParceiro,
 }: OpcoesRelatorioDiario): string {
@@ -82,20 +108,7 @@ export function montarRelatorioDiario({
     ].join('\n');
     secoes.push(cabecalho);
 
-    // Ordem das seções = ordem de CATEGORIAS_DIARIO: começa pelo que é
-    // resultado (captação, onboarding) e termina no bastidor (análise, admin).
-    for (const categoria of CATEGORIAS_DIARIO) {
-        const daCategoria = anotacoes
-            .filter(a => getCategoriaDiario(a.categoria).id === categoria.id)
-            .sort((x, y) => x.ocorridoEm.localeCompare(y.ocorridoEm));
-        if (daCategoria.length === 0) continue;
-
-        secoes.push([
-            `${categoria.emoji} ${categoria.secao.toUpperCase()}`,
-            '',
-            ...daCategoria.map(a => bullet(a, cidadePorParceiro)),
-        ].join('\n'));
-    }
+    secoes.push(...secoesPorCategoria(anotacoes, cidadePorParceiro));
 
     if (atividade) secoes.push(secaoTrello(atividade));
 
@@ -107,7 +120,7 @@ export function montarRelatorioDiario({
 }
 
 /** "quarta-feira, 7 de outubro de 2026" -> "Quarta-feira, 7 de outubro de 2026" */
-function capitalizarPrimeira(texto: string): string {
+export function capitalizarPrimeira(texto: string): string {
     return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 

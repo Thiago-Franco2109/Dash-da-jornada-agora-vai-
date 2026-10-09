@@ -72,6 +72,71 @@ export function rotuloDia(dataISO: string): string {
     }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
+// ── Semana ───────────────────────────────────────────────────────────────
+
+/** Segunda-feira da semana que contém `dataISO`. Semana começa na segunda. */
+export function inicioDaSemana(dataISO: string): string {
+    const [y, m, d] = dataISO.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    // getUTCDay(): 0 = domingo. (dia + 6) % 7 dá quantos dias voltar até a segunda.
+    return deslocarDia(dataISO, -((dt.getUTCDay() + 6) % 7));
+}
+
+/** Domingo da semana que contém `dataISO`. */
+export function fimDaSemana(dataISO: string): string {
+    return deslocarDia(inicioDaSemana(dataISO), 6);
+}
+
+export interface Janela {
+    de: string;
+    ate: string;
+}
+
+/**
+ * Janela da semana de `dataISO`, cortada em `hoje`.
+ *
+ * O relatório é mandado na sexta, com a semana ainda correndo — então a janela
+ * termina hoje, não no domingo que ainda não aconteceu. Isso importa pro
+ * comparativo: comparar segunda-a-sexta contra uma semana inteira faria o
+ * presente parecer sempre pior que o passado.
+ */
+export function janelaDaSemana(dataISO: string, hoje = hojeSP()): Janela {
+    const de = inicioDaSemana(dataISO);
+    const domingo = fimDaSemana(dataISO);
+    return { de, ate: domingo > hoje ? hoje : domingo };
+}
+
+/**
+ * A mesma janela sete dias antes — e com o MESMO número de dias, porque é
+ * deslocamento puro. Sexta contra sexta, não sexta contra domingo.
+ */
+export function semanaAnterior({ de, ate }: Janela): Janela {
+    return { de: deslocarDia(de, -7), ate: deslocarDia(ate, -7) };
+}
+
+/** Quantos dias a janela cobre, pontas incluídas. */
+export function diasNaJanela({ de, ate }: Janela): number {
+    const [ay, am, ad] = de.split('-').map(Number);
+    const [by, bm, bd] = ate.split('-').map(Number);
+    return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000) + 1;
+}
+
+/** "29 de setembro a 3 de outubro de 2026" — mês repetido só quando muda. */
+export function rotuloPeriodo({ de, ate }: Janela): string {
+    const parte = (iso: string, comAno: boolean) => {
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Intl.DateTimeFormat('pt-BR', {
+            day: 'numeric', month: 'long', ...(comAno ? { year: 'numeric' } : {}), timeZone: 'UTC',
+        }).format(new Date(Date.UTC(y, m - 1, d)));
+    };
+    if (de === ate) return parte(de, true);
+    const mesmoMes = de.slice(0, 7) === ate.slice(0, 7);
+    const inicio = mesmoMes
+        ? String(Number(de.slice(8, 10)))
+        : parte(de, de.slice(0, 4) !== ate.slice(0, 4));
+    return `${inicio} a ${parte(ate, true)}`;
+}
+
 /**
  * Instante em que a anotação "aconteceu", dado o dia escolhido na tela.
  *

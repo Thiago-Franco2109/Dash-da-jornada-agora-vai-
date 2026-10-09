@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
 import type { AnotacaoDiario, NovaAnotacao } from '../types/diario';
 import { useDiario, useDiarioEscrita } from '../hooks/useDiario';
@@ -9,7 +9,9 @@ import {
 } from '../utils/diarioDatas';
 import AnotacaoForm from './diario/AnotacaoForm';
 import ResumoTrelloDia from './diario/ResumoTrelloDia';
-import RelatorioDiarioModal from './diario/RelatorioDiarioModal';
+import RelatorioModal from './diario/RelatorioModal';
+import RelatorioSemanalModal from './diario/RelatorioSemanalModal';
+import { montarRelatorioDiario, nomeArquivoRelatorio } from '../utils/relatorioDiario';
 
 /**
  * Diário do CS — o registro do que a pessoa fez, dia a dia.
@@ -31,7 +33,7 @@ interface DiarioViewProps {
 export default function DiarioView({ perfil, partners }: DiarioViewProps) {
     const [dia, setDia] = useState(hojeSP());
     const [editando, setEditando] = useState<string | null>(null);
-    const [relatorioAberto, setRelatorioAberto] = useState(false);
+    const [relatorioAberto, setRelatorioAberto] = useState<'dia' | 'semana' | null>(null);
 
     const { anotacoes, carregando, erro } = useDiario(perfil, dia, dia);
     const { criar, atualizar, remover, salvando, erro: erroEscrita } = useDiarioEscrita(perfil);
@@ -62,6 +64,16 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
         }
         return mapa;
     }, [partners]);
+
+    const montarTextoDoDia = useCallback(
+        (escolhidas: AnotacaoDiario[], incluirTrello: boolean) => montarRelatorioDiario({
+            perfil, dia,
+            anotacoes: escolhidas,
+            atividade: incluirTrello ? atividade : null,
+            cidadePorParceiro,
+        }),
+        [perfil, dia, atividade, cidadePorParceiro],
+    );
 
     return (
         <div className="flex-1 bg-slate-50 dark:bg-slate-900 min-h-screen overflow-y-auto">
@@ -140,13 +152,23 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
                     </span>
 
                     {perfil && (
-                        <button
-                            onClick={() => setRelatorioAberto(true)}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 hover:brightness-110 transition-all"
-                        >
-                            <span className="material-symbols-outlined text-[16px]">description</span>
-                            Relatório do dia
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setRelatorioAberto('dia')}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 hover:brightness-110 transition-all"
+                            >
+                                <span className="material-symbols-outlined text-[16px]">description</span>
+                                Relatório do dia
+                            </button>
+                            <button
+                                onClick={() => setRelatorioAberto('semana')}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-700/20 hover:brightness-110 transition-all"
+                                title="A semana de segunda até hoje, com comparativo da semana anterior"
+                            >
+                                <span className="material-symbols-outlined text-[16px]">calendar_view_week</span>
+                                Relatório da semana
+                            </button>
+                        </>
                     )}
                 </div>
 
@@ -267,14 +289,24 @@ export default function DiarioView({ perfil, partners }: DiarioViewProps) {
                 )}
             </div>
 
-            {relatorioAberto && (
-                <RelatorioDiarioModal
-                    dia={dia}
-                    perfil={perfil}
+            {relatorioAberto === 'dia' && (
+                <RelatorioModal
+                    titulo="Relatório do dia"
+                    subtitulo={formatarDiaExtenso(dia)}
                     anotacoes={anotacoes}
                     atividade={atividade}
+                    montarTexto={montarTextoDoDia}
+                    nomeArquivo={nomeArquivoRelatorio(dia, perfil)}
+                    onFechar={() => setRelatorioAberto(null)}
+                />
+            )}
+
+            {relatorioAberto === 'semana' && (
+                <RelatorioSemanalModal
+                    perfil={perfil}
+                    dia={dia}
                     cidadePorParceiro={cidadePorParceiro}
-                    onFechar={() => setRelatorioAberto(false)}
+                    onFechar={() => setRelatorioAberto(null)}
                 />
             )}
         </div>

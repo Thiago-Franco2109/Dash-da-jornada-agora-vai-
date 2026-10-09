@@ -47,6 +47,13 @@ const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })
 const em = (hora: string, dia = hoje) => new Date(`${dia}T${hora}:00.000-03:00`).toISOString();
 const ontem = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })
     .format(new Date(Date.now() - 86_400_000));
+/** Segunda desta semana, pra amostra cobrir a janela que o semanal usa. */
+const segundaDestaSemana = (() => {
+    const [y, m, d] = hoje.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const volta = (dt.getUTCDay() + 6) % 7;
+    return new Date(dt.getTime() - volta * 86_400_000).toISOString().slice(0, 10);
+})();
 
 let linhas: LinhaFake[] = [
     {
@@ -72,6 +79,18 @@ let linhas: LinhaFake[] = [
         texto: 'Preciso cobrar o retorno do time de produto sobre o bug do cupom duplicado.',
         categoria: 'problema', partner_id: null, partner_nome: null,
         privado: true, atualizado_em: em('08:15'),
+    },
+    {
+        id: '6', perfil: 'THIAGO', ocorrido_em: em('10:15', segundaDestaSemana),
+        texto: 'Treinei a Hadassa Salgados no painel do lojista; subiu 18 itens com foto.',
+        categoria: 'onboarding', partner_id: '28531', partner_nome: 'Brasa Burguer',
+        privado: false, atualizado_em: em('10:15', segundaDestaSemana),
+    },
+    {
+        id: '7', perfil: 'THIAGO', ocorrido_em: em('15:40', segundaDestaSemana),
+        texto: 'Fechei cupom de 20% com o Cantinho da Sonia pra semana do cliente.',
+        categoria: 'captacao', partner_id: '27606', partner_nome: 'Cantinho da Sonia',
+        privado: false, atualizado_em: em('15:40', segundaDestaSemana),
     },
     {
         id: '5', perfil: 'THIAGO', ocorrido_em: em('16:20', ontem),
@@ -200,16 +219,39 @@ const atividadeAmostra = {
     ],
 };
 
+/** Hash estável da janela: cada período rende números próprios e repetíveis. */
+function semente(texto: string): number {
+    let h = 0;
+    for (const c of texto) h = (h * 31 + c.charCodeAt(0)) % 9973;
+    return h;
+}
+
 const fetchOriginal = window.fetch.bind(window);
 window.fetch = ((entrada: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
     if (url.includes('trello-atividade-hoje')) {
-        // Ecoa a data pedida, como a function real faz — senão a tela, que só
-        // aceita resumo do dia que pediu, ficaria em esqueleto ao navegar.
-        const pedida = new URL(url, window.location.origin).searchParams.get('data') ?? hoje;
-        return Promise.resolve(new Response(JSON.stringify({ ...atividadeAmostra, data: pedida }), {
-            status: 200, headers: { 'Content-Type': 'application/json' },
-        }));
+        // Ecoa a janela pedida, como a function real faz — senão a tela, que só
+        // aceita resumo do período que pediu, ficaria em esqueleto ao navegar.
+        const p = new URL(url, window.location.origin).searchParams;
+        const de = p.get('de') ?? p.get('data') ?? hoje;
+        const ate = p.get('ate') ?? p.get('data') ?? de;
+
+        // Janela de mais de um dia escala os números e varia por período, senão
+        // o comparativo semanal sairia sempre "igual" e não daria pra conferir.
+        const dias = Math.round(
+            (Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86_400_000,
+        ) + 1;
+        const v = semente(de);
+        const escala = (n: number, offset: number) =>
+            dias === 1 ? n : Math.max(0, Math.round(n * dias * 0.7) + ((v + offset) % 11) - 5);
+
+        return Promise.resolve(new Response(JSON.stringify({
+            ...atividadeAmostra,
+            data: de, de, ate,
+            cardsMovidos: escala(atividadeAmostra.cardsMovidos, 0),
+            comentarios: escala(atividadeAmostra.comentarios, 3),
+            anexos: escala(atividadeAmostra.anexos, 7),
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     }
     return fetchOriginal(entrada as RequestInfo, init);
 }) as typeof window.fetch;

@@ -34,7 +34,10 @@ export interface ContagemPorNome {
 }
 
 export interface AtividadeTrelloHoje {
+    /** Primeiro dia da janela. Mantido por compatibilidade com a tela Trello. */
     data: string;
+    de: string;
+    ate: string;
     totalMovimentacoes: number;
     comentarios: number;
     cardsMovidos: number;
@@ -47,15 +50,25 @@ export interface AtividadeTrelloHoje {
 }
 
 export interface OpcoesAtividade {
-    /** YYYY-MM-DD no fuso de Brasília. Default: hoje. */
+    /** Um dia só, YYYY-MM-DD no fuso de Brasília. Default: hoje. */
     data?: string;
+    /** Janela fechada nas duas pontas; ignora `data` quando presente. */
+    de?: string;
+    ate?: string;
     /** Inclui `addAttachmentToCard` na contagem. Default: false. */
     anexos?: boolean;
+    /** Não busca nada enquanto false — pro relatório semanal só pagar quando abre. */
+    ativo?: boolean;
 }
 
-async function fetchAtividade({ data, anexos }: OpcoesAtividade): Promise<AtividadeTrelloHoje> {
+async function fetchAtividade({ data, de, ate, anexos }: OpcoesAtividade): Promise<AtividadeTrelloHoje> {
     const params = new URLSearchParams();
-    if (data) params.set('data', data);
+    if (de && ate) {
+        params.set('de', de);
+        params.set('ate', ate);
+    } else if (data) {
+        params.set('data', data);
+    }
     if (anexos) params.set('anexos', '1');
     const query = params.toString();
 
@@ -71,7 +84,7 @@ async function fetchAtividade({ data, anexos }: OpcoesAtividade): Promise<Ativid
 }
 
 export function useTrelloAtividadeHoje(opcoes: OpcoesAtividade = {}) {
-    const { data: dia, anexos } = opcoes;
+    const { data: dia, de, ate, anexos, ativo = true } = opcoes;
     const [data, setData] = useState<AtividadeTrelloHoje | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -79,10 +92,11 @@ export function useTrelloAtividadeHoje(opcoes: OpcoesAtividade = {}) {
     const carregouUmaVez = useRef(false);
 
     const refresh = useCallback(async () => {
+        if (!ativo) return;
         if (carregouUmaVez.current) setIsRefreshing(true);
         else setIsLoading(true);
         try {
-            const atividade = await fetchAtividade({ data: dia, anexos });
+            const atividade = await fetchAtividade({ data: dia, de, ate, anexos });
             setData(atividade);
             setError(null);
         } catch (err) {
@@ -92,7 +106,7 @@ export function useTrelloAtividadeHoje(opcoes: OpcoesAtividade = {}) {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [dia, anexos]);
+    }, [dia, de, ate, anexos, ativo]);
 
     useEffect(() => {
         refresh();

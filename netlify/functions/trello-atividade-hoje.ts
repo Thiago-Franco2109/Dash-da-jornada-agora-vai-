@@ -3,10 +3,14 @@ import { checkOrigin } from './_shared/auth';
 import { trelloFetch } from './_shared/trello';
 
 /**
- * Resumo da atividade do dono do token no Trello num dia (fuso
+ * Resumo da atividade do dono do token no Trello numa janela de dias (fuso
  * America/Sao_Paulo): comentários feitos e cards movidos entre listas — em
- * qualquer board, numa única chamada (GET /1/members/me/actions, mesmo padrão
- * de /members/me/cards em trello-tarefas.ts: sem iterar board por board).
+ * qualquer board, numa chamada só por página (GET /1/members/me/actions, mesmo
+ * padrão de /members/me/cards em trello-tarefas.ts: sem iterar board por board).
+ *
+ * O nome do arquivo diz "hoje" por motivo histórico: nasceu só pro cabeçalho da
+ * tela Trello. Hoje atende dia avulso (diário) e semana (relatório semanal). O
+ * caminho não foi renomeado pra não quebrar a URL já publicada.
  *
  * O filtro `updateCard:idList` já restringe as ações "updateCard" às que
  * mudaram de lista (mesmo atalho usado em onboarding-trello.ts) — sem isso
@@ -14,14 +18,15 @@ import { trelloFetch } from './_shared/trello';
  *
  * PARÂMETROS (todos opcionais — sem nenhum, responde exatamente como antes,
  * que é o que o cabeçalho da tela Trello consome):
- *   ?data=YYYY-MM-DD  dia a consultar no fuso de Brasília. Default: hoje.
- *   ?anexos=1         inclui `addAttachmentToCard` na busca. É o print de
- *                     confirmação que o CS anexa ao fechar uma ação, então pro
- *                     diário conta como trabalho feito — mas pra tela Trello
- *                     seria ruído, por isso fica atrás de flag.
+ *   ?data=YYYY-MM-DD    atalho de um dia só (equivale a de=ate=data).
+ *   ?de= &ate=          janela fechada nas duas pontas. Default: hoje.
+ *   ?anexos=1           inclui `addAttachmentToCard` na busca. É o print de
+ *                       confirmação que o CS anexa ao fechar uma ação, então
+ *                       pro diário conta como trabalho feito — mas pra tela
+ *                       Trello seria ruído, por isso fica atrás de flag.
  *
  * O agrupamento `porLista` conta CARDS DISTINTOS por destino, não ações: um
- * card que volta e é movido de novo no mesmo dia inflaria a conta (já
+ * card que volta e é movido de novo na mesma janela inflaria a conta (já
  * aconteceu: 11 ações para 10 cards num dia só).
  *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
@@ -47,6 +52,11 @@ interface TrelloAction {
 }
 
 const FORMATO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Teto da API do Trello por chamada. */
+const POR_PAGINA = 1000;
+/** Páginas no máximo — a function morre em 10s, melhor avisar que estourar. */
+const MAX_PAGINAS = 5;
 
 /** Contagem de cards distintos por chave, já ordenada do maior pro menor. */
 function agruparCardsDistintos(
@@ -96,32 +106,74 @@ export const handler: Handler = async (event) => {
     // roda em UTC) — Brasil não tem mais horário de verão, então o offset
     // -03:00 é fixo e o dia vai de 03:00Z a 03:00Z do dia seguinte.
     const hojeSP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-    const pedida = (event.queryStringParameters?.data || '').trim();
-    if (pedida && !FORMATO_DATA.test(pedida)) {
+    const q = event.queryStringParameters ?? {};
+    // `data` é o atalho de um dia só (de = ate); `de`/`ate` abrem a janela.
+    const pedidas = {
+        de: (q.de || q.data || '').trim(),
+        ate: (q.ate || q.data || '').trim(),
+    };
+    for (const [nome, valor] of Object.entries(pedidas)) {
+        if (valor && !FORMATO_DATA.test(valor)) {
+            return {
+                statusCode: 400,
+                headers: erroHeaders,
+                body: JSON.stringify({ ok: false, error: `Data inválida em "${nome}": "${valor}". Use YYYY-MM-DD.` }),
+            };
+        }
+    }
+    const de = pedidas.de || hojeSP;
+    const ate = pedidas.ate || de;
+    if (ate < de) {
         return {
             statusCode: 400,
             headers: erroHeaders,
-            body: JSON.stringify({ ok: false, error: `Data inválida: "${pedida}". Use YYYY-MM-DD.` }),
+            body: JSON.stringify({ ok: false, error: `Janela invertida: "ate" (${ate}) é anterior a "de" (${de}).` }),
         };
     }
-    const dia = pedida || hojeSP;
-    const comAnexos = event.queryStringParameters?.anexos === '1';
+    const comAnexos = q.anexos === '1';
 
     const started = Date.now();
     try {
-        const desde = `${dia}T03:00:00.000Z`;
-        const ate = new Date(new Date(desde).getTime() + 86_400_000).toISOString();
+        const inicioJanela = `${de}T03:00:00.000Z`;
+        const fimJanela = new Date(new Date(`${ate}T03:00:00.000Z`).getTime() + 86_400_000).toISOString();
 
         const filtros = ['commentCard', 'updateCard:idList'];
         if (comAnexos) filtros.push('addAttachmentToCard');
 
-        const acoes = await trelloFetch<TrelloAction[]>('/members/me/actions', key!, token!, {
-            filter: filtros.join(','),
-            since: desde,
-            before: ate,
-            limit: '1000',
-            fields: 'type,date,data',
-        });
+        // A API devolve no máximo 1000 ações por chamada, da mais nova pra mais
+        // antiga. Um dia cabe folgado (~90), mas uma semana não necessariamente
+        // — por isso pagina com `before` andando pra trás. O teto de páginas
+        // existe porque a function morre em 10s: estourando, devolve `truncado`
+        // em vez de um número menor sem avisar.
+        const acoes: TrelloAction[] = [];
+        const vistas = new Set<string>();
+        let cursor = fimJanela;
+        let truncado = false;
+
+        for (let pagina = 0; ; pagina++) {
+            if (pagina >= MAX_PAGINAS) { truncado = true; break; }
+
+            const lote = await trelloFetch<TrelloAction[]>('/members/me/actions', key!, token!, {
+                filter: filtros.join(','),
+                since: inicioJanela,
+                before: cursor,
+                limit: String(POR_PAGINA),
+                fields: 'type,date,data',
+            });
+
+            for (const acao of lote) {
+                // Dedupe: duas ações no mesmo instante fazem a borda do cursor
+                // repetir uma delas.
+                if (vistas.has(acao.id)) continue;
+                vistas.add(acao.id);
+                acoes.push(acao);
+            }
+
+            if (lote.length < POR_PAGINA) break;
+            const maisAntiga = lote[lote.length - 1]?.date;
+            if (!maisAntiga || maisAntiga === cursor) break;
+            cursor = maisAntiga;
+        }
 
         const comentarios = acoes.filter(a => a.type === 'commentCard').length;
         const movimentacoesDeLista = acoes.filter(a => a.type === 'updateCard');
@@ -151,7 +203,11 @@ export const handler: Handler = async (event) => {
             headers: jsonHeaders,
             body: JSON.stringify({
                 ok: true,
-                data: dia,
+                // `data` continua sendo o primeiro dia da janela: o cabeçalho
+                // da tela Trello lê esse campo desde antes de existir janela.
+                data: de,
+                de,
+                ate,
                 // Mantido como estava (comentários + movimentações) pra não
                 // mudar o número que a tela Trello já mostra: anexo entra em
                 // `anexos`, separado.
@@ -161,10 +217,10 @@ export const handler: Handler = async (event) => {
                 anexos: acoesDeAnexo.length,
                 porLista: agruparCardsDistintos(movimentacoesDeLista, a => a.data.listAfter?.name),
                 porBoard: agruparCardsDistintos(acoes, a => a.data.board?.name),
-                // A API corta em 1000 ações. Um dia normal fica bem abaixo
-                // (~190), mas se bater no teto o resumo está incompleto e quem
-                // chama precisa saber, em vez de exibir número menor em silêncio.
-                truncado: acoes.length >= 1000,
+                // Verdadeiro só quando a paginação bateu no teto de páginas —
+                // aí o resumo está incompleto e quem chama precisa saber, em
+                // vez de exibir número menor em silêncio.
+                truncado,
                 movimentacoes,
                 elapsedMs: Date.now() - started,
             }),
