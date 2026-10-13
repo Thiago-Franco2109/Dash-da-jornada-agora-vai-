@@ -1,18 +1,18 @@
 /**
  * Lojas fora da conta da OKR.
  *
- * Os três KRs medem a base das cidades da OKR, e parte dela não é parceiro que
- * o CS consiga mover: loja vendida, operação encerrada, cadastro duplicado,
- * parceiro que nunca abriu. Enquanto ficam no denominador, o KR2 mede o
- * cadastro em vez da adoção.
+ * Os KRs medem a base das cidades da OKR e do Cardápio Digital, e parte dela
+ * não é parceiro que o CS consiga mover: loja vendida, operação encerrada,
+ * cadastro duplicado, parceiro que nunca abriu. Enquanto ficam na conta, o KR
+ * mede o cadastro em vez de medir trabalho.
  *
- * A exclusão vale para os TRÊS KRs — uma decisão por loja, não uma por métrica.
+ * A exclusão vale para TODOS os KRs — uma decisão por loja, não uma por métrica.
  * O motivo é obrigatório: o número vai para o CEO, e "por que 102 e não 108?"
  * precisa ter resposta na tela.
  *
  * Estado no Supabase (`okr_excluido`), não no localStorage: a OKR é uma só, e
  * dois CS olhando bases diferentes reportam semanas diferentes. Ver
- * supabase/okr_excluido.sql.
+ * supabase/okr_excluido.sql e o hook em src/hooks/marcacoesOkr.ts.
  */
 
 export type MotivoExclusao =
@@ -83,15 +83,3 @@ export const MOTIVOS_EXCLUSAO: MotivoExclusaoDef[] = [
 export function motivoExclusaoDef(motivo: string): MotivoExclusaoDef {
     return MOTIVOS_EXCLUSAO.find(m => m.motivo === motivo) ?? MOTIVOS_EXCLUSAO[MOTIVOS_EXCLUSAO.length - 1];
 }
-
-export interface ExclusaoOkr {
-    partnerId: string;
-    motivo: MotivoExclusao;
-    observacao: string | null;
-    nome: string | null;
-    cidade: string | null;
-    excluidoEm: string;
-    excluidoPor: string | null;
-}
-
-export type ExclusaoMap = Record<string, ExclusaoOkr>;

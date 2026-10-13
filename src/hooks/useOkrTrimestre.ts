@@ -19,52 +19,75 @@ export interface OkrParceiroNovo {
     cidade: string;
     lancamento: string;
     pedidos: number;
+    /** Bateu a meta de pedidos na janela — conta mesmo antes de ela fechar. */
     atingiu: boolean;
-    /** A janela de 14 dias já terminou (e os dados já cobrem o último dia). */
     concluida: boolean;
     diasRestantes: number;
     cancelado: boolean;
 }
 
-export interface OkrParceiroAdocao {
+export interface OkrLojaRisco {
     id: number;
     nome: string;
     cidade: string;
     lancamento: string;
-    pedidos: number;
-    recebendo: boolean;
     ultimoPedido: string | null;
-    /** null = nenhum pedido no histórico consultado (60 dias), não "há 0 dias". */
+    /** null = nenhum pedido no histórico consultado, não "há 0 dias". */
     diasSemPedido: number | null;
+    /** Maior silêncio do trimestre — 7+ põe a loja no universo do KR 2.3. */
+    maiorLacunaDias: number;
+    /** Da semana mais recente para a mais antiga. */
+    semanasComPedido: boolean[];
+    aceitos4sem: number;
+    cancelados4sem: number;
+    /** null = sem pedido na janela, não "0% de cancelamento". */
+    taxaCancelamentoPct: number | null;
 }
 
-export interface OkrParceiroChurn {
+export interface OkrLojaCd {
     id: number;
     nome: string;
     cidade: string;
-    /** null = segue na base; data = saiu dentro do trimestre. */
-    saida: string | null;
-    motivo: string | null;
+    /** delivery = 1 hoje. Pedido de loja já desligada continua contando. */
+    ativa: boolean;
+    porMes: Record<string, number>;
+    pedidosTrimestre: number;
+    pedidos30d: number;
+}
+
+export interface OkrParametros {
+    janelaNovos: number;
+    pedidosNovos: number;
+    metaKr22: number;
+    diasParado: number;
+    semanasReversao: number;
+    tetoCancelamentoPct: number;
+    metaKr23: number;
+    metaKr41: number;
+    desafioKr41: number;
+    checkpointsKr41: number[];
+    janelaLojaAtiva: number;
+    pedidosLojaAtiva: number;
+    metaKr42: number;
+    baseKr42: number;
+    checkpointsKr42: number[];
+    /** Da mais recente para a mais antiga. */
+    semanas: { de: string; ate: string }[];
+    desde30d: string;
 }
 
 export interface OkrTrimestre {
     ok: true;
-    trimestre: { id: string; inicio: string; fim: string; corte: string; hoje: string; dadosAte: string };
+    trimestre: { id: string; inicio: string; fim: string; corte: string; hoje: string; dadosAte: string; meses: string[] };
     cidades: string[];
-    parametros: {
-        janelaNovos: number;
-        pedidosNovos: number;
-        diasAdocao: number;
-        metaKr1: number;
-        metaKr2: number;
-        metaKr3: number;
-        desdeAdocao: string;
-    };
-    // Listas nominais, sem porcentagem: quem soma é utils/okrFiguras.ts, que
-    // precisa descontar as lojas fora da conta antes de fechar o número.
-    kr1: { meta: number; parceiros: OkrParceiroNovo[] };
-    kr2: { meta: number; parceiros: OkrParceiroAdocao[] };
-    kr3: { meta: number; parceiros: OkrParceiroChurn[] };
+    parametros: OkrParametros;
+    // Listas nominais, sem placar: quem soma é utils/okrFiguras.ts, que precisa
+    // descontar as lojas fora da conta e somar as marcadas como críticas.
+    kr22: { meta: number; parceiros: OkrParceiroNovo[] };
+    kr23: { meta: number; parceiros: OkrLojaRisco[] };
+    cardapioDigital: { lojas: OkrLojaCd[] };
+    kr41: { meta: number; desafio: number; checkpoints: number[] };
+    kr42: { meta: number; base: number; checkpoints: number[] };
     elapsedMs?: number;
 }
 

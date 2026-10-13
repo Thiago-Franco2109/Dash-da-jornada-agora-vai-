@@ -4,17 +4,27 @@ import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
 
 /**
- * Os três KRs da OKR do trimestre, calculados no banco, só para as cidades da
- * OKR:
+ * Os KRs de Sucesso do Cliente do trimestre, calculados no banco.
  *
- *   KR1 Novos    90% dos parceiros lançados no trimestre com 5+ pedidos nos
- *                primeiros 14 dias
- *   KR2 Adoção   70% dos parceiros ativos recebendo pedido nos últimos 7 dias
- *   KR3 Churn    95% dos contratos vivos no início do trimestre ainda vivos
+ * OBJETIVO 2 — Oferta e retenção nas 5 cidades (marketplace)
+ *   KR 2.2 Safra 14d       levar 20 parceiros ativados a 5 pedidos nos
+ *                          primeiros 14 dias
+ *   KR 2.3 Lojas em risco  reverter 30 lojas: 4 semanas seguidas com pedido e
+ *                          cancelamento abaixo de 10%
+ *
+ * OBJETIVO 4 — Base do Cardápio Digital (base inteira, SEM recorte de cidade)
+ *   KR 4.1 Pedidos         15.400 pedidos no trimestre (desafio 16.000)
+ *   KR 4.2 Lojas ativas    40 lojas com 30+ pedidos nos últimos 30 dias
+ *
+ * Os dois objetivos medem bases DISJUNTAS: as 5 cidades são marketplace
+ * (`cardapio_digital = 0/NULL`) e o objetivo 4 é a base de Cardápio Digital
+ * inteira, do país todo — o enunciado do objetivo 4 não fala em cidade, e
+ * recortar por cidade mediria outra coisa. Ver `jornada.ts` para a disjunção.
  *
  * A resposta traz as LISTAS nominais, não as porcentagens: a aba existe para
  * trabalhar a OKR, não só para exibir o placar, e a soma precisa descontar as
- * lojas que o CS tirou da conta (Supabase `okr_excluido`). Quem soma é
+ * lojas que o CS tirou da conta (Supabase `okr_excluido`) e considerar as que
+ * ele marcou como críticas (`okr_critica`). Quem soma é
  * `src/utils/okrFiguras.ts` — somar aqui também criaria uma segunda verdade,
  * calculada sobre a base cheia e pronta para divergir da tela.
  *
@@ -28,20 +38,28 @@ import { checkOrigin } from './_shared/auth';
  * Jesus do Norte - ES" (ver o comentário longo em cidadesOkr.ts).
  *
  * ── Decisões de régua ────────────────────────────────────────────────────
- *  - só marketplace (cardapio_digital = 0/NULL): CD é base disjunta, ver
- *    `jornada.ts`.
+ *  - pedido ACEITO = status IN (1, 2) — "confirmado ou recebido" do enunciado
+ *    do KR 4.1, e a mesma régua que o resto do app já usa. Status 3 é
+ *    cancelado e -1 é Pix não pago (conferido: todo status -1 é pix-* com
+ *    status_pagamento 3); os dois ficam de fora.
  *  - LANÇAMENTO = MIN(venda.data_lancamento) entre os contratos VIVOS, caindo
  *    para o MIN de todo o histórico quando não sobrou nenhum — mesma regra da
  *    Jornada, que existe para o parceiro que cancelou e voltou não ficar
  *    ancorado no contrato antigo.
- *  - pedido ACEITO = status IN (1, 2), mesma régua do resto do app.
- *  - SAÍDA do contrato = data_cancelamento; quando ela é nula (status 3/5
- *    costumam vir sem data) cai para a data do último `status_venda` de
- *    cancelamento. Sem isso, desistência e não-renovação sumiriam do churn.
- *  - "janela fechada" do KR1 é medida contra `dadosAte` (MAX(pedido.data)), e
- *    não contra hoje: a réplica que estas functions enxergam fica ~1 dia atrás
- *    do banco real, e contar como fechada uma janela cujo último dia ainda não
- *    chegou aqui reprovaria o parceiro por atraso de dado.
+ *  - ENTROU EM RISCO (KR 2.3) olha o trimestre inteiro, não o dia de hoje: se
+ *    o universo fosse "parada AGORA há 7+ dias", ele e o critério de reversão
+ *    ("4 semanas seguidas com pedido") nunca se cruzariam — a loja sairia do
+ *    universo no instante em que melhorasse, e o KR ficaria travado em zero.
+ *    Por isso a marca é ter ficado 7+ dias corridos sem pedido em ALGUM
+ *    momento do trimestre (contado a partir do lançamento, para parceiro novo
+ *    não entrar em risco pelo tempo em que ainda nem existia).
+ *  - TAXA DE CANCELAMENTO = cancelados / (aceitos + cancelados) nas 4 semanas.
+ *    Pix não pago fica fora do denominador: o cliente desistir antes de pagar
+ *    não é cancelamento da loja, e inflaria o denominador de quem vende por Pix.
+ *  - "janela fechada" do KR 2.2 é medida contra `dadosAte` (MAX(pedido.data)),
+ *    e não contra hoje: a réplica que estas functions enxergam fica ~1 dia
+ *    atrás do banco real, e contar como fechada uma janela cujo último dia
+ *    ainda não chegou aqui reprovaria o parceiro por atraso de dado.
  *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
@@ -55,12 +73,27 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 const DIAS_HISTORICO_MINIMO = 60;
 
 const PADRAO = {
+    // KR 2.2 — safra 14d
     janelaNovos: 14,
     pedidosNovos: 5,
-    diasAdocao: 7,
-    metaKr1: 90,
-    metaKr2: 70,
-    metaKr3: 95,
+    metaKr22: 20,
+    // KR 2.3 — lojas em risco
+    diasParado: 7,
+    semanasReversao: 4,
+    tetoCancelamentoPct: 10,
+    metaKr23: 30,
+    // KR 4.1 — pedidos no Cardápio Digital
+    metaKr41: 15400,
+    desafioKr41: 16000,
+    /** Acumulado esperado ao fim de cada mês do trimestre. */
+    checkpointsKr41: [4350, 9350, 15400],
+    // KR 4.2 — lojas ativas no Cardápio Digital
+    janelaLojaAtiva: 30,
+    pedidosLojaAtiva: 30,
+    metaKr42: 40,
+    /** Ponto de partida declarado na OKR. */
+    baseKr42: 23,
+    checkpointsKr42: [28, 34, 40],
 };
 
 /** "Hoje" em Brasília — a function roda em UTC e viraria o dia às 21h. */
@@ -80,7 +113,7 @@ function trimestreDe(iso: string): string {
     return `${iso.slice(0, 4)}-Q${Math.floor((Number(iso.slice(5, 7)) - 1) / 3) + 1}`;
 }
 
-function limitesTrimestre(id: string): { inicio: string; fim: string } | null {
+function limitesTrimestre(id: string): { inicio: string; fim: string; meses: string[] } | null {
     const m = /^(\d{4})-Q([1-4])$/.exec(id);
     if (!m) return null;
     const ano = Number(m[1]);
@@ -91,6 +124,7 @@ function limitesTrimestre(id: string): { inicio: string; fim: string } | null {
     return {
         inicio: `${ano}-${String(mesInicio).padStart(2, '0')}-01`,
         fim: `${ano}-${String(mesFim).padStart(2, '0')}-${ultimoDia}`,
+        meses: [0, 1, 2].map(i => `${ano}-${String(mesInicio + i).padStart(2, '0')}`),
     };
 }
 
@@ -124,19 +158,26 @@ function casaPrefixo(cidade: string, prefixos: string[]): boolean {
     );
 }
 
-/** Dias parado: desde o último pedido, ou desde o lançamento se nunca vendeu. */
-function tempoParado(p: { diasSemPedido: number | null; lancamento: string }, corte: string): number {
-    return p.diasSemPedido ?? (p.lancamento ? diasEntre(p.lancamento, corte) : 9999);
-}
+interface DiaPedidos { dia: string; aceitos: number; cancelados: number }
 
-interface ParceiroOkr {
-    id: number;
-    nome: string;
-    cidade: string;
-    delivery: number;
-    lancamento: string;
-    contratoVivo: boolean;
-    saida: string | null;
+/**
+ * A maior sequência de dias corridos SEM pedido aceito dentro da janela.
+ * Conta também as pontas: o silêncio antes do primeiro pedido e depois do
+ * último valem tanto quanto um buraco no meio.
+ */
+function maiorLacuna(dias: DiaPedidos[], de: string, ate: string): number {
+    if (diasEntre(de, ate) < 0) return 0;
+    const comPedido = dias
+        .filter(d => d.aceitos > 0 && d.dia >= de && d.dia <= ate)
+        .map(d => d.dia)
+        .sort();
+    if (comPedido.length === 0) return diasEntre(de, ate) + 1;
+
+    let maior = diasEntre(de, comPedido[0]);
+    for (let i = 1; i < comPedido.length; i++) {
+        maior = Math.max(maior, diasEntre(comPedido[i - 1], comPedido[i]) - 1);
+    }
+    return Math.max(maior, diasEntre(comPedido[comPedido.length - 1], ate));
 }
 
 export const handler: Handler = async (event) => {
@@ -174,23 +215,25 @@ export const handler: Handler = async (event) => {
         };
     }
 
-    const janelaNovos = Math.min(Math.max(Number(q.janela) || PADRAO.janelaNovos, 1), 90);
-    const pedidosNovos = Math.min(Math.max(Number(q.meta) || PADRAO.pedidosNovos, 1), 100);
-    const diasAdocao = Math.min(Math.max(Number(q.adocao) || PADRAO.diasAdocao, 1), 90);
-
-    const { inicio, fim } = limites;
+    const { inicio, fim, meses } = limites;
     /** Até onde o trimestre já andou — trimestre passado fecha no próprio fim. */
     const corte = hoje < fim ? hoje : fim;
+    /** Limite superior exclusivo, porque `pedido.data` é datetime. */
+    const corteExclusivo = somarDias(corte, 1);
 
     let connection;
     const started = Date.now();
     try {
         connection = await getConnection();
 
-        // ── 1. cidades da OKR → localidade_id ────────────────────────────
-        const [localidades] = await connection.query<RowDataPacket[]>(
-            `SELECT id, nome FROM localidade`,
+        const [ultimo] = await connection.query<RowDataPacket[]>(
+            `SELECT DATE_FORMAT(MAX(data), '%Y-%m-%d') AS ate FROM pedido`,
         );
+        const dadosAte = String(ultimo[0]?.ate ?? corte);
+
+        // ══ OBJETIVO 2 — as 5 cidades, marketplace ═══════════════════════
+
+        const [localidades] = await connection.query<RowDataPacket[]>(`SELECT id, nome FROM localidade`);
         const daOkr = localidades.filter(l => casaPrefixo(String(l.nome ?? ''), prefixos));
         if (daOkr.length === 0) {
             return {
@@ -201,7 +244,6 @@ export const handler: Handler = async (event) => {
         }
         const localidadeIds = daOkr.map(l => Number(l.id));
 
-        // ── 2. contrato por parceiro: lançamento, se está vivo, quando saiu ─
         const [contratos] = await connection.query<RowDataPacket[]>(
             `SELECT ve.estabelecimento_id AS estab,
                     DATE_FORMAT(
@@ -209,115 +251,84 @@ export const handler: Handler = async (event) => {
                             MIN(CASE WHEN v.status NOT IN (2, 3, 5) THEN v.data_lancamento END),
                             MIN(v.data_lancamento)
                         ), '%Y-%m-%d') AS lancamento,
-                    SUM(v.status NOT IN (2, 3, 5)) AS vivos,
-                    DATE_FORMAT(MAX(COALESCE(v.data_cancelamento, sv.ultima)), '%Y-%m-%d') AS saida
+                    SUM(v.status NOT IN (2, 3, 5)) AS vivos
              FROM venda v
              JOIN venda_estabelecimento ve ON ve.venda_id = v.id
              JOIN estabelecimento e ON e.id = ve.estabelecimento_id
-             LEFT JOIN (
-                 SELECT venda_id, MAX(data) AS ultima
-                 FROM status_venda WHERE status IN (2, 3, 5) GROUP BY venda_id
-             ) sv ON sv.venda_id = v.id
              WHERE e.localidade_id IN (?)
                AND e.delivery IN (1, 2, 4, 5)
                AND (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)
              GROUP BY ve.estabelecimento_id`,
             [localidadeIds],
         );
-        // Nenhum parceiro lançado nas cidades da OKR: devolve o MESMO formato,
-        // zerado. Um formato especial para o caso vazio só obrigaria a tela a
-        // tratar dois contratos diferentes para dizer a mesma coisa.
-        if (contratos.length === 0) {
-            return {
-                statusCode: 200,
-                headers: jsonHeaders,
-                body: JSON.stringify({
-                    ok: true,
-                    trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte: corte },
-                    cidades: [...new Set(daOkr.map(l => String(l.nome)))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-                    parametros: { janelaNovos, pedidosNovos, diasAdocao, metaKr1: PADRAO.metaKr1, metaKr2: PADRAO.metaKr2, metaKr3: PADRAO.metaKr3, desdeAdocao: somarDias(corte, -diasAdocao + 1) },
-                    kr1: { meta: PADRAO.metaKr1, parceiros: [] },
-                    kr2: { meta: PADRAO.metaKr2, parceiros: [] },
-                    kr3: { meta: PADRAO.metaKr3, parceiros: [] },
-                    elapsedMs: Date.now() - started,
-                }),
-            };
-        }
 
-        const ids = contratos.map(r => Number(r.estab));
-
-        const [estabs] = await connection.query<RowDataPacket[]>(
-            `SELECT e.id, e.nome, e.delivery, IFNULL(l.nome, '') AS cidade
-             FROM estabelecimento e
-             LEFT JOIN localidade l ON l.id = e.localidade_id
-             WHERE e.id IN (?)`,
-            [ids],
-        );
+        const idsCidades = contratos.map(r => Number(r.estab));
+        const [estabs] = idsCidades.length > 0
+            ? await connection.query<RowDataPacket[]>(
+                `SELECT e.id, e.nome, e.delivery, IFNULL(l.nome, '') AS cidade
+                 FROM estabelecimento e
+                 LEFT JOIN localidade l ON l.id = e.localidade_id
+                 WHERE e.id IN (?)`,
+                [idsCidades],
+            )
+            : [[] as RowDataPacket[]];
         const infoPorId = new Map(estabs.map(e => [Number(e.id), e]));
 
-        const parceiros: ParceiroOkr[] = contratos.map(r => {
+        // Aceitos e cancelados no mesmo passe: a taxa de cancelamento do KR 2.3
+        // precisa dos dois, e o pedido é a tabela cara de varrer.
+        const desdePedidos = [inicio, somarDias(corte, -DIAS_HISTORICO_MINIMO)].sort()[0];
+        const [pedidosCidades] = idsCidades.length > 0
+            ? await connection.query<RowDataPacket[]>(
+                `SELECT estabelecimento_id AS estab,
+                        DATE_FORMAT(data, '%Y-%m-%d') AS dia,
+                        SUM(status IN (1, 2)) AS aceitos,
+                        SUM(status = 3) AS cancelados
+                 FROM pedido FORCE INDEX (data)
+                 WHERE status IN (1, 2, 3) AND data >= ? AND data < ? AND estabelecimento_id IN (?)
+                 GROUP BY estabelecimento_id, dia`,
+                [desdePedidos, corteExclusivo, idsCidades],
+            )
+            : [[] as RowDataPacket[]];
+
+        const diasPorEstab = new Map<number, DiaPedidos[]>();
+        for (const p of pedidosCidades) {
+            const estab = Number(p.estab);
+            const lista = diasPorEstab.get(estab) ?? [];
+            lista.push({ dia: String(p.dia), aceitos: Number(p.aceitos ?? 0), cancelados: Number(p.cancelados ?? 0) });
+            diasPorEstab.set(estab, lista);
+        }
+
+        const parceiros = contratos.map(r => {
             const id = Number(r.estab);
             const info = infoPorId.get(id);
-            const vivo = Number(r.vivos ?? 0) > 0;
             return {
                 id,
                 nome: String(info?.nome ?? `#${id}`),
                 cidade: String(info?.cidade ?? ''),
                 delivery: Number(info?.delivery ?? 0),
                 lancamento: String(r.lancamento ?? ''),
-                contratoVivo: vivo,
-                // Contrato vivo não tem saída, mesmo com cancelamento antigo no
-                // histórico: é parceiro que voltou, não parceiro perdido.
-                saida: vivo ? null : (r.saida ? String(r.saida) : null),
+                contratoVivo: Number(r.vivos ?? 0) > 0,
             };
         });
 
-        // ── 3. pedidos aceitos ───────────────────────────────────────────
-        // Começa no que vier primeiro entre o trimestre e os últimos 60 dias:
-        // no começo de um trimestre a janela do trimestre é curta demais para
-        // responder "sem pedido há quantos dias?".
-        const desdePedidos = [inicio, somarDias(corte, -DIAS_HISTORICO_MINIMO)].sort()[0];
-        const [pedidos] = await connection.query<RowDataPacket[]>(
-            `SELECT estabelecimento_id AS estab,
-                    DATE_FORMAT(data, '%Y-%m-%d') AS dia,
-                    COUNT(*) AS n
-             FROM pedido FORCE INDEX (data)
-             WHERE status IN (1, 2) AND data >= ? AND estabelecimento_id IN (?)
-             GROUP BY estabelecimento_id, dia`,
-            [desdePedidos, ids],
-        );
-
-        const diasPorEstab = new Map<number, { dia: string; n: number }[]>();
-        for (const p of pedidos) {
-            const estab = Number(p.estab);
-            const lista = diasPorEstab.get(estab) ?? [];
-            lista.push({ dia: String(p.dia), n: Number(p.n ?? 0) });
-            diasPorEstab.set(estab, lista);
-        }
-
-        const [ultimo] = await connection.query<RowDataPacket[]>(
-            `SELECT DATE_FORMAT(MAX(data), '%Y-%m-%d') AS ate FROM pedido`,
-        );
-        const dadosAte = String(ultimo[0]?.ate ?? corte);
-
-        // ── KR1 ──────────────────────────────────────────────────────────
+        // ── KR 2.2 — safra de 14 dias ────────────────────────────────────
         const coorte = parceiros
             .filter(p => p.lancamento && p.lancamento >= inicio && p.lancamento <= corte)
             .map(p => {
-                const fimJanela = somarDias(p.lancamento, janelaNovos); // exclusivo
+                const fimJanela = somarDias(p.lancamento, PADRAO.janelaNovos); // exclusivo
                 const dias = diasPorEstab.get(p.id) ?? [];
-                const pedidosJanela = dias
+                const pedidos = dias
                     .filter(d => d.dia >= p.lancamento && d.dia < fimJanela)
-                    .reduce((a, d) => a + d.n, 0);
-                // Janela fechada = o último dia dela já existe nos dados.
+                    .reduce((a, d) => a + d.aceitos, 0);
                 const concluida = fimJanela <= dadosAte;
                 return {
                     id: p.id,
                     nome: p.nome,
                     cidade: p.cidade,
                     lancamento: p.lancamento,
-                    pedidos: pedidosJanela,
-                    atingiu: pedidosJanela >= pedidosNovos,
+                    pedidos,
+                    // Bateu é bateu: não espera a janela fechar para contar.
+                    atingiu: pedidos >= PADRAO.pedidosNovos,
                     concluida,
                     diasRestantes: concluida ? 0 : Math.max(diasEntre(dadosAte, fimJanela), 0),
                     cancelado: !p.contratoVivo,
@@ -325,114 +336,136 @@ export const handler: Handler = async (event) => {
             })
             .sort((a, b) => b.lancamento.localeCompare(a.lancamento));
 
-        // ── KR2 ──────────────────────────────────────────────────────────
-        // Base = quem está ativo HOJE (delivery = 1) e já tinha lançado até o
-        // corte. Suspensão (delivery = 4) não tem histórico no banco, então
-        // trimestre passado é aproximação pela foto de hoje — está dito na tela.
-        const desdeAdocao = somarDias(corte, -diasAdocao + 1);
-        const adocao = parceiros
+        // ── KR 2.3 — lojas em risco ──────────────────────────────────────
+        // Uma linha por loja ATIVA das 5 cidades, com os sinais crus. Quem
+        // decide o universo é a tela: entrou em risco no trimestre OU está
+        // marcada como crítica (a marcação mora no Supabase, fora daqui).
+        const semanas = Array.from({ length: PADRAO.semanasReversao }, (_, i) => ({
+            de: somarDias(corte, -7 * (i + 1) + 1),
+            ate: somarDias(corte, -7 * i),
+        }));
+
+        const risco = parceiros
             .filter(p => p.delivery === 1 && p.lancamento && p.lancamento <= corte)
             .map(p => {
-                const dias = (diasPorEstab.get(p.id) ?? []).filter(d => d.dia <= corte);
-                const ultimoDia = dias.reduce((max, d) => (d.dia > max ? d.dia : max), '');
-                const naJanela = dias
-                    .filter(d => d.dia >= desdeAdocao)
-                    .reduce((a, d) => a + d.n, 0);
+                const dias = diasPorEstab.get(p.id) ?? [];
+                const comAceito = dias.filter(d => d.aceitos > 0).map(d => d.dia).sort();
+                const ultimoPedido = comAceito.length > 0 ? comAceito[comAceito.length - 1] : null;
+
+                // Parceiro lançado no meio do trimestre não fica "em risco"
+                // pelo silêncio de antes de existir.
+                const inicioRisco = p.lancamento > inicio ? p.lancamento : inicio;
+                const lacuna = maiorLacuna(dias, inicioRisco, corte);
+
+                const janela = dias.filter(d => d.dia >= semanas[semanas.length - 1].de);
+                const aceitos4sem = janela.reduce((a, d) => a + d.aceitos, 0);
+                const cancelados4sem = janela.reduce((a, d) => a + d.cancelados, 0);
+                const baseTaxa = aceitos4sem + cancelados4sem;
+
                 return {
                     id: p.id,
                     nome: p.nome,
                     cidade: p.cidade,
                     lancamento: p.lancamento,
-                    pedidos: naJanela,
-                    recebendo: naJanela > 0,
-                    ultimoPedido: ultimoDia || null,
-                    // null = nenhum pedido no histórico consultado, não "0 dias".
-                    diasSemPedido: ultimoDia ? diasEntre(ultimoDia, corte) : null,
+                    ultimoPedido,
+                    diasSemPedido: ultimoPedido ? diasEntre(ultimoPedido, corte) : null,
+                    /** Maior silêncio do trimestre — é o que põe a loja em risco. */
+                    maiorLacunaDias: lacuna,
+                    /** Da semana mais recente para a mais antiga. */
+                    semanasComPedido: semanas.map(s =>
+                        dias.some(d => d.dia >= s.de && d.dia <= s.ate && d.aceitos > 0),
+                    ),
+                    aceitos4sem,
+                    cancelados4sem,
+                    /** null = sem pedido nenhum na janela, não "0% de cancelamento". */
+                    taxaCancelamentoPct: baseTaxa > 0 ? Math.round((cancelados4sem / baseTaxa) * 1000) / 10 : null,
                 };
             })
-            // Ordena pelo tempo parado, e quem nunca vendeu conta desde o
-            // lançamento: sem isso um parceiro de dois dias apareceria no topo
-            // da fila, junto dos que estão largados há meses.
-            .sort((a, b) => tempoParado(b, corte) - tempoParado(a, corte));
+            .sort((a, b) => (b.taxaCancelamentoPct ?? -1) - (a.taxaCancelamentoPct ?? -1));
 
-        // Quem não aparece na janela de histórico pode estar parado há mais
-        // tempo que ela — ou nunca ter vendido. São coisas diferentes para o
-        // CS, então o último pedido de verdade vale uma consulta à parte (só
-        // para esses, que são poucos: varrer o histórico inteiro da base toda
-        // custaria os 14s que o comentário do `jornada.ts` descreve).
-        const semHistorico = adocao.filter(a => a.ultimoPedido === null).map(a => a.id);
-        if (semHistorico.length > 0) {
-            const [antigos] = await connection.query<RowDataPacket[]>(
-                `SELECT estabelecimento_id AS estab, DATE_FORMAT(MAX(data), '%Y-%m-%d') AS ultimo
-                 FROM pedido
-                 WHERE status IN (1, 2) AND data <= ? AND estabelecimento_id IN (?)
-                 GROUP BY estabelecimento_id`,
-                [corte, semHistorico],
-            );
-            const ultimoPorEstab = new Map(antigos.map(r => [Number(r.estab), String(r.ultimo)]));
-            for (const a of adocao) {
-                const ultimo = ultimoPorEstab.get(a.id);
-                if (!ultimo) continue;
-                a.ultimoPedido = ultimo;
-                a.diasSemPedido = diasEntre(ultimo, corte);
-            }
-            adocao.sort((a, b) => tempoParado(b, corte) - tempoParado(a, corte));
+        // ══ OBJETIVO 4 — Cardápio Digital, base inteira ══════════════════
+        // Sem recorte de cidade e sem filtro de delivery: o KR conta PEDIDOS do
+        // Cardápio Digital, e quem os gerou continua contando mesmo que a loja
+        // tenha sido desligada depois.
+        const [cdPorMes] = await connection.query<RowDataPacket[]>(
+            `SELECT p.estabelecimento_id AS estab,
+                    DATE_FORMAT(p.data, '%Y-%m') AS mes,
+                    COUNT(*) AS n
+             FROM pedido p FORCE INDEX (data)
+             WHERE p.status IN (1, 2) AND p.cardapio_digital = 1
+               AND p.data >= ? AND p.data < ?
+             GROUP BY p.estabelecimento_id, mes`,
+            [inicio, corteExclusivo],
+        );
+
+        const desde30d = somarDias(corte, -PADRAO.janelaLojaAtiva + 1);
+        const [cd30d] = await connection.query<RowDataPacket[]>(
+            `SELECT estabelecimento_id AS estab, COUNT(*) AS n
+             FROM pedido FORCE INDEX (data)
+             WHERE status IN (1, 2) AND cardapio_digital = 1
+               AND data >= ? AND data < ?
+             GROUP BY estabelecimento_id`,
+            [desde30d, corteExclusivo],
+        );
+
+        const idsCd = [...new Set([...cdPorMes.map(r => Number(r.estab)), ...cd30d.map(r => Number(r.estab))])];
+        const [estabsCd] = idsCd.length > 0
+            ? await connection.query<RowDataPacket[]>(
+                `SELECT e.id, e.nome, e.delivery, IFNULL(l.nome, '') AS cidade
+                 FROM estabelecimento e
+                 LEFT JOIN localidade l ON l.id = e.localidade_id
+                 WHERE e.id IN (?)`,
+                [idsCd],
+            )
+            : [[] as RowDataPacket[]];
+        const infoCd = new Map(estabsCd.map(e => [Number(e.id), e]));
+
+        const porMesPorEstab = new Map<number, Record<string, number>>();
+        for (const r of cdPorMes) {
+            const estab = Number(r.estab);
+            const atual = porMesPorEstab.get(estab) ?? {};
+            atual[String(r.mes)] = Number(r.n ?? 0);
+            porMesPorEstab.set(estab, atual);
         }
+        const trintaDiasPorEstab = new Map(cd30d.map(r => [Number(r.estab), Number(r.n ?? 0)]));
 
-        // ── KR3 ──────────────────────────────────────────────────────────
-        // Base = contrato vivo na virada do trimestre (lançou até lá e não
-        // tinha saído). Quem lançou DENTRO do trimestre não entra: o KR mede
-        // manter o que já existia, e contar os novos diluiria a conta.
-        const churn = parceiros
-            .filter(p => p.lancamento && p.lancamento <= inicio && (!p.saida || p.saida > inicio))
-            .map(p => ({
-                id: p.id,
-                nome: p.nome,
-                cidade: p.cidade,
-                // null = continua na base; data = saiu DENTRO do trimestre.
-                saida: p.saida && p.saida >= inicio && p.saida <= corte ? p.saida : null,
-                motivo: null as string | null,
-            }))
-            .sort((a, b) => (b.saida ?? '').localeCompare(a.saida ?? ''));
+        const lojasCd = idsCd
+            .map(id => {
+                const info = infoCd.get(id);
+                const porMes = porMesPorEstab.get(id) ?? {};
+                return {
+                    id,
+                    nome: String(info?.nome ?? `#${id}`),
+                    cidade: String(info?.cidade ?? ''),
+                    ativa: Number(info?.delivery ?? 0) === 1,
+                    porMes,
+                    pedidosTrimestre: meses.reduce((a, m) => a + (porMes[m] ?? 0), 0),
+                    pedidos30d: trintaDiasPorEstab.get(id) ?? 0,
+                };
+            })
+            .sort((a, b) => b.pedidos30d - a.pedidos30d || b.pedidosTrimestre - a.pedidosTrimestre);
 
-        // Motivo do cancelamento mora em status_venda.observacao — só vale a
-        // pena buscar para quem realmente saiu.
-        const sairam = churn.filter(p => p.saida);
-        if (sairam.length > 0) {
-            const [motivos] = await connection.query<RowDataPacket[]>(
-                `SELECT ve.estabelecimento_id AS estab, sv.observacao, sv.data
-                 FROM status_venda sv
-                 JOIN venda_estabelecimento ve ON ve.venda_id = sv.venda_id
-                 WHERE sv.status IN (2, 3, 5) AND ve.estabelecimento_id IN (?)
-                 ORDER BY sv.data`,
-                [sairam.map(p => p.id)],
-            );
-            const motivoPorEstab = new Map<number, string>();
-            for (const m of motivos) {
-                const texto = String(m.observacao ?? '').trim();
-                if (texto) motivoPorEstab.set(Number(m.estab), texto); // ORDER BY data: fica o último
-            }
-            for (const p of sairam) p.motivo = motivoPorEstab.get(p.id) ?? null;
-        }
-
-        // A resposta traz as LISTAS, não as porcentagens. Quem soma é
-        // `src/utils/okrFiguras.ts`, porque a conta precisa descontar as lojas
-        // que o CS tirou da conta (Supabase `okr_excluido`) — e uma soma aqui
-        // seria uma segunda verdade, calculada sobre a base cheia, pronta para
-        // divergir do que a tela mostra.
         return {
             statusCode: 200,
             headers: jsonHeaders,
             body: JSON.stringify({
                 ok: true,
-                trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte },
+                trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte, meses },
                 // Dedup por nome: a mesma cidade pode ter mais de uma localidade
                 // no cadastro (uma delas inativa, sem nenhum estabelecimento).
                 cidades: [...new Set(daOkr.map(l => String(l.nome)))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-                parametros: { janelaNovos, pedidosNovos, diasAdocao, metaKr1: PADRAO.metaKr1, metaKr2: PADRAO.metaKr2, metaKr3: PADRAO.metaKr3, desdeAdocao },
-                kr1: { meta: PADRAO.metaKr1, parceiros: coorte },
-                kr2: { meta: PADRAO.metaKr2, parceiros: adocao },
-                kr3: { meta: PADRAO.metaKr3, parceiros: churn },
+                parametros: {
+                    ...PADRAO,
+                    semanas,
+                    desde30d,
+                },
+                kr22: { meta: PADRAO.metaKr22, parceiros: coorte },
+                kr23: { meta: PADRAO.metaKr23, parceiros: risco },
+                // Uma lista só para os dois KRs do objetivo 4: eles medem a
+                // mesma base por ângulos diferentes (pedidos e lojas ativas).
+                cardapioDigital: { lojas: lojasCd },
+                kr41: { meta: PADRAO.metaKr41, desafio: PADRAO.desafioKr41, checkpoints: PADRAO.checkpointsKr41 },
+                kr42: { meta: PADRAO.metaKr42, base: PADRAO.baseKr42, checkpoints: PADRAO.checkpointsKr42 },
                 elapsedMs: Date.now() - started,
             }),
         };
