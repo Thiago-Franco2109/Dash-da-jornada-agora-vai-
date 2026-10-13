@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
 // ─────────────────────────────────────────────────────────────────────────
-// As marcações manuais da OKR — "fora da conta" (`okr_excluido`) e "crítica
-// de cancelamento" (`okr_critica`).
+// As marcações manuais da OKR — "fora da conta" (`okr_excluido`), "crítica de
+// cancelamento" (`okr_critica`) e "no plano de recuperação" (`okr_recuperacao`).
 //
 // As duas têm a MESMA forma: uma linha por parceiro, com motivo, observação,
 // autor e data. Em vez de dois hooks quase iguais, uma fábrica — assim a
@@ -46,6 +46,8 @@ export interface UsoMarcacao {
     carregando: boolean;
     erro: string | null;
     marcar: (partnerId: string | number, dados: DadosMarcacao) => Promise<boolean>;
+    /** Marca vários de uma vez — um upsert só, não N chamadas em série. */
+    marcarVarios: (itens: { partnerId: string | number; dados: DadosMarcacao }[]) => Promise<boolean>;
     desmarcar: (partnerId: string | number) => Promise<boolean>;
 }
 
@@ -154,6 +156,47 @@ function criarHookMarcacao(cfg: ConfigMarcacao): () => UsoMarcacao {
             return true;
         }, []);
 
+        const marcarVarios = useCallback(async (itens: { partnerId: string | number; dados: DadosMarcacao }[]): Promise<boolean> => {
+            if (itens.length === 0) return true;
+            const agora = new Date().toISOString();
+            const novas: MarcacaoMap = {};
+            for (const { partnerId, dados } of itens) {
+                novas[String(partnerId)] = {
+                    partnerId: String(partnerId),
+                    motivo: dados.motivo ?? null,
+                    observacao: dados.observacao?.trim() ? dados.observacao.trim() : null,
+                    nome: dados.nome ?? null,
+                    cidade: dados.cidade ?? null,
+                    quando: agora,
+                    quem: dados.quem ?? null,
+                };
+            }
+            const anterior = { ...(cache ?? {}) };
+            publicar({ ...anterior, ...novas });
+
+            const { error } = await supabase
+                .from(cfg.tabela)
+                .upsert(Object.values(novas).map(m => ({
+                    partner_id: m.partnerId,
+                    motivo: m.motivo,
+                    observacao: m.observacao,
+                    nome: m.nome,
+                    cidade: m.cidade,
+                    [cfg.colQuando]: m.quando,
+                    [cfg.colQuem]: m.quem,
+                    atualizado_em: agora,
+                })), { onConflict: 'partner_id' });
+
+            if (error) {
+                console.error(`[marcacoesOkr:${cfg.tabela}] falha ao marcar em lote:`, error);
+                setErro(error.message);
+                publicar(anterior);
+                return false;
+            }
+            setErro(null);
+            return true;
+        }, []);
+
         /** Some da tabela, não vira linha "cancelada". */
         const desmarcar = useCallback(async (partnerId: string | number): Promise<boolean> => {
             const id = String(partnerId);
@@ -175,7 +218,7 @@ function criarHookMarcacao(cfg: ConfigMarcacao): () => UsoMarcacao {
             return true;
         }, []);
 
-        return { marcacoes, ids, carregando, erro, marcar, desmarcar };
+        return { marcacoes, ids, carregando, erro, marcar, marcarVarios, desmarcar };
     };
 }
 
@@ -186,9 +229,16 @@ export const useExclusaoOkr = criarHookMarcacao({
     colQuem: 'excluido_por',
 });
 
-/** Lojas críticas de cancelamento — entram no universo do KR 2.3. */
+/** A lista de risco de cancelamento — torna a loja elegível ao plano do KR 2.3. */
 export const useCriticaOkr = criarHookMarcacao({
     tabela: 'okr_critica',
     colQuando: 'marcado_em',
     colQuem: 'marcado_por',
+});
+
+/** Lojas selecionadas para o plano de recuperação — o universo do KR 2.3. */
+export const useRecuperacaoOkr = criarHookMarcacao({
+    tabela: 'okr_recuperacao',
+    colQuando: 'incluido_em',
+    colQuem: 'incluido_por',
 });

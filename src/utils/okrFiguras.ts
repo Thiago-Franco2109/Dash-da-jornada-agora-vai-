@@ -35,12 +35,17 @@ export interface FigurasKr22 extends FigurasKr {
 }
 
 export interface FigurasKr23 extends FigurasKr {
-    /** Entraram em risco no trimestre ou estão marcadas como críticas. */
-    universo: number;
-    /** Do universo, quantas estão marcadas à mão. */
-    criticas: number;
-    /** Em risco e ainda sem reverter. */
+    /** Lojas no plano de recuperação — o universo do KR. */
+    noPlano: number;
+    /** No plano e ainda sem reverter. */
     pendentes: number;
+    /** Elegíveis que ninguém selecionou ainda. */
+    elegiveisFora: number;
+    /**
+     * Plano menor que a meta: faltam lojas para a conta fechar, por mais que
+     * todas revertam. É o aviso que a tela precisa dar cedo.
+     */
+    faltamNoPlano: number;
 }
 
 export interface FigurasKr41 extends FigurasKr {
@@ -64,7 +69,7 @@ export interface FigurasKr42 extends FigurasKr {
 export interface LinhaCidade {
     cidade: string;
     kr22: { coorte: number; atingiram: number };
-    kr23: { universo: number; revertidas: number };
+    kr23: { noPlano: number; revertidas: number };
 }
 
 export interface FigurasOkr {
@@ -83,11 +88,15 @@ export interface FigurasOkr {
 
 /** Uma loja do KR 2.3 com o veredito já aplicado. */
 export interface LojaRiscoAvaliada extends OkrLojaRisco {
-    /** Marcada à mão como crítica de cancelamento. */
+    /** Está na lista de risco de cancelamento (as 18). */
     critica: boolean;
-    /** Entrou no universo do KR: ficou parada 7+ dias no trimestre, ou é crítica. */
-    emRisco: boolean;
-    /** Teve pedido nas N semanas seguidas e cancelamento abaixo do teto. */
+    /** Parada HOJE há 7+ dias, ou na lista de risco: pode entrar no plano. */
+    elegivel: boolean;
+    /** Por que é elegível — o que a linha mostra como etiqueta. */
+    motivoElegivel: 'parada' | 'lista' | 'voltou' | null;
+    /** Selecionada para o plano de recuperação: é o universo do KR. */
+    noPlano: boolean;
+    /** No plano, com pedido nas N semanas seguidas e cancelamento sob o teto. */
     revertida: boolean;
     /** O que falta para reverter — vazio quando já reverteu. */
     falta: ('semanas' | 'cancelamento')[];
@@ -120,29 +129,44 @@ function esperadoHoje(
 }
 
 /**
- * Aplica a régua de reversão do KR 2.3: pedido em cada uma das N semanas
- * corridas E cancelamento abaixo do teto na mesma janela.
+ * Aplica as duas réguas do KR 2.3.
  *
- * Loja sem pedido nenhum na janela tem taxa `null` — e `null` não passa no
+ * ELEGÍVEL olha o presente: parada HÁ 7+ dias agora, ou na lista de risco de
+ * cancelamento. Loja que nunca vendeu está parada desde sempre.
+ *
+ * Entra junto, com etiqueta própria, quem ficou 7+ dias parada ANTES no
+ * trimestre e já voltou: é recuperação que aconteceu de verdade, e deixá-la
+ * de fora esconderia trabalho feito só porque o plano nasceu depois. Continua
+ * sendo escolha — ninguém entra no plano sem alguém selecionar.
+ *
+ * REVERTIDA exige estar NO PLANO — a seleção é o que dá memória ao KR. Sem
+ * ela, a loja sairia do universo no instante em que voltasse a vender, e as
+ * duas pontas (estar em risco e emendar 4 semanas) nunca se encontrariam.
+ *
+ * Loja sem pedido nenhum na janela tem taxa `null`, e `null` não passa no
  * teto: "não cancelou nada" porque não vendeu nada não é reversão.
  */
 function avaliarRisco(
     loja: OkrLojaRisco,
     critica: boolean,
+    noPlano: boolean,
     diasParado: number,
     tetoPct: number,
 ): LojaRiscoAvaliada {
     const temSemanas = loja.semanasComPedido.every(Boolean);
     const cancelamentoOk = loja.taxaCancelamentoPct !== null && loja.taxaCancelamentoPct < tetoPct;
-    const emRisco = critica || loja.maiorLacunaDias >= diasParado;
+    const parada = (loja.diasSemPedido ?? Infinity) >= diasParado;
+    const voltou = !parada && loja.maiorLacunaDias >= diasParado;
     const falta: ('semanas' | 'cancelamento')[] = [];
     if (!temSemanas) falta.push('semanas');
     if (!cancelamentoOk) falta.push('cancelamento');
     return {
         ...loja,
         critica,
-        emRisco,
-        revertida: emRisco && temSemanas && cancelamentoOk,
+        elegivel: parada || critica || voltou,
+        motivoElegivel: parada ? 'parada' : critica ? 'lista' : voltou ? 'voltou' : null,
+        noPlano,
+        revertida: noPlano && temSemanas && cancelamentoOk,
         falta,
     };
 }
@@ -151,6 +175,7 @@ export function calcularFiguras(
     dados: OkrTrimestre,
     foraDaConta: ReadonlySet<number>,
     criticas: ReadonlySet<number>,
+    noPlano: ReadonlySet<number>,
 ): FigurasOkr {
     const p = dados.parametros;
     const dentro = <T extends { id: number }>(lista: T[]) => lista.filter(l => !foraDaConta.has(l.id));
@@ -169,21 +194,22 @@ export function calcularFiguras(
 
     // ── KR 2.3 — lojas em risco ──────────────────────────────────────────
     const risco = dentro(dados.kr23.parceiros)
-        .map(l => avaliarRisco(l, criticas.has(l.id), p.diasParado, p.tetoCancelamentoPct))
+        .map(l => avaliarRisco(l, criticas.has(l.id), noPlano.has(l.id), p.diasParado, p.tetoCancelamentoPct))
         .sort((a, b) => {
             // Revertidas primeiro (é o placar), depois quem está mais perto.
             if (a.revertida !== b.revertida) return a.revertida ? -1 : 1;
             return b.semanasComPedido.filter(Boolean).length - a.semanasComPedido.filter(Boolean).length;
         });
-    const universo = risco.filter(l => l.emRisco);
-    const revertidas = universo.filter(l => l.revertida).length;
+    const plano = risco.filter(l => l.noPlano);
+    const revertidas = plano.filter(l => l.revertida).length;
     const kr23: FigurasKr23 = {
         feito: revertidas,
         meta: dados.kr23.meta,
         progressoPct: progresso(revertidas, dados.kr23.meta),
-        universo: universo.length,
-        criticas: universo.filter(l => l.critica).length,
-        pendentes: universo.length - revertidas,
+        noPlano: plano.length,
+        pendentes: plano.length - revertidas,
+        elegiveisFora: risco.filter(l => l.elegivel && !l.noPlano).length,
+        faltamNoPlano: Math.max(dados.kr23.meta - plano.length, 0),
     };
 
     // ── Objetivo 4 — Cardápio Digital ────────────────────────────────────
@@ -239,8 +265,8 @@ export function calcularFiguras(
                 atingiram: novos.filter(n => n.cidade === cidade && n.atingiu).length,
             },
             kr23: {
-                universo: universo.filter(l => l.cidade === cidade).length,
-                revertidas: universo.filter(l => l.cidade === cidade && l.revertida).length,
+                noPlano: plano.filter(l => l.cidade === cidade).length,
+                revertidas: plano.filter(l => l.cidade === cidade && l.revertida).length,
             },
         })),
         novos,

@@ -8,10 +8,11 @@ import {
     type OkrParceiroNovo,
     type OkrParametros,
 } from '../hooks/useOkrTrimestre';
-import { useExclusaoOkr, useCriticaOkr, type Marcacao } from '../hooks/marcacoesOkr';
+import { useExclusaoOkr, useCriticaOkr, useRecuperacaoOkr, type Marcacao } from '../hooks/marcacoesOkr';
 import {
     calcularFiguras,
     identificarNoRecorte,
+    type FigurasKr23,
     type FigurasKr41,
     type LinhaCidade,
     type LojaRiscoAvaliada,
@@ -291,43 +292,79 @@ function TiraSemanas({ semanas }: { semanas: boolean[] }) {
     );
 }
 
-function LinhaRisco({ loja, p, onTirar, onCritica }: {
+type ContextoRisco = 'plano' | 'elegivel' | 'candidata';
+
+function LinhaRisco({ loja, p, contexto, onTirar, onCritica, onPlano }: {
     loja: LojaRiscoAvaliada;
     p: OkrParametros;
+    contexto: ContextoRisco;
     onTirar: (alvo: ParceiroAlvo) => void;
     onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
+    onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
 }) {
     const taxa = loja.taxaCancelamentoPct;
+    const corTaxa = taxa === null ? 'text-slate-400'
+        : taxa < p.tetoCancelamentoPct ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-red-600 dark:text-red-400';
+
+    const acoes = (
+        <>
+            {contexto === 'plano' ? (
+                <BotaoLinha icone="playlist_remove" titulo="Tirar do plano de recuperação" tom="ambar" onClick={() => onPlano(loja, true)} />
+            ) : contexto === 'elegivel' ? (
+                <BotaoLinha icone="add_circle" titulo="Selecionar para o plano de recuperação" tom="verde" onClick={() => onPlano(loja, false)} />
+            ) : null}
+            {contexto !== 'plano' && (
+                <BotaoLinha
+                    icone={loja.critica ? 'bookmark_remove' : 'bookmark_add'}
+                    titulo={loja.critica ? 'Tirar da lista de risco de cancelamento' : 'Pôr na lista de risco de cancelamento'}
+                    tom={loja.critica ? 'verde' : 'ambar'}
+                    onClick={() => onCritica(loja, loja.critica)}
+                />
+            )}
+            <BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(loja)} />
+        </>
+    );
+
+    if (contexto === 'plano') {
+        return (
+            <LinhaParceiro
+                parceiro={loja}
+                acoes={acoes}
+                direita={
+                    <>
+                        <p className="flex items-center justify-end gap-2">
+                            <TiraSemanas semanas={loja.semanasComPedido} />
+                            <span className={`font-bold tabular-nums ${corTaxa}`}>{taxa === null ? '—' : `${taxa}%`}</span>
+                        </p>
+                        <p className="text-xs text-slate-400">
+                            {loja.revertida
+                                ? 'revertida · conta no KR'
+                                : loja.falta.includes('semanas')
+                                    ? `${loja.semanasComPedido.filter(Boolean).length}/${p.semanasReversao} semanas com pedido`
+                                    : `cancelamento acima de ${p.tetoCancelamentoPct}%`}
+                        </p>
+                    </>
+                }
+            />
+        );
+    }
+
     return (
         <LinhaParceiro
             parceiro={loja}
-            acoes={
-                <>
-                    <BotaoLinha
-                        icone={loja.critica ? 'bookmark_remove' : 'bookmark_add'}
-                        titulo={loja.critica ? 'Desmarcar como crítica de cancelamento' : 'Marcar como crítica de cancelamento'}
-                        tom={loja.critica ? 'verde' : 'ambar'}
-                        onClick={() => onCritica(loja, loja.critica)}
-                    />
-                    <BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(loja)} />
-                </>
-            }
+            acoes={acoes}
             direita={
                 <>
-                    <p className="flex items-center justify-end gap-2">
-                        <TiraSemanas semanas={loja.semanasComPedido} />
-                        <span className={`font-bold tabular-nums ${taxa === null ? 'text-slate-400'
-                            : taxa < p.tetoCancelamentoPct ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {taxa === null ? '—' : `${taxa}%`}
-                        </span>
-                    </p>
+                    <p className={`font-bold tabular-nums ${corTaxa}`}>{taxa === null ? '—' : `${taxa}%`} </p>
                     <p className="text-xs text-slate-400">
-                        {loja.revertida
-                            ? 'revertida'
-                            : loja.falta.includes('semanas')
-                                ? `${loja.semanasComPedido.filter(Boolean).length}/${p.semanasReversao} semanas com pedido`
-                                : `cancelamento acima de ${p.tetoCancelamentoPct}%`}
-                        {loja.critica ? ' · crítica' : ''}
+                        {loja.motivoElegivel === 'parada'
+                            ? (loja.diasSemPedido === null ? 'nunca vendeu' : `parada há ${loja.diasSemPedido}d`)
+                            : loja.motivoElegivel === 'lista'
+                                ? 'na lista de risco'
+                                : loja.motivoElegivel === 'voltou'
+                                    ? `esteve ${loja.maiorLacunaDias}d parada · já voltou`
+                                    : `cancelamento de ${taxa ?? 0}%`}
                     </p>
                 </>
             }
@@ -335,54 +372,95 @@ function LinhaRisco({ loja, p, onTirar, onCritica }: {
     );
 }
 
-function PainelRisco({ risco, p, onTirar, onCritica }: {
+function PainelRisco({ risco, figuras, p, onTirar, onCritica, onPlano, onSelecionarTodas }: {
     risco: LojaRiscoAvaliada[];
+    figuras: FigurasKr23;
     p: OkrParametros;
     onTirar: (alvo: ParceiroAlvo) => void;
     onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
+    onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
+    onSelecionarTodas: (lojas: ParceiroAlvo[]) => void;
 }) {
-    const universo = risco.filter(l => l.emRisco);
-    // Sugestões: quem ainda não está no universo mas cancela muito. É daqui que
-    // saem as "18 críticas" — o banco sugere, a marcação é que conta.
-    const sugestoes = risco
-        .filter(l => !l.emRisco && l.taxaCancelamentoPct !== null && l.taxaCancelamentoPct >= p.tetoCancelamentoPct)
-        .slice(0, 12);
+    const plano = risco.filter(l => l.noPlano);
+    const ordemElegivel = { parada: 0, lista: 1, voltou: 2 } as const;
+    const elegiveis = risco
+        .filter(l => l.elegivel && !l.noPlano)
+        .sort((a, b) => (ordemElegivel[a.motivoElegivel ?? 'voltou'] - ordemElegivel[b.motivoElegivel ?? 'voltou'])
+            || (b.diasSemPedido ?? 0) - (a.diasSemPedido ?? 0));
+    // Quem não é elegível mas cancela muito: é daqui que sai a lista de risco.
+    const candidatas = risco
+        .filter(l => !l.elegivel && !l.noPlano && l.taxaCancelamentoPct !== null && l.taxaCancelamentoPct >= p.tetoCancelamentoPct)
+        .slice(0, 10);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-                <TituloLista contagem={universo.length}>
-                    Universo de risco — revertidas primeiro
-                </TituloLista>
+                <TituloLista contagem={plano.length}>Plano de recuperação — revertidas primeiro</TituloLista>
+                {figuras.faltamNoPlano > 0 && (
+                    <p className="mb-2 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-900/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                        O plano tem {plano.length} {plano.length === 1 ? 'loja' : 'lojas'} e a meta é reverter{' '}
+                        {figuras.meta}. Mesmo que todas revertam, faltam <strong>{figuras.faltamNoPlano}</strong> —
+                        selecione mais ao lado.
+                    </p>
+                )}
                 <Lista>
-                    {universo.length === 0 ? (
-                        <Vazio texto="Nenhuma loja entrou em risco neste trimestre." />
-                    ) : universo.map(l => (
-                        <LinhaRisco key={l.id} loja={l} p={p} onTirar={onTirar} onCritica={onCritica} />
+                    {plano.length === 0 ? (
+                        <Vazio texto="Nenhuma loja selecionada ainda. Escolha ao lado quem entra no plano." />
+                    ) : plano.map(l => (
+                        <LinhaRisco key={l.id} loja={l} p={p} contexto="plano" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
                     ))}
                 </Lista>
                 <p className="text-[11px] text-slate-400 mt-2">
-                    Entra no universo quem ficou {p.diasParado}+ dias corridos sem pedido em algum momento do trimestre,
-                    ou está marcada como crítica. Reverte quem tem pedido nas {p.semanasReversao} semanas seguidas
-                    (bolinhas, da mais antiga para a mais recente) e cancelamento abaixo de {p.tetoCancelamentoPct}%.
+                    Reverte quem tem pedido nas {p.semanasReversao} semanas seguidas (bolinhas, da mais antiga para a
+                    mais recente) e cancelamento abaixo de {p.tetoCancelamentoPct}%. A loja fica no plano depois de
+                    reverter — é assim que o KR acumula.
                 </p>
             </div>
 
-            <div>
-                <TituloLista contagem={sugestoes.length}>
-                    Candidatas a crítica — maior cancelamento, fora do universo
-                </TituloLista>
-                <Lista>
-                    {sugestoes.length === 0 ? (
-                        <Vazio texto={`Nenhuma loja fora do universo passa de ${p.tetoCancelamentoPct}% de cancelamento.`} />
-                    ) : sugestoes.map(l => (
-                        <LinhaRisco key={l.id} loja={l} p={p} onTirar={onTirar} onCritica={onCritica} />
-                    ))}
-                </Lista>
-                <p className="text-[11px] text-slate-400 mt-2">
-                    O banco sugere pela taxa; nenhum corte reproduz exatamente as 18 da apresentação, então quem decide é
-                    a marcação — clique no marcador para pôr a loja no universo do KR.
-                </p>
+            <div className="space-y-6">
+                <div>
+                    <div className="flex items-center justify-between gap-2">
+                        <TituloLista contagem={elegiveis.length}>Elegíveis fora do plano</TituloLista>
+                        {elegiveis.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => onSelecionarTodas(elegiveis)}
+                                className="mb-2 text-xs font-semibold text-primary hover:underline"
+                            >
+                                Selecionar todas
+                            </button>
+                        )}
+                    </div>
+                    <Lista altura="max-h-[28vh]">
+                        {elegiveis.length === 0 ? (
+                            <Vazio texto={`Nenhuma loja parada há ${p.diasParado}+ dias fora do plano.`} />
+                        ) : elegiveis.map(l => (
+                            <LinhaRisco key={l.id} loja={l} p={p} contexto="elegivel" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                        ))}
+                    </Lista>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                        Entram aqui as paradas há {p.diasParado}+ dias e as que estão na lista de risco. No fim da lista
+                        vêm as que ficaram {p.diasParado}+ dias paradas antes no trimestre e já voltaram — recuperação
+                        que aconteceu de verdade, e que só conta no KR se você puser no plano.
+                    </p>
+                </div>
+
+                <div>
+                    <TituloLista contagem={candidatas.length}>
+                        Candidatas à lista de risco — vendendo, mas cancelando muito
+                    </TituloLista>
+                    <Lista altura="max-h-[22vh]">
+                        {candidatas.length === 0 ? (
+                            <Vazio texto={`Nenhuma loja ativa passa de ${p.tetoCancelamentoPct}% de cancelamento.`} />
+                        ) : candidatas.map(l => (
+                            <LinhaRisco key={l.id} loja={l} p={p} contexto="candidata" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                        ))}
+                    </Lista>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                        Nenhum corte de taxa reproduz as 18 da apresentação — o banco sugere, o marcador decide. Pôr na
+                        lista torna a loja elegível mesmo sem estar parada.
+                    </p>
+                </div>
             </div>
         </div>
     );
@@ -537,7 +615,7 @@ function TabelaCidades({ linhas, krSelecionado }: { linhas: LinhaCidade[]; krSel
                             </td>
                             <td className={`px-3 py-2 text-right tabular-nums ${krSelecionado === 'kr23' ? 'bg-slate-50 dark:bg-slate-800/60' : ''}`}>
                                 <span className="font-bold text-slate-700 dark:text-slate-200">{l.kr23.revertidas}</span>
-                                <span className="text-slate-400"> de {l.kr23.universo} em risco</span>
+                                <span className="text-slate-400"> de {l.kr23.noPlano} no plano</span>
                             </td>
                         </tr>
                     ))}
@@ -716,14 +794,15 @@ export default function OkrView() {
     const { dados, loading, error, refetch } = useOkrTrimestre(trimestre);
     const fora = useExclusaoOkr();
     const critica = useCriticaOkr();
+    const plano = useRecuperacaoOkr();
     const { user } = useAuth();
 
     const opcoes = useMemo(() => trimestresRecentes(4), []);
     const ehAtual = (dados?.trimestre.id ?? trimestre) === trimestreAtual();
 
     const figuras = useMemo(
-        () => (dados ? calcularFiguras(dados, fora.ids, critica.ids) : null),
-        [dados, fora.ids, critica.ids],
+        () => (dados ? calcularFiguras(dados, fora.ids, critica.ids, plano.ids) : null),
+        [dados, fora.ids, critica.ids, plano.ids],
     );
 
     const porData = (a: Marcacao, b: Marcacao) => b.quando.localeCompare(a.quando);
@@ -763,6 +842,20 @@ export default function OkrView() {
         setAlvo({ parceiro, modo: 'critica' });
     };
 
+    // Entrar no plano não pede justificativa: é escolher em quem trabalhar, e
+    // exigir um formulário a cada loja faria o CS desistir de curar a lista.
+    const alternarPlano = (parceiro: ParceiroAlvo, dentro: boolean) => {
+        if (dentro) { void plano.desmarcar(parceiro.id); return; }
+        void plano.marcar(parceiro.id, { nome: parceiro.nome, cidade: parceiro.cidade, quem });
+    };
+
+    const selecionarTodas = (lojas: ParceiroAlvo[]) => {
+        void plano.marcarVarios(lojas.map(l => ({
+            partnerId: l.id,
+            dados: { nome: l.nome, cidade: l.cidade, quem },
+        })));
+    };
+
     const cartoes: Record<KrId, Omit<React.ComponentProps<typeof KrCard>, 'selecionado' | 'onSelect'>> | null =
         dados && figuras ? {
             kr22: {
@@ -784,7 +877,7 @@ export default function OkrView() {
                 meta: figuras.kr23.meta,
                 progressoPct: figuras.kr23.progressoPct,
                 referencia: { valor: Math.round(figuras.kr23.meta * andamento), rotulo: 'ritmo do trimestre' },
-                detalhe: `${figuras.kr23.universo} em risco · ${figuras.kr23.pendentes} a reverter · ${figuras.kr23.criticas} ${figuras.kr23.criticas === 1 ? 'marcada como crítica' : 'marcadas como críticas'}`,
+                detalhe: `${figuras.kr23.noPlano} no plano · ${figuras.kr23.pendentes} a reverter · ${figuras.kr23.elegiveisFora} elegíveis fora`,
                 foraDaConta: figuras.foraDaConta.kr23,
             },
             kr41: {
@@ -852,7 +945,7 @@ export default function OkrView() {
             </div>
 
             <div className="p-6">
-                {loading || fora.carregando || critica.carregando ? (
+                {loading || fora.carregando || critica.carregando || plano.carregando ? (
                     <p className="text-sm text-slate-400">Calculando os KRs no banco…</p>
                 ) : error ? (
                     <div className="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 text-amber-700 dark:text-amber-300 text-sm">
@@ -862,19 +955,22 @@ export default function OkrView() {
                     <p className="text-sm text-slate-400">Sem dados para este trimestre.</p>
                 ) : (
                     <>
-                        {(fora.erro || critica.erro) && (
+                        {(fora.erro || critica.erro || plano.erro) && (
                             <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-3 text-amber-700 dark:text-amber-300 text-sm">
-                                As marcações não estão sendo salvas ({fora.erro ?? critica.erro}). Faltam as tabelas
-                                okr_excluido / okr_critica no Supabase — ver os arquivos em supabase/.
+                                As marcações não estão sendo salvas ({fora.erro ?? critica.erro ?? plano.erro}). Faltam
+                                as tabelas okr_excluido / okr_critica / okr_recuperacao no Supabase — ver supabase/.
                             </div>
                         )}
 
                         {OBJETIVOS.map(obj => (
                             <div key={obj.id} className="mb-6">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                                {/* h2, não h1: o h1 da tela é "OKR do trimestre", e dois
+                                    h1 na mesma página quebram a hierarquia para leitor de
+                                    tela. O peso visual é de headline do mesmo jeito. */}
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
                                     Objetivo {obj.id} — {obj.titulo}
-                                    <span className="font-normal normal-case tracking-normal text-slate-300 dark:text-slate-600"> · {obj.escopo}</span>
-                                </p>
+                                </h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 mb-3">{obj.escopo}</p>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {obj.krs.map(id => (
                                         <KrCard key={id} {...cartoes[id]} selecionado={kr === id} onSelect={setKr} />
@@ -894,9 +990,12 @@ export default function OkrView() {
                             {kr === 'kr23' && (
                                 <PainelRisco
                                     risco={figuras.risco}
+                                    figuras={figuras.kr23}
                                     p={dados.parametros}
                                     onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
                                     onCritica={alternarCritica}
+                                    onPlano={alternarPlano}
+                                    onSelecionarTodas={selecionarTodas}
                                 />
                             )}
                             {kr === 'kr41' && (
@@ -928,8 +1027,8 @@ export default function OkrView() {
 
                         {listaCritica.length > 0 && (
                             <PainelMarcacoes
-                                titulo="Marcadas como críticas de cancelamento"
-                                rodape="Entram no universo do KR 2.3 mesmo sem estarem paradas. Desfazer tira do universo e recalcula na hora."
+                                titulo="Lista de risco de cancelamento"
+                                rodape="Ficam elegíveis ao plano do KR 2.3 mesmo sem estarem paradas. Desfazer só tira a elegibilidade — quem está no plano continua no plano."
                                 marcacoes={listaCritica}
                                 comMotivo={false}
                                 noRecorte={id => identificarNoRecorte(dados, id)}
@@ -951,7 +1050,7 @@ export default function OkrView() {
                         {!ehAtual && (
                             <p className="text-xs text-amber-600 dark:text-amber-400/80 mt-6">
                                 Trimestre fechado: o KR 2.3 usa a lista de lojas ativas de HOJE — suspensão de loja não
-                                tem histórico no banco, então quem foi suspenso depois não aparece no universo de lá.
+                                tem histórico no banco, então quem foi suspenso depois não aparece na elegibilidade de lá.
                             </p>
                         )}
                         <p className="text-xs text-slate-400 mt-6">
