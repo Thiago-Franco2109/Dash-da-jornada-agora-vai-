@@ -2,6 +2,7 @@ import type { Handler } from '@netlify/functions';
 import type { RowDataPacket } from 'mysql2';
 import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
+import { hintIndicePedido } from './_shared/pedidoIndexHint';
 
 /**
  * Análise do cardápio de UM parceiro, direto do banco (read-only).
@@ -31,11 +32,31 @@ import { checkOrigin } from './_shared/auth';
  * Testado também com FORCE INDEX (estabelecimento_id): PIOR (5859ms) — não reintroduzir.
  * O filtro de data continua no WHERE, então a correção não depende de id crescer com o tempo.
  *
+ * ⚠️ O corte por id NÃO basta sozinho: em algumas lojas o otimizador ignora o range e vai
+ * pelo índice `estabelecimento_id` mesmo assim. No Paulu's Hamburgueria (19892) isso fazia
+ * esta function levar 7s — a tela do parceiro inteira ficava pendurada nela. Quem decide o
+ * hint agora é `hintIndicePedido` (histórico da loja ÷ pedidos do sistema na janela), com
+ * as medições documentadas lá: 7.084ms → 903ms nessa loja, sem penalizar as pequenas.
+ *
  * ⚠️ MySQL 5.5 — sem window function e sem CTE. Mediana é calculada em JS, sobre as linhas
  * de um parceiro só (dezenas a centenas). Não tentar percentil no SQL.
  *
  * Promoção EXPIRADA (`data_fim` no passado) fica FORA: decisão de produto — não atuamos
  * nelas por enquanto. O item expirado é tratado como item comum do cardápio.
+ *
+ * ⚠️ ITEM ATIVO EM CATEGORIA MORTA NÃO ESTÁ NO CARDÁPIO. `item_catalogo.ativo/arquivado/
+ * disponivel` falam só do item: quando o parceiro arquiva a CATEGORIA inteira (a seção
+ * "Promo de Natal", "Lanches | Chapa Promocional", "Cópia de Cópia de Adicionais"), os
+ * itens lá dentro continuam ativo=1 e arquivado=0, somem do app e continuavam entrando
+ * na conta aqui — inflando "itens sem venda" e "% sem foto" com cardápio fantasma.
+ * Medido: no Paulu's Hamburgueria (19892), 319 dos 357 itens que a tela contava estavam
+ * em categoria inativa ou arquivada — o cardápio de verdade tem 38. Na base inteira
+ * (lojas delivery=1), 23.426 de 100.848 itens eram fantasma.
+ * A regra agora exige categoria viva (`cc.ativo = 1 AND cc.arquivado = 0`) e catálogo
+ * ativo (`c.ativo = 1`) — uma loja pode ter mais de um `catalogo` (183 têm) e 316 estão
+ * inativos. O filtro é aplicado em JS, não no WHERE, pra poder CONTAR o que ficou de
+ * fora: cardápio inteiro arquivado é achado de CS, não é tela vazia.
+ * Das 1.425 lojas ativas com cardápio, 6 ficam sem nenhum item vivo depois dessa regra.
  *
  * ⚠️ NEM TODA LINHA DE `item_catalogo` É UM ITEM DE CARDÁPIO. A tabela guarda três coisas,
  * separadas por `categoria_catalogo`:
@@ -51,6 +72,13 @@ import { checkOrigin } from './_shared/auth';
  *
  * `item_catalogo.status` é o workflow de APROVAÇÃO (0=rascunho 1=pendente 2=aprovado
  * 3=cancelado), não disponibilidade. Promoção só está "no ar" com status=2 e dentro da janela.
+ *
+ * O NOME DA CAMPANHA sai de `item_catalogo.campanha_promocao_id` → `campanha_promocao.nome`
+ * (mesmo caminho de `promo-status` e `acoes-promocionais`). Sem ele a lista de promoções
+ * repete o mesmo prato sem explicação: o Paulu's tem três linhas "Cachorrão: Cachorrão de
+ * Frango" que são Super Promos!, Ofertas da Casa e Promo do Dia! — campanhas diferentes,
+ * item duplicado em cada uma. Promoção sem `campanha_promocao_id` existe (122 na base),
+ * então o campo volta null e a tela simplesmente não mostra a linha.
  *
  * Query params:
  *   ?estabId=23404   → obrigatório
@@ -78,6 +106,10 @@ interface ItemRow extends RowDataPacket {
     vendas: string | number;
     ehVariacao: number;
     ehCampanha: number;
+    categAtiva: number;
+    categArquivada: number;
+    catalogoAtivo: number;
+    campanha: string | null;
 }
 
 interface Item {
@@ -92,6 +124,10 @@ interface Item {
     ehVariacao: boolean;
     /** Cópia do prato dentro de uma campanha — duplicaria o item no cardápio. */
     ehCampanha: boolean;
+    /** Categoria e catálogo vivos: sem isso o item não aparece no app. */
+    categoriaViva: boolean;
+    /** Nome da campanha promocional, quando o item pertence a uma. */
+    campanha: string | null;
 }
 
 /** Mediana simples. Lista vazia → 0. */
@@ -130,14 +166,20 @@ export const handler: Handler = async (event) => {
     try {
         connection = await getConnection();
 
-        // Limite inferior de id para a janela — ver nota de performance no topo.
+        // Limite inferior de id para a janela — ver nota de performance no topo. O
+        // histórico da loja vem de carona (subconsulta escalar, uma ida só) porque é ele
+        // que decide o hint de índice da query pesada.
         const [idRows] = await connection.query<RowDataPacket[]>(
-            `SELECT MIN(id) AS idMin FROM pedido WHERE data >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
-            [diasSql],
+            `SELECT MIN(id) AS idMin, MAX(id) AS idMax,
+                    (SELECT COUNT(*) FROM pedido WHERE estabelecimento_id = ?) AS historicoLoja
+             FROM pedido WHERE data >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+            [estabId, diasSql],
         );
         // Janela sem nenhum pedido no sistema inteiro: 0 deixa o resto da query coerente
         // (nenhuma venda encontrada) em vez de comparar contra NULL.
         const idMin = Number(idRows[0]?.idMin ?? 0);
+        const pedidosNaJanela = Number(idRows[0]?.idMax ?? 0) - idMin;
+        const hint = hintIndicePedido(Number(idRows[0]?.historicoLoja ?? 0), pedidosNaJanela);
 
         const [itemRows] = await connection.query<ItemRow[]>(
             `SELECT ic.id,
@@ -150,13 +192,18 @@ export const handler: Handler = async (event) => {
                     (ic.data_inicio IS NOT NULL AND ic.data_inicio > NOW()) AS futuro,
                     IFNULL(v.vendas, 0)                                     AS vendas,
                     cc.variacao                                             AS ehVariacao,
-                    cc.campanha                                             AS ehCampanha
+                    cc.campanha                                             AS ehCampanha,
+                    cc.ativo                                                AS categAtiva,
+                    cc.arquivado                                            AS categArquivada,
+                    c.ativo                                                 AS catalogoAtivo,
+                    cp.nome                                                 AS campanha
              FROM item_catalogo ic
              JOIN catalogo c ON c.id = ic.catalogo_id
              JOIN categoria_catalogo cc ON cc.id = ic.categoria_id
+             LEFT JOIN campanha_promocao cp ON cp.id = ic.campanha_promocao_id
              LEFT JOIN (
                    SELECT ip.item_catalogo_id AS item_id, SUM(ip.quantidade) AS vendas
-                   FROM pedido p
+                   FROM pedido p ${hint}
                    JOIN item_pedido ip ON ip.pedido_id = p.id
                    WHERE p.estabelecimento_id = ?
                      AND p.id >= ?
@@ -172,7 +219,7 @@ export const handler: Handler = async (event) => {
 
         const [pedidoRows] = await connection.query<RowDataPacket[]>(
             `SELECT COUNT(*) AS pedidos
-             FROM pedido
+             FROM pedido ${hint}
              WHERE estabelecimento_id = ?
                AND id >= ?
                AND status IN (1, 2)
@@ -193,10 +240,16 @@ export const handler: Handler = async (event) => {
             vendas: Number(r.vendas ?? 0),
             ehVariacao: Number(r.ehVariacao) === 1,
             ehCampanha: Number(r.ehCampanha) === 1,
+            // Categoria arquivada/inativa some do app mesmo com o item ativo — ver nota no topo.
+            categoriaViva: Number(r.categAtiva) === 1 && Number(r.categArquivada) === 0 && Number(r.catalogoAtivo) === 1,
+            campanha: r.campanha ? String(r.campanha) : null,
         }));
 
-        // O cardápio de verdade: sem variação e sem as cópias de campanha.
-        const cardapio = itens.filter(i => !i.ehVariacao && !i.ehCampanha);
+        // O cardápio de verdade: sem variação, sem as cópias de campanha e sem o que
+        // mora em categoria arquivada/inativa — isso não está no app.
+        const doCardapio = itens.filter(i => !i.ehVariacao && !i.ehCampanha);
+        const cardapio = doCardapio.filter(i => i.categoriaViva);
+        const fantasmas = doCardapio.length - cardapio.length;
 
         const total = cardapio.length;
         const semFoto = cardapio.filter(i => !i.temFoto);
@@ -210,10 +263,11 @@ export const handler: Handler = async (event) => {
 
         // Promoções que o parceiro realmente tem no ar hoje. Expiradas ficam de fora.
         const promosNoAr = itens
-            .filter(i => i.especial && i.noAr && !i.ehVariacao)
+            .filter(i => i.especial && i.noAr && i.categoriaViva && !i.ehVariacao)
             .map(i => ({
                 id: i.id,
                 nome: i.nome,
+                campanha: i.campanha,
                 vendas: i.vendas,
                 temFoto: i.temFoto,
                 furada: medianaBase >= FATOR_FURADA * Math.max(i.vendas, 1),
@@ -243,6 +297,9 @@ export const handler: Handler = async (event) => {
                     itensSemVenda: cardapio.filter(i => i.vendas === 0).length,
                     variacoesIgnoradas: itens.filter(i => i.ehVariacao).length,
                     copiasDeCampanhaIgnoradas: itens.filter(i => i.ehCampanha).length,
+                    // Itens ativos presos em categoria arquivada/inativa: fora do app e
+                    // fora da conta, mas o número em si é achado — cardápio abandonado.
+                    itensEmCategoriaArquivada: fantasmas,
                     medianaBase,
                     promosNoAr: promosNoAr.length,
                     promosFuradas: furadas.length,

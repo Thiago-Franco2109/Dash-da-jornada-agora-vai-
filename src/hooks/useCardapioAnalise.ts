@@ -6,6 +6,9 @@ import { useState, useEffect } from 'react';
  * Responde o que o CS consegue acionar por telefone: itens sem foto, itens que não
  * vendem, e promoção no ar vendendo mal. Dados D-1 pra trás (o banco das functions
  * tem ~1 dia de atraso) — a tela precisa rotular como tal, nunca como "hoje".
+ *
+ * Só conta o que está NO APP: item em categoria arquivada/inativa fica de fora da
+ * análise e volta contado em `resumo.itensEmCategoriaArquivada`.
  */
 
 export interface ItemCardapio {
@@ -17,6 +20,8 @@ export interface ItemCardapio {
 export interface PromoNoAr {
     id: number;
     nome: string;
+    /** Campanha a que a promoção pertence — o mesmo prato aparece em várias. */
+    campanha: string | null;
     vendas: number;
     temFoto: boolean;
     /** No ar e perdendo pro item mediano de preço cheio — ver régua na function. */
@@ -33,6 +38,8 @@ export interface CardapioAnalise {
         semFoto: number;
         pctSemFoto: number;
         itensSemVenda: number;
+        /** Itens ativos presos em categoria arquivada/inativa: fora do app e da conta. */
+        itensEmCategoriaArquivada: number;
         medianaBase: number;
         promosNoAr: number;
         promosFuradas: number;

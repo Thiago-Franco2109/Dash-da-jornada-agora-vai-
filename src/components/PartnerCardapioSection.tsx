@@ -103,12 +103,21 @@ function BlocoPromos({ promos }: { promos: PromoNoAr[] }) {
                             p.furada ? 'bg-rose-50 dark:bg-rose-900/15' : ''
                         }`}
                     >
-                        <span className="text-slate-700 dark:text-slate-300 truncate">
-                            {p.nome}
-                            {/* O cruzamento que importa: promo fraca E sem foto tem causa provável. */}
-                            {!p.temFoto && (
-                                <span className="ml-2 text-[10px] font-bold uppercase tracking-tight text-amber-600 dark:text-amber-400">
-                                    sem foto
+                        {/* O mesmo prato aparece uma vez por campanha — sem o nome da
+                            campanha a lista repete a linha e o CS não sabe qual mexer. */}
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-slate-700 dark:text-slate-300 truncate">
+                                {p.nome}
+                                {/* O cruzamento que importa: promo fraca E sem foto tem causa provável. */}
+                                {!p.temFoto && (
+                                    <span className="ml-2 text-[10px] font-bold uppercase tracking-tight text-amber-600 dark:text-amber-400">
+                                        sem foto
+                                    </span>
+                                )}
+                            </span>
+                            {p.campanha && (
+                                <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    {p.campanha}
                                 </span>
                             )}
                         </span>
@@ -186,12 +195,21 @@ export default function PartnerCardapioSection({ analise: data, acesso, loading,
     }
 
     if (!data || data.resumo.totalItens === 0) {
+        // Cardápio inteiro preso em categoria arquivada não é "sem cadastro": é loja que
+        // desligou o cardápio sem perceber. Seis lojas ativas estavam assim na medição.
+        const tudoArquivado = (data?.resumo.itensEmCategoriaArquivada ?? 0) > 0;
         return (
             <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 flex flex-col items-center gap-2 text-center">
-                <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-4xl">restaurant_menu</span>
-                <h3 className="font-semibold text-slate-700 dark:text-slate-300">Cardápio não encontrado</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-                    Nenhum item ativo no cardápio deste parceiro no banco do CMS.
+                <span className={`material-symbols-outlined text-4xl ${tudoArquivado ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                    {tudoArquivado ? 'inventory_2' : 'restaurant_menu'}
+                </span>
+                <h3 className="font-semibold text-slate-700 dark:text-slate-300">
+                    {tudoArquivado ? 'Cardápio inteiro arquivado' : 'Cardápio não encontrado'}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
+                    {tudoArquivado
+                        ? `Os ${data!.resumo.itensEmCategoriaArquivada} itens deste parceiro estão em categorias arquivadas ou desativadas — existem no CMS, mas o cliente não vê nenhum deles no app.`
+                        : 'Nenhum item ativo no cardápio deste parceiro no banco do CMS.'}
                 </p>
             </div>
         );
@@ -243,6 +261,14 @@ export default function PartnerCardapioSection({ analise: data, acesso, loading,
                         itens={zeradosLista.map(z => ({ ...z, vendas: 0 }))}
                         vazio="Todo item com foto vendeu pelo menos uma vez."
                     />
+                    {/* Item ativo em categoria arquivada não está no app: fica fora da
+                        conta acima, mas o tamanho da pilha é achado de CS por si só. */}
+                    {resumo.itensEmCategoriaArquivada > 0 && (
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                            Fora da conta: {resumo.itensEmCategoriaArquivada} item(ns) em categoria
+                            arquivada ou desativada — continuam no CMS, mas não aparecem no app.
+                        </p>
+                    )}
                 </CardBase>
 
                 {acesso && <BlocoAcesso acesso={acesso} />}

@@ -2,6 +2,7 @@ import type { Handler } from '@netlify/functions';
 import type { RowDataPacket } from 'mysql2';
 import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
+import { hintIndicePedido } from './_shared/pedidoIndexHint';
 
 /**
  * Relatório de pedidos de UM parceiro, direto do banco (read-only).
@@ -23,32 +24,23 @@ import { checkOrigin } from './_shared/auth';
  * não corta a janela por isso (quem escolhe é a tela), mas devolve
  * `janela.ultimoPedidoNoBanco` pra tela avisar quando o período pedido passa dali.
  *
- * ⚠️ Custo por tamanho de janela (medido, com FORCE INDEX (PRIMARY), por query):
+ * ⚠️ Custo por tamanho de janela (medido, por query, com o índice que a regra escolhe):
  *     60d  → ~250ms     92d  → ~300-600ms
  *     182d → ~0,9-1,3s  365d → ~2,0-2,5s
- * Ponta a ponta (conexão + as 3 queries), medido pelo navegador no parceiro de maior
- * volume: 28d ~1,0s · 183d ~3,1s · 365d ~6,2s. Os 12 meses cabem no limite de 10s da
- * Netlify, mas é o teto — por isso a janela máxima é 366 dias e a tela avisa que
- * período longo demora. O conserto estrutural seria um índice composto
- * (estabelecimento_id, data) em `pedido`, que não é nosso pra criar.
+ * Ponta a ponta, medido do navegador contra o banco: 28d ~1,2s · 365d ~4,6s (era ~6,2s
+ * quando o índice era forçado sempre; da Netlify, que fica mais perto do banco, os
+ * mesmos 365d mediam 6,8s antes da mudança). O teto de 366 dias por consulta continua —
+ * e o conserto estrutural seria um índice composto (estabelecimento_id, data) em
+ * `pedido`, que não é nosso pra criar.
  *
- * ⚠️ `FORCE INDEX (PRIMARY)` não é enfeite. `pedido` só tem índice em
- * `estabelecimento_id` e em `data` SEPARADOS (sem composto), e em alguns parceiros o
- * otimizador do MySQL 5.5 escolhe `estabelecimento_id` e varre o histórico INTEIRO da
- * loja. Medido no estab 25166 (36k pedidos de histórico), janela de 60 dias:
- *     planner livre        → por-dia 2779/2292/1295ms · itens 1202/1039/1089ms
- *     FORCE INDEX (PRIMARY)→ por-dia  382/233/232ms   · itens  254/248/257ms
- * Em quem já estava rápido (23404) não piora. O corte `id >= idMin` é o que torna o
- * range no PRIMARY possível; o filtro de data continua no WHERE, então a conta não
- * depende do id crescer com o tempo.
- *
- * ⚠️ Parece intuitivo que em janela longa valha a pena inverter e usar
- * `estabelecimento_id` (o histórico da loja, 54k, é menor que a janela global de 12
- * meses, 655k). FOI TESTADO E É PIOR, em toda janela — o índice secundário entrega os
- * registros fora de ordem e vira I/O aleatório no PRIMARY:
- *     365d estab 785: PRIMARY 2154ms+2096ms · estabelecimento_id 8663ms+8700ms
- *     365d estab 23404: PRIMARY 2153ms+2466ms · estabelecimento_id 5872ms+2773ms
- * Mesmo resultado do aviso que já existe em `cardapio-analise`. Não reintroduzir.
+ * ⚠️ O índice da varredura é DECIDIDO EM TEMPO DE EXECUÇÃO por `hintIndicePedido`
+ * (histórico da loja ÷ pedidos do sistema na janela) — as medições estão lá.
+ * A primeira versão desta function forçava `PRIMARY` sempre, e isso estava errado em
+ * janela longa: eu tinha comparado PRIMARY contra `estabelecimento_id` FORÇADO e
+ * concluído que PRIMARY sempre ganhava, sem nunca medir o planner livre, que faz index
+ * merge dos dois e ganha dos dois. Em 12 meses, forçar custava 4,2s na query de itens
+ * contra 1,3s do planner livre. O corte `id >= idMin` continua sendo o que torna o range
+ * no PRIMARY possível quando ele é escolhido.
  *
  * ⚠️ Os itens mais pedidos NÃO saem de `cardapio-analise`. Aquela function filtra o
  * cardápio de verdade (`cc.campanha = 0`, item ativo/disponível), e o campeão de venda
@@ -226,15 +218,18 @@ export const handler: Handler = async (event) => {
         // diz à tela até onde o banco está atualizado, sem outra query.
         const [janelaRows] = await connection.query<RowDataPacket[]>(
             `SELECT MIN(id)                                 AS idMin,
-                    DATE_FORMAT(MAX(data), '%Y-%m-%d %H:%i') AS ultimoPedido
+                    MAX(id)                                 AS idMax,
+                    DATE_FORMAT(MAX(data), '%Y-%m-%d %H:%i') AS ultimoPedido,
+                    (SELECT COUNT(*) FROM pedido WHERE estabelecimento_id = ?) AS historicoLoja
              FROM pedido
              WHERE data >= ?`,
-            [de],
+            [estabId, de],
         );
         // Janela sem nenhum pedido no sistema inteiro: 0 mantém o resto coerente
         // (nada encontrado) em vez de comparar contra NULL.
         const idMin = num(janelaRows[0]?.idMin);
         const ultimoPedidoNoBanco = janelaRows[0]?.ultimoPedido ? String(janelaRows[0].ultimoPedido) : null;
+        const hint = hintIndicePedido(num(janelaRows[0]?.historicoLoja), num(janelaRows[0]?.idMax) - idMin);
 
         // Uma passada só: dela saem os totais, a curva por dia, o perfil por hora, o
         // perfil por dia da semana e os motivos de cancelamento.
@@ -259,7 +254,7 @@ export const handler: Handler = async (event) => {
                     SUM(CASE WHEN status = 3 AND tipo_cancelamento = 5 THEN 1 ELSE 0 END) AS canc5,
                     SUM(CASE WHEN status = 3 AND tipo_cancelamento = 6 THEN 1 ELSE 0 END) AS canc6,
                     SUM(CASE WHEN status = 3 AND tipo_cancelamento = 8 THEN 1 ELSE 0 END) AS canc8
-             FROM pedido FORCE INDEX (PRIMARY)
+             FROM pedido ${hint}
              WHERE estabelecimento_id = ?
                AND id >= ?
                AND data >= ?
@@ -279,7 +274,7 @@ export const handler: Handler = async (event) => {
                     ic.ativo                  AS ativo,
                     ic.arquivado              AS arquivado,
                     ic.disponivel             AS disponivel
-             FROM pedido p FORCE INDEX (PRIMARY)
+             FROM pedido p ${hint}
              JOIN item_pedido ip ON ip.pedido_id = p.id
              LEFT JOIN item_catalogo ic ON ic.id = ip.item_catalogo_id
              LEFT JOIN categoria_catalogo cc ON cc.id = ic.categoria_id
