@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Print pro Trello — opções</title>
+<style>
+    :root { color-scheme: light dark; --azul: #137fec; --borda: #cbd5e1; --suave: #64748b; }
+    @media (prefers-color-scheme: dark) { :root { --borda: #334155; --suave: #94a3b8; } }
+    body {
+        max-width: 520px; margin: 0 auto; padding: 32px 20px 48px;
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    h1 { margin: 0 0 4px; font-size: 19px; }
+    h2 { margin: 28px 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--suave); }
+    p.sub { margin: 0; color: var(--suave); }
+    label { display: grid; gap: 4px; margin-bottom: 14px; font-size: 12px; color: var(--suave); }
+    input, select {
+        padding: 8px 10px; border: 1px solid var(--borda); border-radius: 7px;
+        background: Field; color: FieldText; font: inherit;
+    }
+    button {
+        padding: 9px 16px; border: 0; border-radius: 8px;
+        background: var(--azul); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button.secundario { background: transparent; border: 1px solid var(--borda); color: inherit; font-weight: 500; }
+    button:disabled { opacity: .5; cursor: default; }
+    .linha { display: flex; align-items: center; gap: 10px; }
+    code {
+        padding: 2px 6px; border: 1px solid var(--borda); border-radius: 5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    }
+    .caixa { padding: 12px 14px; border: 1px solid var(--borda); border-radius: 9px; }
+    .caixa p { margin: 0 0 8px; font-size: 13px; }
+    .aviso { margin-top: 14px; padding: 8px 11px; border-radius: 7px; font-size: 13px; }
+    .aviso.erro { background: rgba(185, 28, 28, .14); color: #b91c1c; }
+    .aviso.ok { background: rgba(22, 101, 52, .14); color: #15803d; }
+    @media (prefers-color-scheme: dark) {
+        .aviso.erro { color: #fca5a5; } .aviso.ok { color: #86efac; }
+    }
+    [hidden] { display: none !important; }
+</style>
+
+<h1>Print pro Trello</h1>
+<p class="sub">Onde os prints vão parar.</p>
+
+<h2>Liberar esta extensão no Netlify</h2>
+<div class="caixa">
+    <p>As functions só respondem a origens conhecidas. Põe este ID na variável
+        <code>ALLOWED_EXTENSION_IDS</code> do site no Netlify e faz um redeploy:</p>
+    <div class="linha">
+        <code id="extensao-id">…</code>
+        <button class="secundario" id="btn-copiar">Copiar</button>
+    </div>
+</div>
+
+<h2>Destino</h2>
+<label>URL do site
+    <input id="base-url" placeholder="https://central-cs-bigou.netlify.app" spellcheck="false">
+</label>
+<label>Quadro das promoções
+    <select id="board"><option value="">Carregando…</option></select>
+</label>
+<label>Lista padrão pra card novo (opcional)
+    <select id="lista"><option value="">Escolhe o quadro primeiro</option></select>
+</label>
+
+<div class="linha">
+    <button id="btn-salvar">Salvar</button>
+    <button class="secundario" id="btn-recarregar">Recarregar quadros</button>
+</div>
+<div id="aviso"></div>
+
+<script src="opcoes.js"></script>

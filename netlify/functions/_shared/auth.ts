@@ -38,6 +38,22 @@ export interface OriginResult {
     error?: string;
 }
 
+/**
+ * A extensão de promoções (extensao-promo/) chama as functions de fora do
+ * site, então a origem dela não é um host http: o Chrome manda
+ * `chrome-extension://<id>`, e esse <id> cai em `hostname`. Liberar pelo
+ * allowlist de host não serve — `endsWith('.localhost')` etc. nunca casaria,
+ * e deixar protocolo passar direto abriria pra QUALQUER extensão instalada.
+ * Por isso o id entra numa env separada, ALLOWED_EXTENSION_IDS (CSV).
+ *
+ * Mesmo nível de garantia do resto daqui: é STOPGAP, não autenticação.
+ */
+function checkExtensao(host: string): boolean {
+    const ids = (process.env.ALLOWED_EXTENSION_IDS || '')
+        .split(',').map(s => s.trim()).filter(Boolean);
+    return ids.includes(host);
+}
+
 export function checkOrigin(event: HandlerEvent): OriginResult {
     const configured = (process.env.ALLOWED_ORIGIN_HOSTS || '')
         .split(',').map(s => s.trim()).filter(Boolean);
@@ -49,11 +65,18 @@ export function checkOrigin(event: HandlerEvent): OriginResult {
 
     if (!raw) return { ok: false, status: 403, error: 'Origem ausente' };
 
-    let host: string;
+    let url: URL;
     try {
-        host = new URL(raw).hostname;
+        url = new URL(raw);
     } catch {
         return { ok: false, status: 403, error: 'Origem inválida' };
+    }
+    const host = url.hostname;
+
+    if (url.protocol === 'chrome-extension:') {
+        return checkExtensao(host)
+            ? { ok: true, status: 200, host }
+            : { ok: false, status: 403, host, error: `Extensão não permitida: ${host}` };
     }
 
     const ok = allowed.some(h => host === h || host.endsWith(`.${h}`));

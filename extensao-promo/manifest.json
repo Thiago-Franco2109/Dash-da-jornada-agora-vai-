@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Bigou — Print pro Trello",
+  "version": "1.0.0",
+  "description": "Recorta um print da tela e joga num card do Trello: cria um novo ou abastece um existente.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://central-cs-bigou.netlify.app/*",
+    "http://localhost:8888/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Print pro Trello (arraste pra recortar)",
+    "default_icon": {
+      "16": "icones/icone-16.png",
+      "48": "icones/icone-48.png",
+      "128": "icones/icone-128.png"
+    }
+  },
+  "options_page": "opcoes.html",
+  "icons": {
+    "16": "icones/icone-16.png",
+    "48": "icones/icone-48.png",
+    "128": "icones/icone-128.png"
+  }
+}
