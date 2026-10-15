@@ -54,12 +54,29 @@ Do service worker, com o host em `host_permissions`, o Chrome dispensa CORS.
 
 - Clica no ícone → **arrasta** pra recortar. `Tela toda` pega a janela inteira,
   `Esc` cancela.
-- No painel: **Card novo** (nome, lista, descrição) ou **Card existente**
-  (busca por nome — ignora acento e maiúscula, então `acai` acha `Açaí`).
+- No painel: **Card novo** (modelo, nome, lista, descrição) ou **Card
+  existente** (busca por nome — ignora acento e maiúscula, então `acai` acha
+  `Açaí`).
 - `⟳` refaz o recorte sem perder o painel. `Esc` fecha.
 
 O nome do card já vem preenchido com o título da aba e a descrição com o link
 da página — é o que você digitaria mesmo, dá pra só ajustar.
+
+### Modelo
+
+Card novo pode nascer de um **card template do Trello** (aquele com o ícone de
+fôrma). Ele vem com o checklist e as labels do template; o anexo e os
+comentários não são copiados, porque esses vêm do uso real.
+
+O select de modelo só aparece se o quadro tiver algum template, e quando houver
+**exatamente um** ele já entra escolhido — é o modelo da casa. A descrição do
+template preenche o campo na hora da escolha, em vez de ir escondida: dá pra
+ver e editar antes de criar. Se você já tinha digitado algo ali, trocar de
+modelo não apaga o que você escreveu.
+
+No quadro de captação, o template traz o checklist de prospecção — que inclui
+justamente *"anexar print da conversa"* e *"anexar print do CMS"*, os dois
+passos que a extensão resolve num clique.
 
 ## Limites
 

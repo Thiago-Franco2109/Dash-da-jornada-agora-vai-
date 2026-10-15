@@ -33,6 +33,8 @@ interface TrelloBoardBruto {
         idList: string;
         shortUrl: string;
         dateLastActivity: string;
+        isTemplate: boolean;
+        desc: string;
     }[];
 }
 
@@ -77,11 +79,16 @@ export const handler: Handler = async (event) => {
                 lists: 'open',
                 list_fields: 'name',
                 cards: 'open',
-                card_fields: 'name,idList,shortUrl,dateLastActivity',
+                card_fields: 'name,idList,shortUrl,dateLastActivity,isTemplate,desc',
             },
         );
 
         const nomeDaLista = new Map(board.lists.map(l => [l.id, l.name]));
+
+        // Card template não é destino de anexo — é fôrma. Sai da lista de
+        // busca e vira opção de modelo na criação.
+        const modelos = board.cards.filter(c => c.isTemplate);
+        const comuns = board.cards.filter(c => !c.isTemplate);
 
         return {
             statusCode: 200,
@@ -90,7 +97,11 @@ export const handler: Handler = async (event) => {
                 ok: true,
                 board: { id: board.id, nome: board.name },
                 listas: board.lists.map((l, i) => ({ id: l.id, nome: l.name, ordem: i })),
-                cards: board.cards.map(c => ({
+                // `desc` só vai nos modelos: o painel usa pra preencher a
+                // descrição na hora que o modelo é escolhido. Mandar a dos
+                // 140+ cards comuns seria payload à toa.
+                modelos: modelos.map(c => ({ id: c.id, nome: c.name, descricao: c.desc })),
+                cards: comuns.map(c => ({
                     id: c.id,
                     nome: c.name,
                     listaId: c.idList,

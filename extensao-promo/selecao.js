@@ -369,6 +369,9 @@
                         </div>
 
                         <div data-painel="novo" style="display:grid;gap:10px">
+                            <label id="campo-modelo" hidden>Modelo
+                                <select id="modelo"><option value="">Carregando…</option></select>
+                            </label>
                             <label>Nome do card
                                 <input id="nome" value="${esc(nomeSugerido())}" placeholder="Ex.: Promo de outubro — Açaí do Zé">
                             </label>
@@ -376,7 +379,7 @@
                                 <select id="lista"><option value="">Carregando…</option></select>
                             </label>
                             <label>Descrição (opcional)
-                                <textarea id="descricao" placeholder="Detalhes da promoção">${esc(location.href)}</textarea>
+                                <textarea id="descricao" placeholder="Detalhes da promoção"></textarea>
                             </label>
                             <button class="acao" id="btn-criar" disabled>Criar card com o print</button>
                         </div>
@@ -435,8 +438,30 @@
             $('#busca').focus();
         });
 
+        $('#modelo').addEventListener('change', aplicarModelo);
         $('#btn-criar').addEventListener('click', criarCard);
+        aplicarModelo();
         $('#btn-anexar').addEventListener('click', anexarEmCard);
+    }
+
+    /**
+     * Descrição = a do modelo escolhido + o link da página. Preenche o campo
+     * em vez de mandar o `desc` do template implícito: assim ele VÊ o que vai
+     * no card e pode editar antes de criar.
+     */
+    function aplicarModelo() {
+        const campo = $('#descricao');
+        if (!campo) return;
+
+        const modelo = (dadosBoard?.modelos ?? []).find(m => m.id === $('#modelo')?.value);
+        const partes = [modelo?.descricao?.trim(), location.href].filter(Boolean);
+        const novoTexto = partes.join('\n\n');
+
+        // Não pisar em cima do que ele já digitou: só reescreve enquanto o
+        // campo continuar sendo o texto que nós mesmos pusemos.
+        if (campo.value.trim() && campo.value !== campo.dataset.gerado) return;
+        campo.value = novoTexto;
+        campo.dataset.gerado = novoTexto;
     }
 
     function avisar(tipo, texto, html = '') {
@@ -476,6 +501,19 @@
             .join('') || '<option value="">Quadro sem listas abertas</option>';
         if (config?.listaPadraoId && dadosBoard.listas.some((l) => l.id === config.listaPadraoId)) {
             select.value = config.listaPadraoId;
+        }
+
+        const modelos = dadosBoard.modelos ?? [];
+        if (modelos.length) {
+            $('#modelo').innerHTML = [
+                ...modelos.map(m => `<option value="${esc(m.id)}">${esc(m.nome)}</option>`),
+                '<option value="">— sem modelo —</option>',
+            ].join('');
+            // Quadro com um único template: é o modelo da casa, já entra
+            // escolhido. Ele vê qual é no select e troca se não for.
+            $('#modelo').value = modelos.length === 1 ? modelos[0].id : '';
+            $('#campo-modelo').hidden = false;
+            aplicarModelo();
         }
 
         $('#btn-criar').disabled = !dadosBoard.listas.length || !print;
@@ -556,7 +594,10 @@
 
         await comBotaoOcupado($('#btn-criar'), 'Criando…', async () => {
             const resposta = await pedir('criarCard', {
-                listaId, nome, descricao: $('#descricao').value.trim(), print,
+                listaId, nome,
+                descricao: $('#descricao').value.trim(),
+                modeloId: $('#modelo')?.value || '',
+                print,
             });
             if (!resposta.ok) {
                 avisar('erro', resposta.error, resposta.card

@@ -15,6 +15,13 @@ import { trelloFetch } from './_shared/trello';
  * `pos: 'top'` porque card de promoção é sempre o mais recente: entra no topo
  * da lista, onde ele vai procurar.
  *
+ * Com `modeloId`, o card nasce de um card template do quadro
+ * (`idCardSource`). `keepFromSource` fica em checklists/labels/customFields e
+ * NÃO inclui attachments nem comments: o template de captação existe pra
+ * trazer o checklist — anexo e comentário vêm do uso real, não da fôrma.
+ * `desc` continua sendo mandado explicitamente e sobrepõe o do template, que
+ * é o que o painel já mostrou (e deixou editar) na hora de escolher.
+ *
  * STOPGAP: protegido por checagem de origem (ver _shared/auth.ts).
  */
 
@@ -40,7 +47,7 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: erroHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
-    let body: { listaId?: unknown; nome?: unknown; descricao?: unknown };
+    let body: { listaId?: unknown; nome?: unknown; descricao?: unknown; modeloId?: unknown };
     try {
         body = JSON.parse(event.body || '{}');
     } catch {
@@ -50,6 +57,7 @@ export const handler: Handler = async (event) => {
     const listaId = typeof body.listaId === 'string' ? body.listaId.trim() : '';
     const nome = typeof body.nome === 'string' ? body.nome.trim() : '';
     const descricao = typeof body.descricao === 'string' ? body.descricao.trim() : '';
+    const modeloId = typeof body.modeloId === 'string' ? body.modeloId.trim() : '';
 
     if (!listaId) {
         return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'listaId é obrigatório' }) };
@@ -87,6 +95,7 @@ export const handler: Handler = async (event) => {
                 name: nome,
                 desc: descricao,
                 pos: 'top',
+                ...(modeloId ? { idCardSource: modeloId, keepFromSource: 'checklists,labels,customFields' } : {}),
             },
             'POST',
         );

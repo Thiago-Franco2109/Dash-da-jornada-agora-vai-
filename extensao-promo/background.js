@@ -225,10 +225,10 @@ const acoes = {
         return { print: await capturarRecorte(remetente.tab.windowId, rect, dpr) };
     },
 
-    async criarCard({ listaId, nome, descricao, print }) {
+    async criarCard({ listaId, nome, descricao, modeloId, print }) {
         const { card } = await chamarFuncao('trello-card-criar', {
             metodo: 'POST',
-            corpo: { listaId, nome, descricao },
+            corpo: { listaId, nome, descricao, modeloId },
         });
         // Card já existe neste ponto: se o anexo falhar, o erro sobe mas o
         // link do card vai junto, pra ele não ficar sem saber o que foi criado.
