@@ -47,8 +47,9 @@ Do service worker, com o host em `host_permissions`, o Chrome dispensa CORS.
    > Esse ID muda se você remover e carregar a pasta de novo. Se começar a dar
    > 403 do nada, confere se ainda é o mesmo.
 
-4. **Escolher o quadro.** Ainda nas opções: o quadro das promoções e, se
-   quiser, a lista que já vem selecionada quando for criar card.
+4. **Escolher o quadro padrão.** Ainda nas opções: o quadro que já vem
+   selecionado no painel e, se quiser, a lista que vem junto. É só o padrão —
+   o painel deixa trocar de quadro na hora.
 
 ## Usar
 
@@ -61,6 +62,19 @@ Do service worker, com o host em `host_permissions`, o Chrome dispensa CORS.
 
 O nome do card já vem preenchido com o título da aba e a descrição com o link
 da página — é o que você digitaria mesmo, dá pra só ajustar.
+
+### Quadro
+
+O **Quadro** no topo do painel vale pras duas abas e lista todos os quadros
+abertos. O das opções é só o que vem selecionado: print de parceiro em queda
+ou de alta taxa de cancelamento não vai pro mesmo quadro que promoção.
+
+Trocar de quadro recarrega listas, modelos, labels e a busca de cards — tudo
+era do quadro anterior. Dois detalhes que caem junto:
+
+- a **lista padrão** só é aplicada no quadro padrão; em outro quadro ela
+  escolheria uma lista qualquer sem você pedir;
+- o campo **Modelo** some em quadro que não tem card template.
 
 ### Parceiro
 

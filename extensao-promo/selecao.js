@@ -35,6 +35,8 @@
     let cardEscolhido = null;
     let parceiros = [];
     let parceiroEscolhido = null;
+    let boards = [];
+    let configSalva = null;
 
     // ─── Utilitários ────────────────────────────────────────────────────
 
@@ -364,7 +366,7 @@
         desenharPainel();
         // Em paralelo: um não depende do outro, e juntos somem do caminho
         // antes de ele terminar de escolher o destino.
-        carregarBoard();
+        carregarBoards();
         carregarParceiros();
     }
 
@@ -389,6 +391,10 @@
                             <img class="previa" id="previa" alt="Prévia do recorte">
                             <p class="meta">${print.largura} × ${print.altura} · ${formatarTamanho(print.bytes)}</p>
                         ` : ''}
+
+                        <label>Quadro
+                            <select id="board"><option value="">Carregando…</option></select>
+                        </label>
 
                         <div class="abas">
                             <button class="aba ativa" data-aba="novo">Card novo</button>
@@ -486,6 +492,7 @@
             $('#busca').focus();
         });
 
+        $('#board').addEventListener('change', trocarDeQuadro);
         $('#modelo').addEventListener('change', montarDescricao);
         $('#busca-parceiro').addEventListener('input', (e) => renderizarParceiros(e.target.value));
         $('#btn-trocar-parceiro').addEventListener('click', () => escolherParceiro(null));
@@ -620,7 +627,7 @@
         if (!cidade) return;
 
         await comBotaoOcupado($('#btn-criar-label'), 'Criando…', async () => {
-            const resposta = await pedir('criarLabel', { nome: cidade });
+            const resposta = await pedir('criarLabel', { nome: cidade, boardId: $('#board').value });
             if (!raiz) return;
             if (!resposta.ok) { avisar('erro', resposta.error); return; }
 
@@ -655,8 +662,49 @@
             : '';
     }
 
+    /**
+     * Lista de quadros no topo do painel. O quadro das opções é só o padrão,
+     * não uma amarra: print de parceiro em queda ou de alta taxa de
+     * cancelamento não vai pro mesmo quadro que promoção.
+     */
+    async function carregarBoards() {
+        const [respBoards, respConfig] = await Promise.all([pedir('boards'), pedir('config')]);
+        if (!raiz) return;
+
+        configSalva = respConfig.ok ? respConfig.config : null;
+        if (!respBoards.ok) {
+            $('#board').innerHTML = '<option value="">—</option>';
+            avisar('erro', respBoards.error, ' <a href="#" id="link-opcoes">Abrir opções</a>');
+            $('#link-opcoes')?.addEventListener('click', (e) => { e.preventDefault(); pedir('abrirOpcoes'); });
+            return;
+        }
+
+        boards = respBoards.boards;
+        $('#board').innerHTML = boards.map((b) => `<option value="${esc(b.id)}">${esc(b.nome)}</option>`).join('')
+            || '<option value="">Nenhum quadro aberto</option>';
+        if (configSalva?.boardId && boards.some((b) => b.id === configSalva.boardId)) {
+            $('#board').value = configSalva.boardId;
+        }
+        await carregarBoard();
+    }
+
+    /** Trocar de quadro invalida listas, modelos, labels E o card escolhido — tudo era do quadro anterior. */
+    async function trocarDeQuadro() {
+        dadosBoard = null;
+        cardEscolhido = null;
+        $('#area-busca').hidden = false;
+        $('#area-anexo').hidden = true;
+        $('#campo-modelo').hidden = true;
+        $('#resultados').innerHTML = '<p class="vazio">Carregando cards…</p>';
+        $('#lista').innerHTML = '<option value="">Carregando…</option>';
+        avisar('', '');
+        await carregarBoard();
+    }
+
     async function carregarBoard() {
-        const resposta = await pedir('board');
+        const boardId = $('#board')?.value;
+        if (!boardId) return;
+        const resposta = await pedir('board', { boardId });
         // Ele pode ter fechado o painel (Esc) enquanto o quadro carregava —
         // aí `raiz` já é nulo e não há mais nada pra preencher.
         if (!raiz) return;
@@ -675,18 +723,21 @@
         }
 
         dadosBoard = resposta;
-        const { config } = await pedir('config');
-        if (!raiz) return;
-
         const select = $('#lista');
         select.innerHTML = dadosBoard.listas
             .map((l) => `<option value="${esc(l.id)}">${esc(l.nome)}</option>`)
             .join('') || '<option value="">Quadro sem listas abertas</option>';
-        if (config?.listaPadraoId && dadosBoard.listas.some((l) => l.id === config.listaPadraoId)) {
-            select.value = config.listaPadraoId;
+        // A lista padrão foi escolhida para o quadro padrão — aplicar num
+        // quadro diferente escolheria uma lista qualquer sem ele pedir.
+        const noQuadroPadrao = configSalva?.boardId === $('#board').value;
+        if (noQuadroPadrao && configSalva.listaPadraoId
+            && dadosBoard.listas.some((l) => l.id === configSalva.listaPadraoId)) {
+            select.value = configSalva.listaPadraoId;
         }
 
         const modelos = dadosBoard.modelos ?? [];
+        // Quadro sem template nenhum: o campo some em vez de ficar vazio.
+        $('#campo-modelo').hidden = !modelos.length;
         if (modelos.length) {
             $('#modelo').innerHTML = [
                 ...modelos.map(m => `<option value="${esc(m.id)}">${esc(m.nome)}</option>`),

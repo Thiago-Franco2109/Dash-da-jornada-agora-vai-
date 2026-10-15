@@ -251,10 +251,10 @@ const acoes = {
         return { parceiros: dados, doCache: false };
     },
 
-    async criarLabel({ nome }) {
-        const { boardId } = await lerConfig();
-        if (!boardId) throw new Error('Nenhum quadro escolhido ainda.');
-        return chamarFuncao('trello-label-criar', { metodo: 'POST', corpo: { boardId, nome } });
+    async criarLabel({ nome, boardId }) {
+        const alvo = boardId || (await lerConfig()).boardId;
+        if (!alvo) throw new Error('Nenhum quadro escolhido ainda.');
+        return chamarFuncao('trello-label-criar', { metodo: 'POST', corpo: { boardId: alvo, nome } });
     },
 
     async criarCard({ listaId, nome, descricao, modeloId, labelIds, print }) {
