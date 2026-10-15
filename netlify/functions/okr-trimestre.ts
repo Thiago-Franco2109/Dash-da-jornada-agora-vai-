@@ -383,6 +383,30 @@ export const handler: Handler = async (event) => {
             })
             .sort((a, b) => (b.taxaCancelamentoPct ?? -1) - (a.taxaCancelamentoPct ?? -1));
 
+        // Quem não vendeu dentro da janela de histórico pode estar parado há
+        // mais tempo que ela — ou nunca ter vendido. São coisas MUITO
+        // diferentes para quem vai recuperar a loja, e sem esta consulta as
+        // duas viram "nunca vendeu". Só para esses, que são poucos: varrer o
+        // histórico inteiro da base toda custaria os 14s que o comentário do
+        // `jornada.ts` descreve.
+        const semHistorico = risco.filter(l => l.ultimoPedido === null).map(l => l.id);
+        if (semHistorico.length > 0) {
+            const [antigos] = await connection.query<RowDataPacket[]>(
+                `SELECT estabelecimento_id AS estab, DATE_FORMAT(MAX(data), '%Y-%m-%d') AS ultimo
+                 FROM pedido
+                 WHERE status IN (1, 2) AND data < ? AND estabelecimento_id IN (?)
+                 GROUP BY estabelecimento_id`,
+                [corteExclusivo, semHistorico],
+            );
+            const ultimoPorEstab = new Map(antigos.map(r => [Number(r.estab), String(r.ultimo)]));
+            for (const l of risco) {
+                const ultimo = ultimoPorEstab.get(l.id);
+                if (!ultimo) continue;
+                l.ultimoPedido = ultimo;
+                l.diasSemPedido = diasEntre(ultimo, corte);
+            }
+        }
+
         // ══ OBJETIVO 4 — Cardápio Digital, base inteira ══════════════════
         // Sem recorte de cidade e sem filtro de delivery: o KR conta PEDIDOS do
         // Cardápio Digital, e quem os gerou continua contando mesmo que a loja

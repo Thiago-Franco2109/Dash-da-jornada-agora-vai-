@@ -15,6 +15,7 @@ import {
     type FigurasKr23,
     type FigurasKr41,
     type LinhaCidade,
+    type GrupoElegivel,
     type LojaRiscoAvaliada,
 } from '../utils/okrFiguras';
 import { MOTIVOS_EXCLUSAO, motivoExclusaoDef } from '../config/exclusaoOkr';
@@ -54,6 +55,14 @@ type ModoMarcacao = 'fora' | 'critica';
 /** '2026-10-07' → '07/10'. */
 function diaMes(iso: string): string {
     return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+}
+
+/**
+ * Como `diaMes`, mas põe o ano quando a data é de outro ano. Loja parada há
+ * 348 dias mostrando "01/11" seca o número: lê-se novembro deste ano.
+ */
+function dataCurta(iso: string, anoRef: string): string {
+    return iso.slice(0, 4) === anoRef ? diaMes(iso) : `${diaMes(iso)}/${iso.slice(2, 4)}`;
 }
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -294,10 +303,41 @@ function TiraSemanas({ semanas }: { semanas: boolean[] }) {
 
 type ContextoRisco = 'plano' | 'elegivel' | 'candidata';
 
-function LinhaRisco({ loja, p, contexto, onTirar, onCritica, onPlano }: {
+/**
+ * Os grupos da lista de elegíveis, na ordem em que aparecem. Separar importa:
+ * a loja zerada há cinco meses e a que vendeu anteontem e esfriou não são a
+ * mesma conversa, e uma lista única ordenada por dias parados misturaria as
+ * duas no meio do caminho.
+ */
+const GRUPOS_ELEGIVEIS: { id: GrupoElegivel; titulo: string; rodape: string }[] = [
+    {
+        id: 'zerada',
+        titulo: 'Zeradas no trimestre',
+        rodape: 'Zeradas: nenhum pedido aceito desde o início do trimestre.',
+    },
+    {
+        id: 'esfriando',
+        titulo: 'Esfriando — venderam no trimestre e pararam',
+        rodape: 'Esfriando: venderam no trimestre e estão paradas há 7+ dias.',
+    },
+    {
+        id: 'lista',
+        titulo: 'Na lista de risco — ainda vendendo',
+        rodape: 'Lista de risco: elegíveis por marcação, mesmo vendendo.',
+    },
+    {
+        id: 'voltou',
+        titulo: 'Já voltaram sozinhas',
+        rodape: 'Já voltaram: ficaram 7+ dias paradas antes no trimestre e retomaram — recuperação que aconteceu, e que só conta no KR se entrar no plano.',
+    },
+];
+
+function LinhaRisco({ loja, p, contexto, anoRef, onTirar, onCritica, onPlano }: {
     loja: LojaRiscoAvaliada;
     p: OkrParametros;
     contexto: ContextoRisco;
+    /** Ano do trimestre — datas de outro ano ganham o sufixo. */
+    anoRef: string;
     onTirar: (alvo: ParceiroAlvo) => void;
     onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
     onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
@@ -358,13 +398,17 @@ function LinhaRisco({ loja, p, contexto, onTirar, onCritica, onPlano }: {
                 <>
                     <p className={`font-bold tabular-nums ${corTaxa}`}>{taxa === null ? '—' : `${taxa}%`} </p>
                     <p className="text-xs text-slate-400">
-                        {loja.motivoElegivel === 'parada'
-                            ? (loja.diasSemPedido === null ? 'nunca vendeu' : `parada há ${loja.diasSemPedido}d`)
-                            : loja.motivoElegivel === 'lista'
-                                ? 'na lista de risco'
-                                : loja.motivoElegivel === 'voltou'
-                                    ? `esteve ${loja.maiorLacunaDias}d parada · já voltou`
-                                    : `cancelamento de ${taxa ?? 0}%`}
+                        {loja.zerada
+                            ? (loja.ultimoPedido === null
+                                ? 'nunca vendeu'
+                                : `zerada há ${loja.diasSemPedido}d · último em ${dataCurta(loja.ultimoPedido, anoRef)}`)
+                            : loja.motivoElegivel === 'parada'
+                                ? `parada há ${loja.diasSemPedido}d`
+                                : loja.motivoElegivel === 'lista'
+                                    ? 'na lista de risco'
+                                    : loja.motivoElegivel === 'voltou'
+                                        ? `esteve ${loja.maiorLacunaDias}d parada · já voltou`
+                                        : `cancelamento de ${taxa ?? 0}%`}
                     </p>
                 </>
             }
@@ -372,21 +416,27 @@ function LinhaRisco({ loja, p, contexto, onTirar, onCritica, onPlano }: {
     );
 }
 
-function PainelRisco({ risco, figuras, p, onTirar, onCritica, onPlano, onSelecionarTodas }: {
+function PainelRisco({ risco, figuras, p, anoRef, onTirar, onCritica, onPlano, onSelecionarTodas }: {
     risco: LojaRiscoAvaliada[];
     figuras: FigurasKr23;
     p: OkrParametros;
+    anoRef: string;
     onTirar: (alvo: ParceiroAlvo) => void;
     onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
     onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
     onSelecionarTodas: (lojas: ParceiroAlvo[]) => void;
 }) {
     const plano = risco.filter(l => l.noPlano);
-    const ordemElegivel = { parada: 0, lista: 1, voltou: 2 } as const;
-    const elegiveis = risco
-        .filter(l => l.elegivel && !l.noPlano)
-        .sort((a, b) => (ordemElegivel[a.motivoElegivel ?? 'voltou'] - ordemElegivel[b.motivoElegivel ?? 'voltou'])
-            || (b.diasSemPedido ?? 0) - (a.diasSemPedido ?? 0));
+    const fora = risco.filter(l => l.elegivel && !l.noPlano);
+    const elegiveis = GRUPOS_ELEGIVEIS
+        .map(g => ({
+            ...g,
+            lojas: fora
+                .filter(l => l.grupoElegivel === g.id)
+                // Quem está parada há mais tempo primeiro; quem nunca vendeu no fim.
+                .sort((a, b) => (b.diasSemPedido ?? -1) - (a.diasSemPedido ?? -1)),
+        }))
+        .filter(g => g.lojas.length > 0);
     // Quem não é elegível mas cancela muito: é daqui que sai a lista de risco.
     const candidatas = risco
         .filter(l => !l.elegivel && !l.noPlano && l.taxaCancelamentoPct !== null && l.taxaCancelamentoPct >= p.tetoCancelamentoPct)
@@ -407,7 +457,7 @@ function PainelRisco({ risco, figuras, p, onTirar, onCritica, onPlano, onSelecio
                     {plano.length === 0 ? (
                         <Vazio texto="Nenhuma loja selecionada ainda. Escolha ao lado quem entra no plano." />
                     ) : plano.map(l => (
-                        <LinhaRisco key={l.id} loja={l} p={p} contexto="plano" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                        <LinhaRisco key={l.id} loja={l} p={p} contexto="plano" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
                     ))}
                 </Lista>
                 <p className="text-[11px] text-slate-400 mt-2">
@@ -419,29 +469,36 @@ function PainelRisco({ risco, figuras, p, onTirar, onCritica, onPlano, onSelecio
 
             <div className="space-y-6">
                 <div>
-                    <div className="flex items-center justify-between gap-2">
-                        <TituloLista contagem={elegiveis.length}>Elegíveis fora do plano</TituloLista>
-                        {elegiveis.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={() => onSelecionarTodas(elegiveis)}
-                                className="mb-2 text-xs font-semibold text-primary hover:underline"
-                            >
-                                Selecionar todas
-                            </button>
-                        )}
-                    </div>
-                    <Lista altura="max-h-[28vh]">
+                    <TituloLista contagem={fora.length}>Elegíveis fora do plano</TituloLista>
+                    <Lista altura="max-h-[46vh]">
                         {elegiveis.length === 0 ? (
                             <Vazio texto={`Nenhuma loja parada há ${p.diasParado}+ dias fora do plano.`} />
-                        ) : elegiveis.map(l => (
-                            <LinhaRisco key={l.id} loja={l} p={p} contexto="elegivel" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                        ) : elegiveis.map(g => (
+                            <div key={g.id}>
+                                {/* Cabeçalho gruda no topo: a lista é longa e sem isso
+                                    some a informação de em qual grupo o olho está. */}
+                                <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-1.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60">
+                                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                        {g.titulo} <span className="text-slate-300 dark:text-slate-600 tabular-nums">{g.lojas.length}</span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => onSelecionarTodas(g.lojas)}
+                                        className="text-[11px] font-semibold text-primary hover:underline shrink-0"
+                                    >
+                                        selecionar {g.lojas.length === 1 ? 'esta' : 'estas'}
+                                    </button>
+                                </div>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                                    {g.lojas.map(l => (
+                                        <LinhaRisco key={l.id} loja={l} p={p} contexto="elegivel" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                     </Lista>
                     <p className="text-[11px] text-slate-400 mt-2">
-                        Entram aqui as paradas há {p.diasParado}+ dias e as que estão na lista de risco. No fim da lista
-                        vêm as que ficaram {p.diasParado}+ dias paradas antes no trimestre e já voltaram — recuperação
-                        que aconteceu de verdade, e que só conta no KR se você puser no plano.
+                        {GRUPOS_ELEGIVEIS.map(g => g.rodape).join(' ')}
                     </p>
                 </div>
 
@@ -453,7 +510,7 @@ function PainelRisco({ risco, figuras, p, onTirar, onCritica, onPlano, onSelecio
                         {candidatas.length === 0 ? (
                             <Vazio texto={`Nenhuma loja ativa passa de ${p.tetoCancelamentoPct}% de cancelamento.`} />
                         ) : candidatas.map(l => (
-                            <LinhaRisco key={l.id} loja={l} p={p} contexto="candidata" onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                            <LinhaRisco key={l.id} loja={l} p={p} contexto="candidata" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
                         ))}
                     </Lista>
                     <p className="text-[11px] text-slate-400 mt-2">
@@ -992,6 +1049,7 @@ export default function OkrView() {
                                     risco={figuras.risco}
                                     figuras={figuras.kr23}
                                     p={dados.parametros}
+                                    anoRef={dados.trimestre.inicio.slice(0, 4)}
                                     onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
                                     onCritica={alternarCritica}
                                     onPlano={alternarPlano}

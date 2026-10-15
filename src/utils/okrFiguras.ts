@@ -41,6 +41,8 @@ export interface FigurasKr23 extends FigurasKr {
     pendentes: number;
     /** Elegíveis que ninguém selecionou ainda. */
     elegiveisFora: number;
+    /** Sem nenhum pedido aceito no trimestre — o caso mais duro. */
+    zeradas: number;
     /**
      * Plano menor que a meta: faltam lojas para a conta fechar, por mais que
      * todas revertam. É o aviso que a tela precisa dar cedo.
@@ -86,6 +88,13 @@ export interface FigurasOkr {
     foraDaConta: { kr22: number; kr23: number; cd: number };
 }
 
+/**
+ * Em que grupo a loja elegível entra. A recuperação não é a mesma conversa
+ * nos quatro casos, e uma lista única ordenada por dias parados misturaria
+ * quem vendeu ontem de menos com quem não vende desde maio.
+ */
+export type GrupoElegivel = 'zerada' | 'esfriando' | 'lista' | 'voltou';
+
 /** Uma loja do KR 2.3 com o veredito já aplicado. */
 export interface LojaRiscoAvaliada extends OkrLojaRisco {
     /** Está na lista de risco de cancelamento (as 18). */
@@ -94,6 +103,9 @@ export interface LojaRiscoAvaliada extends OkrLojaRisco {
     elegivel: boolean;
     /** Por que é elegível — o que a linha mostra como etiqueta. */
     motivoElegivel: 'parada' | 'lista' | 'voltou' | null;
+    /** Nenhum pedido aceito desde o início do trimestre. */
+    zerada: boolean;
+    grupoElegivel: GrupoElegivel | null;
     /** Selecionada para o plano de recuperação: é o universo do KR. */
     noPlano: boolean;
     /** No plano, com pedido nas N semanas seguidas e cancelamento sob o teto. */
@@ -152,17 +164,22 @@ function avaliarRisco(
     noPlano: boolean,
     diasParado: number,
     tetoPct: number,
+    inicioTrimestre: string,
 ): LojaRiscoAvaliada {
     const temSemanas = loja.semanasComPedido.every(Boolean);
     const cancelamentoOk = loja.taxaCancelamentoPct !== null && loja.taxaCancelamentoPct < tetoPct;
     const parada = (loja.diasSemPedido ?? Infinity) >= diasParado;
     const voltou = !parada && loja.maiorLacunaDias >= diasParado;
+    // Zerada = nenhum pedido aceito no trimestre inteiro, não "parada há dias".
+    const zerada = loja.ultimoPedido === null || loja.ultimoPedido < inicioTrimestre;
     const falta: ('semanas' | 'cancelamento')[] = [];
     if (!temSemanas) falta.push('semanas');
     if (!cancelamentoOk) falta.push('cancelamento');
     return {
         ...loja,
         critica,
+        zerada,
+        grupoElegivel: zerada ? 'zerada' : parada ? 'esfriando' : critica ? 'lista' : voltou ? 'voltou' : null,
         elegivel: parada || critica || voltou,
         motivoElegivel: parada ? 'parada' : critica ? 'lista' : voltou ? 'voltou' : null,
         noPlano,
@@ -194,7 +211,7 @@ export function calcularFiguras(
 
     // ── KR 2.3 — lojas em risco ──────────────────────────────────────────
     const risco = dentro(dados.kr23.parceiros)
-        .map(l => avaliarRisco(l, criticas.has(l.id), noPlano.has(l.id), p.diasParado, p.tetoCancelamentoPct))
+        .map(l => avaliarRisco(l, criticas.has(l.id), noPlano.has(l.id), p.diasParado, p.tetoCancelamentoPct, dados.trimestre.inicio))
         .sort((a, b) => {
             // Revertidas primeiro (é o placar), depois quem está mais perto.
             if (a.revertida !== b.revertida) return a.revertida ? -1 : 1;
@@ -209,6 +226,7 @@ export function calcularFiguras(
         noPlano: plano.length,
         pendentes: plano.length - revertidas,
         elegiveisFora: risco.filter(l => l.elegivel && !l.noPlano).length,
+        zeradas: risco.filter(l => l.zerada).length,
         faltamNoPlano: Math.max(dados.kr23.meta - plano.length, 0),
     };
 
