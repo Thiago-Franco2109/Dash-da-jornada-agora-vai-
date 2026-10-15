@@ -39,25 +39,41 @@ export interface OriginResult {
 }
 
 /**
- * A extensão de promoções (extensao-promo/) chama as functions de fora do
- * site, então a origem dela não é um host http: o Chrome manda
- * `chrome-extension://<id>`, e esse <id> cai em `hostname`. Liberar pelo
- * allowlist de host não serve — `endsWith('.localhost')` etc. nunca casaria,
- * e deixar protocolo passar direto abriria pra QUALQUER extensão instalada.
- * Por isso o id entra numa env separada, ALLOWED_EXTENSION_IDS (CSV).
+ * A extensão de promoções (extensao-promo/) se identifica por um header
+ * próprio, X-Extensao-Id, e não por Origin.
  *
- * Mesmo nível de garantia do resto daqui: é STOPGAP, não autenticação.
+ * O motivo é do navegador: fetch que sai do service worker da extensão pra
+ * host declarado em `host_permissions` NÃO é requisição CORS, então o Chrome
+ * não manda `Origin` nem `Referer` — a function via "Origem ausente"
+ * (testado com a extensão real; só com `curl -H Origin:` forjado é que
+ * passava). E `Origin` é nome de header proibido no fetch, não dá pra forçar
+ * do lado da extensão.
+ *
+ * O id vem de `chrome.runtime.id` e é conferido contra a env
+ * ALLOWED_EXTENSION_IDS (CSV). Liberar pelo allowlist de host não serviria, e
+ * aceitar qualquer `chrome-extension://` abriria pra toda extensão instalada.
+ *
+ * Mesmo nível de garantia do resto daqui: é STOPGAP, não autenticação — um
+ * header é tão forjável quanto o Origin que já protegia o resto.
  */
-function checkExtensao(host: string): boolean {
+function checkExtensao(id: string): boolean {
     const ids = (process.env.ALLOWED_EXTENSION_IDS || '')
         .split(',').map(s => s.trim()).filter(Boolean);
-    return ids.includes(host);
+    return ids.includes(id);
 }
 
 export function checkOrigin(event: HandlerEvent): OriginResult {
     const configured = (process.env.ALLOWED_ORIGIN_HOSTS || '')
         .split(',').map(s => s.trim()).filter(Boolean);
     const allowed = configured.length ? configured : DEFAULT_ALLOWED_HOSTS;
+
+    // Antes do Origin: a extensão não manda Origin nenhum (ver checkExtensao).
+    const extensaoId = (event.headers?.['x-extensao-id'] || event.headers?.['X-Extensao-Id'] || '').trim();
+    if (extensaoId) {
+        return checkExtensao(extensaoId)
+            ? { ok: true, status: 200, host: extensaoId }
+            : { ok: false, status: 403, host: extensaoId, error: `Extensão não permitida: ${extensaoId}` };
+    }
 
     const raw =
         event.headers?.origin || event.headers?.Origin ||

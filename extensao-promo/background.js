@@ -128,7 +128,15 @@ async function chamarFuncao(caminho, { metodo = 'GET', corpo = null, query = nul
     try {
         resposta = await fetch(url.toString(), {
             method: metodo,
-            headers: corpo ? { 'Content-Type': 'application/json' } : undefined,
+            headers: {
+                // Como a extensão se identifica. Daqui do service worker o
+                // Chrome não manda `Origin` (não é requisição CORS pra host
+                // com host_permissions) e `Origin` é header proibido no
+                // fetch, então não dá pra simular — o lado de lá confere este
+                // id contra ALLOWED_EXTENSION_IDS (ver _shared/auth.ts).
+                'X-Extensao-Id': chrome.runtime.id,
+                ...(corpo ? { 'Content-Type': 'application/json' } : {}),
+            },
             body: corpo ? JSON.stringify(corpo) : undefined,
         });
     } catch {
