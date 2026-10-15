@@ -856,11 +856,15 @@ function App() {
     } else {
       add(indicadorEnrichedData);
       add(enrichedData);
+      // Pré-lançamento por último: quem já lançou fica com o row real da
+      // Jornada (métricas de verdade), e quem ainda não abriu continua
+      // achável na busca — é nele que o CS trabalha antes do dia 1.
+      add(preLancamentoRows);
     }
     return Array.from(map.values()).sort((a, b) =>
       a.estabelecimento.localeCompare(b.estabelecimento, 'pt-BR'),
     );
-  }, [isCD, enrichedData, indicadorEnrichedData, enrichedDesempenhoData]);
+  }, [isCD, enrichedData, indicadorEnrichedData, enrichedDesempenhoData, preLancamentoRows]);
 
   const navigateToPartner = (row: EnrichedPerformanceRow) => {
     if (isCD) {
