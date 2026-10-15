@@ -27,6 +27,7 @@ interface TrelloBoardBruto {
     id: string;
     name: string;
     lists: { id: string; name: string }[];
+    labels: { id: string; name: string; color: string | null }[];
     cards: {
         id: string;
         name: string;
@@ -34,7 +35,9 @@ interface TrelloBoardBruto {
         shortUrl: string;
         dateLastActivity: string;
         isTemplate: boolean;
+        closed: boolean;
         desc: string;
+        idLabels: string[];
     }[];
 }
 
@@ -78,17 +81,33 @@ export const handler: Handler = async (event) => {
                 fields: 'name',
                 lists: 'open',
                 list_fields: 'name',
-                cards: 'open',
-                card_fields: 'name,idList,shortUrl,dateLastActivity,isTemplate,desc',
+                labels: 'all',
+                label_fields: 'name,color',
+                labels_limit: '1000',
+                // `all` e não `open`: o card arquivado não entra em nada do
+                // que devolvemos, mas conta pro uso das labels — é ele que
+                // desempata cidade com label repetida (ver `usos`).
+                cards: 'all',
+                card_fields: 'name,idList,shortUrl,dateLastActivity,isTemplate,desc,closed,idLabels',
             },
         );
 
         const nomeDaLista = new Map(board.lists.map(l => [l.id, l.name]));
 
+        // Quantas vezes cada label foi usada, arquivados inclusive. O quadro
+        // tem label de cidade duplicada (Muriaé aparece 4x, com cores
+        // diferentes) e não dá pra adivinhar a certa pelo nome — a contagem
+        // desempata: a que o CMS vem usando ganha de longe (179 contra 4).
+        const usos = new Map<string, number>();
+        for (const card of board.cards) {
+            for (const id of card.idLabels) usos.set(id, (usos.get(id) ?? 0) + 1);
+        }
+
+        const abertos = board.cards.filter(c => !c.closed);
         // Card template não é destino de anexo — é fôrma. Sai da lista de
         // busca e vira opção de modelo na criação.
-        const modelos = board.cards.filter(c => c.isTemplate);
-        const comuns = board.cards.filter(c => !c.isTemplate);
+        const modelos = abertos.filter(c => c.isTemplate);
+        const comuns = abertos.filter(c => !c.isTemplate);
 
         return {
             statusCode: 200,
@@ -97,6 +116,9 @@ export const handler: Handler = async (event) => {
                 ok: true,
                 board: { id: board.id, nome: board.name },
                 listas: board.lists.map((l, i) => ({ id: l.id, nome: l.name, ordem: i })),
+                labels: board.labels
+                    .filter(l => l.name.trim())
+                    .map(l => ({ id: l.id, nome: l.name, cor: l.color, usos: usos.get(l.id) ?? 0 })),
                 // `desc` só vai nos modelos: o painel usa pra preencher a
                 // descrição na hora que o modelo é escolhido. Mandar a dos
                 // 140+ cards comuns seria payload à toa.

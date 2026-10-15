@@ -62,6 +62,45 @@ Do service worker, com o host em `host_permissions`, o Chrome dispensa CORS.
 O nome do card já vem preenchido com o título da aba e a descrição com o link
 da página — é o que você digitaria mesmo, dá pra só ajustar.
 
+### Parceiro
+
+O card criado pelo CMS (pela página do parceiro) sai padronizado, e card criado
+solto quebra esse padrão. Por isso o painel tem busca de parceiro — por **ID ou
+nome** — e, escolhido o parceiro, reproduz os três pedaços que o CMS põe:
+
+| | |
+| --- | --- |
+| Nome | `28618 - Açaí do Eton` |
+| Label | a cidade do parceiro |
+| Descrição | `[LINK DO ESTABELECIMENTO](https://admin.bigou.com.br/estabelecimento/cadastro/28618)` |
+
+Os formatos não foram inventados: saíram da leitura dos cards que o CMS já
+criou no quadro.
+
+A lista vem de `parceiros-ativos` (1426 parceiros, ~85 KB) e fica em
+`chrome.storage.local` por 6h — o MySQL que as functions leem já atrasa cerca
+de um dia do banco real, então segurar esse tempo não deixa nada mais velho do
+que já é. Parceiro cadastrado hoje pode não aparecer; **Recarregar** nas opções
+força a atualização.
+
+### Label da cidade
+
+Das 66 cidades com parceiro ativo, só 25 têm label no quadro, e 9 têm label
+repetida (`Muriaé` existe 4 vezes, com cores diferentes). Então:
+
+- **uma label casa** → já vem escolhida;
+- **várias casam** → ganha a mais usada, contando cards arquivados junto. É o
+  que desempata de verdade: a `Muriaé` do CMS aparece em 179 cards, as outras
+  em 4, 3 e 1;
+- **nenhuma casa** → aparece o botão **+ criar label «Cidade»**. A cor sai da
+  menos usada no quadro, pra cidade nova não nascer igual às outras.
+
+O select continua listando as outras labels do quadro — dá pra pôr `Onboarding`
+ou qualquer outra no lugar.
+
+> A comparação ignora acento, caixa e o sufixo de UF, porque a label às vezes
+> traz (`Santos Dumont - MG`) e a cidade do banco não.
+
 ### Modelo
 
 Card novo pode nascer de um **card template do Trello** (aquele com o ícone de

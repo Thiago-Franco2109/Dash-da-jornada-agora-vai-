@@ -47,7 +47,7 @@ export const handler: Handler = async (event) => {
         return { statusCode: origin.status, headers: erroHeaders, body: JSON.stringify({ ok: false, error: origin.error }) };
     }
 
-    let body: { listaId?: unknown; nome?: unknown; descricao?: unknown; modeloId?: unknown };
+    let body: { listaId?: unknown; nome?: unknown; descricao?: unknown; modeloId?: unknown; labelIds?: unknown };
     try {
         body = JSON.parse(event.body || '{}');
     } catch {
@@ -58,6 +58,9 @@ export const handler: Handler = async (event) => {
     const nome = typeof body.nome === 'string' ? body.nome.trim() : '';
     const descricao = typeof body.descricao === 'string' ? body.descricao.trim() : '';
     const modeloId = typeof body.modeloId === 'string' ? body.modeloId.trim() : '';
+    const labelIds = Array.isArray(body.labelIds)
+        ? body.labelIds.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+        : [];
 
     if (!listaId) {
         return { statusCode: 400, headers: erroHeaders, body: JSON.stringify({ ok: false, error: 'listaId é obrigatório' }) };
@@ -96,6 +99,7 @@ export const handler: Handler = async (event) => {
                 desc: descricao,
                 pos: 'top',
                 ...(modeloId ? { idCardSource: modeloId, keepFromSource: 'checklists,labels,customFields' } : {}),
+                ...(labelIds.length ? { idLabels: labelIds.join(',') } : {}),
             },
             'POST',
         );

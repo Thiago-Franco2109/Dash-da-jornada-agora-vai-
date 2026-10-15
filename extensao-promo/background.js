@@ -25,6 +25,14 @@ const CONFIG_PADRAO = {
  */
 const LIMITE_ANEXO_BYTES = Math.round(3.5 * 1024 * 1024);
 
+/**
+ * São 1426 parceiros (~85 KB enxutos) e a lista quase não muda — o MySQL que
+ * as functions leem já vem com cerca de um dia de atraso do banco real, então
+ * segurar por 6h não deixa nada mais velho do que já é. Sem o cache, o painel
+ * esperaria ~0,8s toda vez que abrisse.
+ */
+const CACHE_PARCEIROS_MS = 6 * 60 * 60 * 1000;
+
 /** Páginas onde o Chrome proíbe injetar script — nada a fazer além de avisar. */
 function paginaBloqueada(url) {
     if (!url) return true;
@@ -225,10 +233,34 @@ const acoes = {
         return { print: await capturarRecorte(remetente.tab.windowId, rect, dpr) };
     },
 
-    async criarCard({ listaId, nome, descricao, modeloId, print }) {
+    /**
+     * Índice id→nome→cidade dos parceiros ativos, servido do cache quando
+     * ainda está fresco. `forcar: true` ignora o cache (botão de recarregar).
+     */
+    async parceiros({ forcar }) {
+        const { cacheParceiros } = await chrome.storage.local.get('cacheParceiros');
+        if (!forcar && cacheParceiros && Date.now() - cacheParceiros.quando < CACHE_PARCEIROS_MS) {
+            return { parceiros: cacheParceiros.dados, doCache: true };
+        }
+
+        const { data } = await chamarFuncao('parceiros-ativos');
+        // Só os três campos que o painel usa: o resto da linha (uid,
+        // localidadeId, cardapioDigital) dobraria o tamanho guardado à toa.
+        const dados = data.map(p => ({ id: p.id, nome: p.nome, cidade: p.cidade }));
+        await chrome.storage.local.set({ cacheParceiros: { quando: Date.now(), dados } });
+        return { parceiros: dados, doCache: false };
+    },
+
+    async criarLabel({ nome }) {
+        const { boardId } = await lerConfig();
+        if (!boardId) throw new Error('Nenhum quadro escolhido ainda.');
+        return chamarFuncao('trello-label-criar', { metodo: 'POST', corpo: { boardId, nome } });
+    },
+
+    async criarCard({ listaId, nome, descricao, modeloId, labelIds, print }) {
         const { card } = await chamarFuncao('trello-card-criar', {
             metodo: 'POST',
-            corpo: { listaId, nome, descricao, modeloId },
+            corpo: { listaId, nome, descricao, modeloId, labelIds },
         });
         // Card já existe neste ponto: se o anexo falhar, o erro sobe mas o
         // link do card vai junto, pra ele não ficar sem saber o que foi criado.

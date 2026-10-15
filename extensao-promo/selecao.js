@@ -17,11 +17,24 @@
     const ID_HOSPEDEIRO = 'bigou-promo-trello';
     const ARRASTO_MINIMO = 8; // abaixo disso foi clique sem querer, não recorte
 
+    /**
+     * Padrões que o CMS usa quando o card nasce pela página do parceiro —
+     * copiados de cards reais do quadro, não inventados:
+     *   nome: "28618 - Açaí do Eton"
+     *   desc: "[LINK DO ESTABELECIMENTO](…/estabelecimento/cadastro/28618)"
+     * Card criado por aqui tem que sair igual, senão quebra o padrão de quem
+     * procura no quadro.
+     */
+    const nomeDeCard = (p) => `${p.id} - ${p.nome}`;
+    const linkDoCms = (id) => `[LINK DO ESTABELECIMENTO](https://admin.bigou.com.br/estabelecimento/cadastro/${id})`;
+
     let hospedeiro = null;
     let raiz = null;
     let print = null;
     let dadosBoard = null;
     let cardEscolhido = null;
+    let parceiros = [];
+    let parceiroEscolhido = null;
 
     // ─── Utilitários ────────────────────────────────────────────────────
 
@@ -38,6 +51,16 @@
     /** Busca sem acento e sem caixa: "acai" tem que achar "Açaí". */
     const normalizar = (texto) => (texto || '')
         .normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+    /**
+     * Cidade do banco e label do quadro não batem no literal: a label às
+     * vezes traz a UF ("Santos Dumont - MG") e a cidade não. Tira acento,
+     * caixa e o sufixo de UF pra comparar.
+     */
+    const chaveCidade = (texto) => normalizar(texto)
+        .replace(/\s*-\s*(mg|rj|sp|es)$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 
     const esc = (texto) => String(texto ?? '').replace(/[&<>"']/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -166,6 +189,7 @@
         font: inherit; font-weight: 600; cursor: pointer;
     }
     button.acao:disabled { opacity: .5; cursor: default; }
+    button.acao.secundaria { background: #1e293b; color: #e2e8f0; border: 1px solid var(--borda); font-weight: 500; }
     button.icone {
         width: 24px; height: 24px;
         border: 0; border-radius: 6px;
@@ -338,7 +362,10 @@
         }
         print = resposta.print;
         desenharPainel();
+        // Em paralelo: um não depende do outro, e juntos somem do caminho
+        // antes de ele terminar de escolher o destino.
         carregarBoard();
+        carregarParceiros();
     }
 
     // ─── Etapa 2: painel de destino ─────────────────────────────────────
@@ -372,8 +399,29 @@
                             <label id="campo-modelo" hidden>Modelo
                                 <select id="modelo"><option value="">Carregando…</option></select>
                             </label>
+                            <div id="area-parceiro" style="display:grid;gap:6px">
+                                <label>Parceiro
+                                    <input id="busca-parceiro" placeholder="ID ou nome da loja" autocomplete="off">
+                                </label>
+                                <div class="resultados" id="resultados-parceiro"></div>
+                            </div>
+
+                            <div id="bloco-parceiro" hidden style="display:grid;gap:10px">
+                                <div class="escolhido">
+                                    <div>
+                                        <b id="parceiro-nome"></b>
+                                        <span id="parceiro-cidade"></span>
+                                    </div>
+                                    <button class="icone" id="btn-trocar-parceiro" title="Trocar de parceiro">✕</button>
+                                </div>
+                                <label>Label da cidade
+                                    <select id="label"></select>
+                                </label>
+                                <button class="acao secundaria" id="btn-criar-label" hidden></button>
+                            </div>
+
                             <label>Nome do card
-                                <input id="nome" value="${esc(nomeSugerido())}" placeholder="Ex.: Promo de outubro — Açaí do Zé">
+                                <input id="nome" placeholder="Ex.: 28618 - Açaí do Eton">
                             </label>
                             <label>Lista
                                 <select id="lista"><option value="">Carregando…</option></select>
@@ -438,30 +486,165 @@
             $('#busca').focus();
         });
 
-        $('#modelo').addEventListener('change', aplicarModelo);
+        $('#modelo').addEventListener('change', montarDescricao);
+        $('#busca-parceiro').addEventListener('input', (e) => renderizarParceiros(e.target.value));
+        $('#btn-trocar-parceiro').addEventListener('click', () => escolherParceiro(null));
+        $('#btn-criar-label').addEventListener('click', criarLabelDaCidade);
         $('#btn-criar').addEventListener('click', criarCard);
-        aplicarModelo();
+
+        definirGerado($('#nome'), nomeSugerido());
+        montarDescricao();
         $('#btn-anexar').addEventListener('click', anexarEmCard);
     }
 
     /**
-     * Descrição = a do modelo escolhido + o link da página. Preenche o campo
-     * em vez de mandar o `desc` do template implícito: assim ele VÊ o que vai
-     * no card e pode editar antes de criar.
+     * Preenche um campo que a gente calcula (nome, descrição) sem pisar no
+     * que ele digitou: só reescreve enquanto o valor continuar sendo o texto
+     * que nós mesmos pusemos da última vez.
      */
-    function aplicarModelo() {
-        const campo = $('#descricao');
+    function definirGerado(campo, texto) {
         if (!campo) return;
-
-        const modelo = (dadosBoard?.modelos ?? []).find(m => m.id === $('#modelo')?.value);
-        const partes = [modelo?.descricao?.trim(), location.href].filter(Boolean);
-        const novoTexto = partes.join('\n\n');
-
-        // Não pisar em cima do que ele já digitou: só reescreve enquanto o
-        // campo continuar sendo o texto que nós mesmos pusemos.
         if (campo.value.trim() && campo.value !== campo.dataset.gerado) return;
-        campo.value = novoTexto;
-        campo.dataset.gerado = novoTexto;
+        campo.value = texto;
+        campo.dataset.gerado = texto;
+    }
+
+    /**
+     * Descrição no formato que o CMS produz: link do estabelecimento na
+     * primeira linha, descrição do modelo em seguida. Sem parceiro escolhido
+     * não há link do CMS — aí vai o link da página, que pelo menos registra
+     * de onde saiu o print.
+     */
+    function montarDescricao() {
+        const modelo = (dadosBoard?.modelos ?? []).find(m => m.id === $('#modelo')?.value);
+        const partes = [
+            parceiroEscolhido ? linkDoCms(parceiroEscolhido.id) : null,
+            modelo?.descricao?.trim() || null,
+        ].filter(Boolean);
+        if (!parceiroEscolhido) partes.push(location.href);
+        definirGerado($('#descricao'), partes.join('\n'));
+    }
+
+    // ─── Parceiro ───────────────────────────────────────────────────────
+
+    function renderizarParceiros(termo) {
+        const caixa = $('#resultados-parceiro');
+        if (!caixa) return;
+
+        const busca = (termo || '').trim();
+        if (!busca) { caixa.innerHTML = ''; return; }
+        if (!parceiros.length) { caixa.innerHTML = '<p class="vazio">Carregando parceiros…</p>'; return; }
+
+        const alvos = normalizar(busca).split(/\s+/).filter(Boolean);
+        const porId = (p) => String(p.id).startsWith(busca);
+        const achados = parceiros
+            .filter((p) => porId(p) || alvos.every((a) => normalizar(`${p.nome} ${p.cidade ?? ''}`).includes(a)))
+            // Quem casou pelo ID vem primeiro: digitar número é busca por ID,
+            // não por nome que por acaso tem esse dígito.
+            .sort((a, b) => (porId(b) - porId(a)) || a.nome.localeCompare(b.nome))
+            .slice(0, 8);
+
+        caixa.innerHTML = achados.length
+            ? achados.map((p) => `
+                <button class="resultado" data-id="${esc(p.id)}">
+                    <b>${esc(p.id)} - ${esc(p.nome)}</b>
+                    <span>${esc(p.cidade || 'sem cidade')}</span>
+                </button>
+            `).join('')
+            : '<p class="vazio">Nenhum parceiro ativo com esse texto.</p>';
+
+        caixa.querySelectorAll('.resultado').forEach((botao) => {
+            botao.addEventListener('click', () => {
+                escolherParceiro(parceiros.find((p) => String(p.id) === botao.dataset.id) || null);
+            });
+        });
+    }
+
+    function escolherParceiro(parceiro) {
+        parceiroEscolhido = parceiro;
+        $('#area-parceiro').hidden = Boolean(parceiro);
+        $('#bloco-parceiro').hidden = !parceiro;
+
+        if (parceiro) {
+            $('#parceiro-nome').textContent = nomeDeCard(parceiro);
+            $('#parceiro-cidade').textContent = parceiro.cidade || 'sem cidade';
+            definirGerado($('#nome'), nomeDeCard(parceiro));
+            montarLabels(parceiro.cidade);
+        } else {
+            $('#busca-parceiro').value = '';
+            $('#resultados-parceiro').innerHTML = '';
+            definirGerado($('#nome'), nomeSugerido());
+            $('#busca-parceiro').focus();
+        }
+        montarDescricao();
+    }
+
+    /**
+     * Resolve a cidade do parceiro numa label do quadro. Três casos, e os
+     * três acontecem de verdade no quadro de captação:
+     *  - uma label casa  → já vem escolhida;
+     *  - várias casam    → a mais usada ganha (Muriaé tem 4 labels; a do CMS
+     *                      aparece em 179 cards, as outras em 4, 3 e 1);
+     *  - nenhuma casa    → 41 das 66 cidades estão nesse caso, e aí aparece o
+     *                      botão de criar.
+     * As demais labels do quadro continuam no select, pra ele poder pôr
+     * qualquer outra (Onboarding, Aceitou…) se quiser.
+     */
+    function montarLabels(cidade) {
+        const select = $('#label');
+        const botao = $('#btn-criar-label');
+        if (!select) return;
+
+        const todas = dadosBoard?.labels ?? [];
+        const chave = chaveCidade(cidade);
+        const casam = todas.filter((l) => chave && chaveCidade(l.nome) === chave)
+            .sort((a, b) => b.usos - a.usos);
+        const outras = todas.filter((l) => !casam.includes(l))
+            .sort((a, b) => b.usos - a.usos);
+
+        const opcao = (l) => `<option value="${esc(l.id)}">${esc(l.nome)}${l.usos ? ` · ${l.usos} cards` : ''}</option>`;
+        select.innerHTML = [
+            ...casam.map(opcao),
+            '<option value="">— sem label —</option>',
+            ...outras.map(opcao),
+        ].join('');
+        select.value = casam.length ? casam[0].id : '';
+
+        const faltando = Boolean(chave) && !casam.length;
+        botao.hidden = !faltando;
+        if (faltando) botao.textContent = `+ criar label «${cidade}»`;
+    }
+
+    async function criarLabelDaCidade() {
+        const cidade = parceiroEscolhido?.cidade;
+        if (!cidade) return;
+
+        await comBotaoOcupado($('#btn-criar-label'), 'Criando…', async () => {
+            const resposta = await pedir('criarLabel', { nome: cidade });
+            if (!raiz) return;
+            if (!resposta.ok) { avisar('erro', resposta.error); return; }
+
+            // Entra no quadro já carregado pra aparecer no select na hora, sem
+            // precisar refazer o fetch do board inteiro.
+            dadosBoard.labels.push({ ...resposta.label, usos: 0 });
+            montarLabels(cidade);
+            $('#label').value = resposta.label.id;
+            avisar('ok', resposta.jaExistia
+                ? `A label «${cidade}» já existia no quadro — selecionada.`
+                : `Label «${cidade}» criada e selecionada.`);
+        });
+    }
+
+    async function carregarParceiros() {
+        const resposta = await pedir('parceiros');
+        if (!raiz) return;
+        if (!resposta.ok) {
+            const caixa = $('#resultados-parceiro');
+            if (caixa) caixa.innerHTML = '<p class="vazio">Não deu pra carregar os parceiros.</p>';
+            return;
+        }
+        parceiros = resposta.parceiros;
+        renderizarParceiros($('#busca-parceiro')?.value);
     }
 
     function avisar(tipo, texto, html = '') {
@@ -513,8 +696,12 @@
             // escolhido. Ele vê qual é no select e troca se não for.
             $('#modelo').value = modelos.length === 1 ? modelos[0].id : '';
             $('#campo-modelo').hidden = false;
-            aplicarModelo();
+            montarDescricao();
         }
+
+        // Se ele escolheu o parceiro antes do quadro terminar de carregar, as
+        // labels ainda não existiam — refaz o select agora que existem.
+        if (parceiroEscolhido) montarLabels(parceiroEscolhido.cidade);
 
         $('#btn-criar').disabled = !dadosBoard.listas.length || !print;
         renderizarResultados($('#busca').value);
@@ -597,6 +784,7 @@
                 listaId, nome,
                 descricao: $('#descricao').value.trim(),
                 modeloId: $('#modelo')?.value || '',
+                labelIds: $('#label')?.value ? [$('#label').value] : [],
                 print,
             });
             if (!resposta.ok) {
