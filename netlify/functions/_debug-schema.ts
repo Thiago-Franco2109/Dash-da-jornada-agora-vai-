@@ -30,9 +30,11 @@ export const handler: Handler = async (event) => {
     try {
         connection = await getConnection();
         const [cols] = await connection.query<RowDataPacket[]>(`SHOW COLUMNS FROM \`${table}\``);
-        // Amostra de 1 linha vigente só pra ver o formato do valor da capa.
+        // Amostra só das que TÊM capa, pra ver o formato guardado na coluna.
         const [amostra] = await connection.query<RowDataPacket[]>(
-            `SELECT * FROM \`${table}\` WHERE ativo = 1 ORDER BY id DESC LIMIT 1`,
+            `SELECT id, nome, imagem FROM \`${table}\`
+             WHERE imagem IS NOT NULL AND imagem <> ''
+             ORDER BY id DESC LIMIT 6`,
         );
         return {
             statusCode: 200,
