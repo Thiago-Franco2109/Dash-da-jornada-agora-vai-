@@ -20,28 +20,22 @@ import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
 import { formatBRL } from '../utils/crmData';
 import { paraDatetimeLocal, formatCrmDateTime } from './crm/crmShared';
 import GerarArteModal from './GerarArteModal';
+import PartnerCampanhaGaleria, { type CampanhaCard } from './PartnerCampanhaGaleria';
+import { ACCENT_STYLES, TONE_STYLES, type CardTone } from './promo/promoTokens';
+import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../utils/campanhaPrioridade';
+import { resolveCapaCampanha } from '../hooks/usePromoItemArte';
 
-type CardTone = 'active' | 'pending' | 'denied' | 'idle';
+/** Tabela (como era) ou galeria por prioridade. Fica no localStorage pra não resetar a cada parceiro. */
+type PromoViewMode = 'tabela' | 'galeria';
+const VIEW_MODE_KEY = 'promo_view_mode';
 
-/**
- * Cor = estado (o que precisa de atenção), não categoria.
- * Na tabela, a trilha lateral de cada linha é o único lugar onde a cor de estado aparece forte.
- */
-const TONE_STYLES: Record<CardTone, { rail: string; stamp: string; dot: string }> = {
-    active: { rail: 'bg-emerald-500', stamp: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500' },
-    pending: { rail: 'bg-amber-500', stamp: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
-    denied: { rail: 'bg-rose-500', stamp: 'text-rose-700 dark:text-rose-400', dot: 'bg-rose-500' },
-    idle: { rail: 'bg-slate-400 dark:bg-slate-500', stamp: 'text-slate-500 dark:text-slate-400', dot: 'bg-slate-400' },
-};
-
-/** Identidade da campanha vive no ícone (convenção de campaignTypes.ts), nunca no estado. */
-const ACCENT_STYLES: Record<'amber' | 'violet' | 'indigo' | 'slate', string> = {
-    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
-    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400',
-    indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400',
-    // Campanha descoberta no banco: sem identidade própria definida no app.
-    slate: 'bg-slate-100 text-slate-500 dark:bg-slate-700/40 dark:text-slate-300',
-};
+function lerViewMode(): PromoViewMode {
+    try {
+        return localStorage.getItem(VIEW_MODE_KEY) === 'galeria' ? 'galeria' : 'tabela';
+    } catch {
+        return 'tabela';
+    }
+}
 
 /**
  * Estados de item promocional vindos de promo_resumo.detalhe.
@@ -78,6 +72,37 @@ function campaignStateFromResumo(
     const entry = resumo.detalhe.find(d => campaignIdFromNome(d.campanha) === id);
     if (!entry) return { tone: 'idle', label: 'Não ofertada na cidade' };
     return PROMO_STATUS_TONE[entry.status];
+}
+
+/**
+ * Mesma leitura do promo_resumo, mas crua — a galeria precisa do status e dos
+ * dias de espera pra priorizar, não só do rótulo. `undefined` = resumo ainda
+ * não carregou; `null` = campanha não roda na cidade do parceiro.
+ */
+function entradaResumo(
+    partner: EnrichedPerformanceRow,
+    id: CampaignTypeId,
+): { status: PromoCampanhaStatus; dias?: number | null } | null | undefined {
+    const resumo = partner.promo_resumo;
+    if (!resumo?.detalhe) return undefined;
+    return resumo.detalhe.find(d => campaignIdFromNome(d.campanha) === id) ?? null;
+}
+
+/** promo_resumo → entrada da régua de prioridade (ver campanhaPrioridade.ts). */
+function prioridadeDoResumo(
+    entrada: ReturnType<typeof entradaResumo>,
+    cidadeTop: boolean,
+): EntradaPrioridade {
+    if (entrada === null) return { foraDaCidade: true };
+    // Resumo não carregou: trata como "nunca ofertada" sem o bônus de cidade
+    // top, pra não jogar na frente de tudo uma campanha que pode estar no ar.
+    if (entrada === undefined) return {};
+    switch (entrada.status) {
+        case 'aprovado': return { noAr: true };
+        case 'rascunho': return { rascunho: true };
+        case 'pendente': return { aguardandoParceiro: true, diasEsperando: entrada.dias ?? null };
+        case 'sem item': return { cidadeTop };
+    }
 }
 
 const OFERTAS_TONE: Record<OfertasDaCasaStatus, CardTone> = {
@@ -166,6 +191,7 @@ export default function PartnerPromoCrmSection({
     const [editFollowUp, setEditFollowUp] = useState('');
     const [ofertasNotes, setOfertasNotes] = useState('');
     const [gerarArteOpen, setGerarArteOpen] = useState(false);
+    const [viewMode, setViewMode] = useState<PromoViewMode>(lerViewMode);
     const crmSectionRef = useRef<HTMLDivElement>(null);
     const notesRef = useRef<HTMLTextAreaElement>(null);
 
@@ -244,6 +270,129 @@ export default function PartnerPromoCrmSection({
         }
     };
 
+    // ── Lista única de campanhas ────────────────────────────────────────────
+    // Tabela e galeria leem daqui: o que muda entre os dois modos é só o
+    // desenho. `prioridade` e `motivo` saem da mesma entrada, então a frase que
+    // a tela mostra nunca contradiz a posição em que o card caiu.
+    const capaPorCampanha: Record<string, string | null> = {};
+    for (const c of promoData.campanhas) {
+        capaPorCampanha[campaignIdFromNome(c.nome)] = resolveCapaCampanha(c.imagem);
+    }
+
+    const trocarViewMode = (modo: PromoViewMode) => {
+        setViewMode(modo);
+        try { localStorage.setItem(VIEW_MODE_KEY, modo); } catch { /* ignore */ }
+    };
+
+    const montarCard = (
+        base: Omit<CampanhaCard, 'prioridade' | 'motivo'>,
+        entrada: EntradaPrioridade,
+    ): CampanhaCard => ({
+        ...base,
+        prioridade: classificarCampanha(entrada),
+        motivo: motivoDaPrioridade(entrada),
+    });
+
+    const superResumo = entradaResumo(partner, 'super_promos');
+    const cupomStatusAtual = partner.cupom_status ?? 'inativo';
+
+    const campanhasCards: CampanhaCard[] = [
+        montarCard({
+            key: 'ofertas_da_casa',
+            title: OFERTAS_DA_CASA_CAMPAIGN.name,
+            description: OFERTAS_DA_CASA_CAMPAIGN.description,
+            icons: getCampaignConfig('ofertas_da_casa').icons,
+            accent: 'amber',
+            capaUrl: capaPorCampanha['ofertas_da_casa'] ?? null,
+            tone: OFERTAS_TONE[ofertasStatus] ?? 'idle',
+            toneLabel: ofertasMeta.label,
+            flag: isTopCity ? 'Top 5 GMV' : undefined,
+            itemCount: crmPartner?.campaigns.ofertas_da_casa.itemCount,
+            itemCountLabel: 'na planilha',
+            footnote: ofertasRecord?.source === 'auto' ? 'Atualizado automaticamente' : undefined,
+            manual: {
+                value: ofertasStatus,
+                options: OFERTAS_DA_CASA_STATUS_OPTIONS,
+                onChange: val => setStatus(pid, val as OfertasDaCasaStatus, 'manual'),
+            },
+            href: ofertasDaCasaUrl,
+            cmsLabel: 'Abrir campanha no CMS',
+            onGerarArte: canGerarArte ? () => setGerarArteOpen(true) : undefined,
+            onOpenCrm: openCrmEdit,
+        }, {
+            noAr: ofertasStatus === 'participando',
+            aguardandoParceiro: ofertasStatus === 'aguardando_retorno',
+            recusado: ofertasStatus === 'nao_participando',
+            cidadeTop: isTopCity,
+        }),
+
+        montarCard({
+            key: 'super_promos',
+            title: 'Super Promos',
+            description: 'Campanha de descontos em itens selecionados do cardápio.',
+            icons: getCampaignConfig('super_promos').icons,
+            accent: 'violet',
+            capaUrl: capaPorCampanha['super_promos'] ?? null,
+            tone: superPromosState.tone,
+            toneLabel: superPromosState.label,
+            itemCount: crmPartner?.campaigns.super_promos.itemCount,
+            itemCountLabel: 'na PROMO-ESPECIAL',
+            manual: {
+                value: superPromosCrmStatus,
+                options: CRM_STATUS_SELECT_OPTIONS,
+                onChange: val => handleSuperPromosCrmStatusChange(val as PromoStatus),
+            },
+            href: promoUrl,
+            onGerarArte: canGerarArte ? () => setGerarArteOpen(true) : undefined,
+        }, superResumo === undefined
+            // Resumo ainda não chegou: cai no mesmo fallback do rótulo (promo_campanhas).
+            ? (superPromosAtiva ? { noAr: true } : { cidadeTop: isTopCity })
+            : prioridadeDoResumo(superResumo, isTopCity)),
+
+        ...campanhasExtras.map(c => montarCard({
+            key: `extra-${c.id}`,
+            title: c.nome,
+            description: 'Campanha vigente no CMS. Estado vem dos itens promocionais do parceiro.',
+            icons: getCampaignConfig(c.campaignId).icons,
+            accent: 'slate',
+            capaUrl: capaPorCampanha[c.campaignId] ?? null,
+            tone: (campaignStateFromResumo(partner, c.campaignId) ?? { tone: 'idle' as CardTone, label: 'Carregando…' }).tone,
+            toneLabel: (campaignStateFromResumo(partner, c.campaignId) ?? { tone: 'idle' as CardTone, label: 'Carregando…' }).label,
+            manual: {
+                value: getCampanhaStatus(pid, c.campaignId),
+                options: CRM_STATUS_SELECT_OPTIONS,
+                onChange: val => { void setCampanhaStatus(pid, c.campaignId, val as PromoStatus); },
+            },
+            href: cmsCampanhaUrl(c.id, localidadeId),
+            cmsLabel: 'Abrir campanha no CMS',
+            onGerarArte: canGerarArte ? () => setGerarArteOpen(true) : undefined,
+        }, prioridadeDoResumo(entradaResumo(partner, c.campaignId), isTopCity))),
+
+        montarCard({
+            key: 'cupons_destaque',
+            title: 'Cupons de destaque',
+            description: 'Cupons promocionais de destaque para conversão e retenção.',
+            icons: getCampaignConfig('cupons_destaque').icons,
+            accent: 'indigo',
+            capaUrl: capaPorCampanha['cupons_destaque'] ?? null,
+            tone: cupomState.tone,
+            toneLabel: cupomState.label,
+            itemCount: crmPartner?.campaigns.cupons_destaque.itemCount,
+            itemCountLabel: 'na PROMO-ESPECIAL',
+            manual: {
+                value: cupomCrmStatus,
+                options: CUPOM_STATUS_SELECT_OPTIONS,
+                onChange: val => handleCupomCrmStatusChange(val as PromoStatus),
+            },
+            href: cupomUrl,
+        }, {
+            noAr: cupomStatusAtual === 'ativo',
+            aguardandoParceiro: cupomStatusAtual === 'ofertei' || cupomStatusAtual === 'confirmado',
+            recusado: cupomStatusAtual === 'negado',
+            cidadeTop: isTopCity,
+        }),
+    ];
+
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-6">
             {/* Cabeçalho da seção + resumo do banco */}
@@ -276,113 +425,70 @@ export default function PartnerPromoCrmSection({
                 </div>
             </div>
 
-            {/* Tabela de campanhas — uma linha por campanha, mesma leitura de estado + ação para todas */}
-            <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-800/60 shadow-sm overflow-hidden">
-                <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_150px_190px_215px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/30">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Campanha</span>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Estado</span>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Status CRM</span>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 text-right">Ação</span>
+            {/* Campanhas: mesma lista (campanhasCards) em dois desenhos. */}
+            <div>
+                <div className="flex justify-end mb-2">
+                    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        {(['tabela', 'galeria'] as const).map(modo => (
+                            <button
+                                key={modo}
+                                type="button"
+                                onClick={() => trocarViewMode(modo)}
+                                aria-pressed={viewMode === modo}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                                    viewMode === modo
+                                        ? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-white'
+                                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                }`}
+                            >
+                                <span className="material-symbols-outlined text-[14px]">
+                                    {modo === 'tabela' ? 'table_rows' : 'view_carousel'}
+                                </span>
+                                {modo === 'tabela' ? 'Tabela' : 'Galeria'}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                <CampaignRow
-                    icons={getCampaignConfig('ofertas_da_casa').icons}
-                    accent="amber"
-                    title={OFERTAS_DA_CASA_CAMPAIGN.name}
-                    description={OFERTAS_DA_CASA_CAMPAIGN.description}
-                    tone={OFERTAS_TONE[ofertasStatus] ?? 'idle'}
-                    toneLabel={ofertasMeta.label}
-                    flag={isTopCity ? 'Top 5 GMV' : undefined}
-                    itemCount={crmPartner?.campaigns.ofertas_da_casa.itemCount}
-                    itemCountLabel="na planilha"
-                    footnote={ofertasRecord?.source === 'auto' ? 'Atualizado automaticamente' : undefined}
-                    manual={{
-                        value: ofertasStatus,
-                        options: OFERTAS_DA_CASA_STATUS_OPTIONS,
-                        onChange: val => setStatus(pid, val as OfertasDaCasaStatus, 'manual'),
-                    }}
-                    onOpenCrm={openCrmEdit}
-                    href={ofertasDaCasaUrl}
-                    cmsLabel="Abrir campanha no CMS"
-                    localidadeId={localidadeId}
-                    cityIdsLoading={cityIdsLoading}
-                    onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
-                />
+                {viewMode === 'galeria' ? (
+                    <>
+                        <PartnerCampanhaGaleria campanhas={campanhasCards} cidade={partner.cidade} />
+                        <AvisoStatusCs erro={campanhaStatusErro} />
+                    </>
+                ) : (
+                    <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/60 bg-white dark:bg-slate-800/60 shadow-sm overflow-hidden">
+                        <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_150px_190px_215px] gap-4 px-6 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-900/30">
+                            <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Campanha</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Estado</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400">Status CRM</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-slate-400 text-right">Ação</span>
+                        </div>
 
-                <CampaignRow
-                    icons={getCampaignConfig('super_promos').icons}
-                    accent="violet"
-                    title="Super Promos"
-                    description="Campanha de descontos em itens selecionados do cardápio."
-                    tone={superPromosState.tone}
-                    toneLabel={superPromosState.label}
-                    itemCount={crmPartner?.campaigns.super_promos.itemCount}
-                    itemCountLabel="na PROMO-ESPECIAL"
-                    manual={{
-                        value: superPromosCrmStatus,
-                        options: CRM_STATUS_SELECT_OPTIONS,
-                        onChange: val => handleSuperPromosCrmStatusChange(val as PromoStatus),
-                    }}
-                    href={promoUrl}
-                    localidadeId={localidadeId}
-                    cityIdsLoading={cityIdsLoading}
-                    onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
-                />
+                        {campanhasCards.map((card, i) => (
+                            <CampaignRow
+                                key={card.key}
+                                icons={card.icons}
+                                accent={card.accent}
+                                title={card.title}
+                                description={card.description}
+                                tone={card.tone}
+                                toneLabel={card.toneLabel}
+                                flag={card.flag}
+                                itemCount={card.itemCount}
+                                itemCountLabel={card.itemCountLabel}
+                                footnote={card.footnote}
+                                manual={card.manual}
+                                onOpenCrm={card.onOpenCrm}
+                                href={card.href}
+                                cmsLabel={card.cmsLabel}
+                                localidadeId={localidadeId}
+                                cityIdsLoading={cityIdsLoading}
+                                isLast={i === campanhasCards.length - 1}
+                                onGerarArte={card.onGerarArte}
+                            />
+                        ))}
 
-                {/* Demais campanhas vigentes no CMS (ver campanhasExtras). */}
-                {campanhasExtras.map(c => {
-                    const state = campaignStateFromResumo(partner, c.campaignId)
-                        ?? { tone: 'idle' as CardTone, label: 'Carregando…' };
-                    return (
-                        <CampaignRow
-                            key={c.id}
-                            icons={getCampaignConfig(c.campaignId).icons}
-                            accent="slate"
-                            title={c.nome}
-                            description="Campanha vigente no CMS. Estado vem dos itens promocionais do parceiro."
-                            tone={state.tone}
-                            toneLabel={state.label}
-                            manual={{
-                                value: getCampanhaStatus(pid, c.campaignId),
-                                options: CRM_STATUS_SELECT_OPTIONS,
-                                onChange: val => { void setCampanhaStatus(pid, c.campaignId, val as PromoStatus); },
-                            }}
-                            href={cmsCampanhaUrl(c.id, localidadeId)}
-                            cmsLabel="Abrir campanha no CMS"
-                            localidadeId={localidadeId}
-                            cityIdsLoading={cityIdsLoading}
-                            onGerarArte={canGerarArte ? () => setGerarArteOpen(true) : undefined}
-                        />
-                    );
-                })}
-
-                <CampaignRow
-                    icons={getCampaignConfig('cupons_destaque').icons}
-                    accent="indigo"
-                    title="Cupons de destaque"
-                    description="Cupons promocionais de destaque para conversão e retenção."
-                    tone={cupomState.tone}
-                    toneLabel={cupomState.label}
-                    itemCount={crmPartner?.campaigns.cupons_destaque.itemCount}
-                    itemCountLabel="na PROMO-ESPECIAL"
-                    manual={{
-                        value: cupomCrmStatus,
-                        options: CUPOM_STATUS_SELECT_OPTIONS,
-                        onChange: val => handleCupomCrmStatusChange(val as PromoStatus),
-                    }}
-                    href={cupomUrl}
-                    localidadeId={localidadeId}
-                    cityIdsLoading={cityIdsLoading}
-                    isLast
-                />
-
-                {campanhaStatusErro && (
-                    <div className="flex items-start gap-2 px-6 sm:px-8 py-3 bg-amber-50 dark:bg-amber-500/10 border-t border-amber-200 dark:border-amber-500/20 text-[12px] text-amber-800 dark:text-amber-300">
-                        <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
-                        <span>
-                            O status CRM destas campanhas não está sendo salvo ({campanhaStatusErro}).
-                            Falta criar a tabela <code className="font-mono">campanha_status_cs</code> no Supabase — ver <code className="font-mono">supabase/campanha_status_cs.sql</code>.
-                        </span>
+                        <AvisoStatusCs erro={campanhaStatusErro} />
                     </div>
                 )}
             </div>
@@ -567,6 +673,20 @@ export default function PartnerPromoCrmSection({
                     onClose={() => setGerarArteOpen(false)}
                 />
             )}
+        </div>
+    );
+}
+
+/** Aviso de que o status CRM das campanhas dinâmicas não está sendo gravado. */
+function AvisoStatusCs({ erro }: { erro: string | null }) {
+    if (!erro) return null;
+    return (
+        <div className="flex items-start gap-2 px-6 sm:px-8 py-3 bg-amber-50 dark:bg-amber-500/10 border-t border-amber-200 dark:border-amber-500/20 text-[12px] text-amber-800 dark:text-amber-300">
+            <span className="material-symbols-outlined text-[16px] shrink-0">warning</span>
+            <span>
+                O status CRM destas campanhas não está sendo salvo ({erro}).
+                Falta criar a tabela <code className="font-mono">campanha_status_cs</code> no Supabase — ver <code className="font-mono">supabase/campanha_status_cs.sql</code>.
+            </span>
         </div>
     );
 }

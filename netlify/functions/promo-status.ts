@@ -52,9 +52,15 @@ export const handler: Handler = async (event) => {
         connection = await getConnection();
 
         const [campanhasVigentes] = await connection.query<RowDataPacket[]>(
-            `SELECT id, nome FROM campanha_promocao WHERE ${VIGENTE} ORDER BY nome`,
+            `SELECT id, nome, imagem FROM campanha_promocao WHERE ${VIGENTE} ORDER BY nome`,
         );
-        const campanhas = campanhasVigentes.map(c => ({ id: Number(c.id), nome: String(c.nome ?? '') }));
+        const campanhas = campanhasVigentes.map(c => ({
+            id: Number(c.id),
+            nome: String(c.nome ?? ''),
+            // Só o nome do arquivo (ex: "96fce3ed-….png"); o front monta a URL
+            // do CDN (ver resolveCapaCampanha). Campanha pode não ter capa.
+            imagem: c.imagem ? String(c.imagem) : null,
+        }));
 
         // Agrupado no banco: a resposta fica menor que a de antes (uma linha por
         // (estab, campanha, status) em vez de uma por item) e o WHERE é idêntico,

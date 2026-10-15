@@ -31,6 +31,12 @@ export interface PromoResumo {
 export interface CampanhaVigente {
     id: number;
     nome: string;
+    /**
+     * Nome do arquivo da imagem de capa (1200x400 no CMS), sem caminho —
+     * ex: "96fce3ed-….png". null quando a campanha não tem capa cadastrada.
+     * Vira URL com `resolveCapaCampanha` (usePromoItemArte.ts).
+     */
+    imagem: string | null;
 }
 
 export interface PromoStatusData {

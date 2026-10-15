@@ -108,6 +108,23 @@ export function resolveImagemItem(imagem: string | null): string | null {
 }
 
 /**
+ * `campanha_promocao.imagem` guarda só o nome do arquivo (confirmado contra o
+ * banco: ex. "96fce3ed-….png"), e a capa fica na pasta `bigou/campanhas/` do
+ * mesmo bucket. A URL `api-aws.bigou.com.br/uploads/campanhas/<arquivo>` que o
+ * CMS mostra é um 301 pra cá — e, como no caso da logomarca, o redirect não
+ * tem CORS. Pra `<img>` tanto faz, mas pro Gerar Arte (fetch) tem que ser a
+ * URL final; por isso resolve direto no CDN nos dois casos.
+ */
+export function resolveCapaCampanha(imagem: string | null | undefined): string | null {
+    if (!imagem) return null;
+    if (imagem.startsWith('data:')) return imagem;
+    const match = imagem.match(/^https?:\/\/api-aws\.bigou\.com\.br\/uploads\/campanhas\/(.+)$/i);
+    if (match) return `https://labcinco.nyc3.cdn.digitaloceanspaces.com/bigou/campanhas/${match[1]}`;
+    if (/^https?:\/\//i.test(imagem)) return imagem;
+    return `https://labcinco.nyc3.cdn.digitaloceanspaces.com/bigou/campanhas/${imagem.replace(/^\/+/, '')}`;
+}
+
+/**
  * `partner.logo_url` (planilha LOJAS_DELIVERY / `netlify/functions/logos.ts`)
  * costuma vir como `https://api-aws.bigou.com.br/uploads/logomarca/<arquivo>`
  * — essa URL faz um 301 pro CDN, mas o próprio redirect NÃO tem cabeçalho CORS
