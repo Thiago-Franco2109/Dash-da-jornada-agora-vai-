@@ -30,6 +30,13 @@ export interface OpcoesRelatorioSemanal {
     janelaAnterior?: Janela;
     atividadeAnterior?: AtividadeTrelloHoje | null;
     cidadePorParceiro?: Map<string, string>;
+    /**
+     * Seções do plano de recuperação (KR 2.3), já montadas — ver
+     * utils/relatorioRecuperacao.ts. Entram logo depois do cabeçalho, antes de
+     * tudo: é o que o chefe disse que conta, e enterrá-las no fim faria o
+     * relatório abrir de novo por atividade.
+     */
+    secoesRecuperacao?: string[];
 }
 
 /** "28509 - Sublime Açaí Express" -> "28509"; sem o padrão, devolve null. */
@@ -66,6 +73,7 @@ function linhaComparativo({ rotulo, antes, agora }: Comparacao): string {
 
 export function montarRelatorioSemanal({
     perfil, janela, anotacoes, atividade, janelaAnterior, atividadeAnterior, cidadePorParceiro,
+    secoesRecuperacao = [],
 }: OpcoesRelatorioSemanal): string {
     const secoes: string[] = [];
 
@@ -74,6 +82,7 @@ export function montarRelatorioSemanal({
         capitalizarPrimeira(rotuloPeriodo(janela)),
     ].join('\n'));
 
+    secoes.push(...secoesRecuperacao);
     secoes.push(...secoesPorCategoria(anotacoes, cidadePorParceiro));
 
     if (atividade) secoes.push(secaoTrello(atividade));

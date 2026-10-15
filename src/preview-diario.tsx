@@ -4,8 +4,9 @@
  * Rode `npm run dev` e abra http://localhost:5173/preview-diario.html
  * Não entra no build de produção (o vite só constrói index.html).
  *
- * Dois dublês aqui, porque a tela depende de duas coisas que não existem em
- * `vite dev`:
+ * Três dublês aqui, porque a tela depende de coisas que não existem em
+ * `vite dev` — o terceiro é a OKR (`preview-okr-amostra.json`, recorte real de
+ * 6 lojas do KR 2.3), que alimenta o bloco de recuperação do relatório:
  *   - Supabase: as credenciais moram nas env vars da Netlify, então o cliente
  *     real roda em modo mock e devolve lista vazia. Aqui trocamos o `from` por
  *     um fake com estado em memória, pra dar pra criar/editar/apagar de verdade.
@@ -18,6 +19,7 @@ import DiarioView from './components/DiarioView';
 import AnotacaoRapida from './components/diario/AnotacaoRapida';
 import { supabase } from './lib/supabase';
 import type { EnrichedPerformanceRow } from './utils/calculations';
+import { OKR_AMOSTRA } from './preview-okr-amostra';
 import './index.css';
 
 // ── Dublê do Supabase ────────────────────────────────────────────────────
@@ -125,6 +127,18 @@ if (extras > 0) {
     })];
 }
 
+/** Lojas selecionadas no plano do KR 2.3 — ver supabase/okr_recuperacao.sql. */
+const planoAmostra = OKR_AMOSTRA.kr23.parceiros.slice(0, 4).map(l => ({
+    partner_id: String(l.id),
+    motivo: 'parada no trimestre',
+    observacao: null,
+    nome: l.nome,
+    cidade: l.cidade,
+    incluido_em: new Date().toISOString(),
+    incluido_por: 'THIAGO',
+    atualizado_em: new Date().toISOString(),
+}));
+
 function chainFake(tabela: string) {
     let alvoId: string | null = null;
     let modo: 'select' | 'update' | 'delete' = 'select';
@@ -140,7 +154,12 @@ function chainFake(tabela: string) {
             ? linhas
                 .filter(l => (!de || l.ocorrido_em >= de) && (!ate || l.ocorrido_em <= ate))
                 .sort((a, b) => b.ocorrido_em.localeCompare(a.ocorrido_em))
-            : [],
+            // Quatro das seis lojas da amostra entram no plano: assim o
+            // relatório tem o que mostrar nas duas seções (virou / em
+            // andamento) sem precisar de banco.
+            : tabela === 'okr_recuperacao'
+                ? planoAmostra
+                : [],
         error: null,
     });
 
@@ -229,6 +248,11 @@ function semente(texto: string): number {
 const fetchOriginal = window.fetch.bind(window);
 window.fetch = ((entrada: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof entrada === 'string' ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
+    if (url.includes('okr-trimestre')) {
+        return Promise.resolve(new Response(JSON.stringify(OKR_AMOSTRA), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
+    }
     if (url.includes('trello-atividade-hoje')) {
         // Ecoa a janela pedida, como a function real faz — senão a tela, que só
         // aceita resumo do período que pediu, ficaria em esqueleto ao navegar.

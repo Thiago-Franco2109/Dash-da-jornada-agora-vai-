@@ -54,14 +54,30 @@ async function copiarTexto(texto: string): Promise<boolean> {
     }
 }
 
+/**
+ * Um bloco opcional do relatório que não são as anotações nem o Trello — hoje
+ * o plano de recuperação. Fica como lista pra próxima seção não exigir mexer
+ * na assinatura de novo.
+ */
+export interface BlocoExtra {
+    id: string;
+    titulo: string;
+    detalhe: string;
+}
+
 interface RelatorioModalProps {
     titulo: string;
     subtitulo: string;
     /** Todas as anotações do período, inclusive as privadas (filtradas aqui). */
     anotacoes: AnotacaoDiario[];
     atividade: AtividadeTrelloHoje | null;
+    blocosExtras?: BlocoExtra[];
     /** Monta o texto final com o que sobrou da curadoria. */
-    montarTexto: (escolhidas: AnotacaoDiario[], incluirTrello: boolean) => string;
+    montarTexto: (
+        escolhidas: AnotacaoDiario[],
+        incluirTrello: boolean,
+        extrasDesligados: ReadonlySet<string>,
+    ) => string;
     nomeArquivo: string;
     /** Trava a tela enquanto o período ainda está sendo buscado. */
     carregando?: boolean;
@@ -71,10 +87,15 @@ interface RelatorioModalProps {
 }
 
 export default function RelatorioModal({
-    titulo, subtitulo, anotacoes, atividade, montarTexto, nomeArquivo, carregando = false, aviso, onFechar,
+    titulo, subtitulo, anotacoes, atividade, blocosExtras = [], montarTexto, nomeArquivo,
+    carregando = false, aviso, onFechar,
 }: RelatorioModalProps) {
     const [excluidas, setExcluidas] = useState<Set<string>>(new Set());
     const [incluirTrello, setIncluirTrello] = useState(true);
+    // Guarda os DESLIGADOS, não os ligados: os blocos chegam depois (o plano de
+    // recuperação vem de outra consulta), e um estado de "ligados" nasceria
+    // vazio e deixaria tudo desmarcado até a pessoa clicar.
+    const [extrasDesligados, setExtrasDesligados] = useState<Set<string>>(new Set());
     const [copiada, setCopiada] = useState<number | null>(null);
     const [erroCopia, setErroCopia] = useState<string | null>(null);
 
@@ -100,8 +121,8 @@ export default function RelatorioModal({
     );
 
     const texto = useMemo(
-        () => montarTexto(escolhidas, incluirTrello),
-        [montarTexto, escolhidas, incluirTrello],
+        () => montarTexto(escolhidas, incluirTrello, extrasDesligados),
+        [montarTexto, escolhidas, incluirTrello, extrasDesligados],
     );
     const partes = useMemo(() => fatiarParaDiscord(texto), [texto]);
 
@@ -276,6 +297,40 @@ export default function RelatorioModal({
                                     </span>
                                 </span>
                             </label>
+
+                            {blocosExtras.map(bloco => {
+                                const ligado = !extrasDesligados.has(bloco.id);
+                                return (
+                                    <label
+                                        key={bloco.id}
+                                        className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${
+                                            ligado
+                                                ? 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60'
+                                                : 'border-dashed border-slate-200 dark:border-slate-700 opacity-50'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={ligado}
+                                            onChange={() => setExtrasDesligados(antes => {
+                                                const depois = new Set(antes);
+                                                if (depois.has(bloco.id)) depois.delete(bloco.id);
+                                                else depois.add(bloco.id);
+                                                return depois;
+                                            })}
+                                            className="mt-0.5 size-4 rounded border-slate-300 text-primary focus:ring-primary/30 shrink-0"
+                                        />
+                                        <span className="min-w-0">
+                                            <span className="block text-xs font-black text-slate-700 dark:text-slate-200">
+                                                {bloco.titulo}
+                                            </span>
+                                            <span className="block text-[11px] font-semibold text-slate-400">
+                                                {bloco.detalhe}
+                                            </span>
+                                        </span>
+                                    </label>
+                                );
+                            })}
                         </div>
 
                         {/* DIREITA — texto final */}
