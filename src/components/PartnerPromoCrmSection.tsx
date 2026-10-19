@@ -20,6 +20,7 @@ import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
 import { formatBRL } from '../utils/crmData';
 import { paraDatetimeLocal, formatCrmDateTime } from './crm/crmShared';
 import GerarArteModal from './GerarArteModal';
+import PromoRepasseCalculator from './PromoRepasseCalculator';
 import PartnerCampanhaGaleria, { type CampanhaCard } from './PartnerCampanhaGaleria';
 import { ACCENT_STYLES, TONE_STYLES, type CardTone } from './promo/promoTokens';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../utils/campanhaPrioridade';
@@ -600,6 +601,9 @@ export default function PartnerPromoCrmSection({
                             </div>
                         </div>
                     </div>
+
+                    {/* "Quanto vou receber nessa promoção?" — pergunta recorrente do parceiro */}
+                    <PromoRepasseCalculator partnerName={partner.estabelecimento} />
 
                     {/* Notas e agendamento */}
                     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 p-5 space-y-4">
