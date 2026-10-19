@@ -29,6 +29,7 @@ import PartnerPromoCrmSection from './PartnerPromoCrmSection';
 import PartnerCardapioSection from './PartnerCardapioSection';
 import { useCardapioAnalise } from '../hooks/useCardapioAnalise';
 import { useParceiroAcesso } from '../hooks/useParceiroAcesso';
+import PartnerDiagnosticoSection from './PartnerDiagnosticoSection';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import PartnerPedidosSection from './PartnerPedidosSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
@@ -47,7 +48,7 @@ interface PartnerDetailsViewProps {
     onNavigateToCrm?: () => void;
 }
 
-type TabKey = 'geral' | 'pedidos' | 'contatos' | 'promocoes' | 'funcionamento' | 'historico';
+type TabKey = 'geral' | 'pedidos' | 'diagnostico' | 'contatos' | 'promocoes' | 'funcionamento' | 'historico';
 
 const CHECKLIST_TEMPLATES = {
     w1: [
@@ -626,6 +627,13 @@ export default function PartnerDetailsView({
                     >
                         <span className="material-symbols-outlined text-[18px]">schedule</span>
                         Funcionamento
+                    </button>
+                    <button
+                        className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'diagnostico' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
+                        onClick={() => setActiveTab('diagnostico')}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">troubleshoot</span>
+                        Por que caiu?
                     </button>
                     <button 
                         className={`pb-3 font-semibold text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'historico' ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}
@@ -1224,6 +1232,10 @@ export default function PartnerDetailsView({
 
                 {activeTab === 'funcionamento' && (
                     <PartnerFuncionamentoSection partner={partner} />
+                )}
+
+                {activeTab === 'diagnostico' && (
+                    <PartnerDiagnosticoSection partner={partner} />
                 )}
 
                 {activeTab === 'historico' && (
