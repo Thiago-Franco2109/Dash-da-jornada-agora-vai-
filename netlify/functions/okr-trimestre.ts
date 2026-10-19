@@ -6,25 +6,24 @@ import { checkOrigin } from './_shared/auth';
 /**
  * Os KRs de Sucesso do Cliente do trimestre, calculados no banco.
  *
- * OBJETIVO 2 — Oferta e retenção nas 5 cidades (marketplace)
- *   KR 2.2 Safra 14d       levar 20 parceiros ativados a 5 pedidos nos
- *                          primeiros 14 dias
- *   KR 2.3 Lojas em risco  reverter 30 lojas: 4 semanas seguidas com pedido e
- *                          cancelamento abaixo de 10%
+ * BIGOU APP — marketplace, só nas cidades da OKR
+ *   KR 1 Novos parceiros  80% dos ativados chegam a 5 pedidos nos primeiros
+ *                         14 dias, SEM contar quem relançou com troca de dono
+ *   KR 2 Lojas engajadas  38% dos parceiros ativos com 14+ pedidos nos
+ *                         últimos 28 dias
  *
- * OBJETIVO 4 — Base do Cardápio Digital (base inteira, SEM recorte de cidade)
- *   KR 4.1 Pedidos         15.400 pedidos no trimestre (desafio 16.000)
- *   KR 4.2 Lojas ativas    40 lojas com 30+ pedidos nos últimos 30 dias
+ * CARDÁPIO DIGITAL — base inteira, SEM recorte de cidade
+ *   KR 3 Faturamento      50% das lojas com contrato vivo faturando mais de
+ *                         R$ 1.000 no mês
  *
- * Os dois objetivos medem bases DISJUNTAS: as 5 cidades são marketplace
- * (`cardapio_digital = 0/NULL`) e o objetivo 4 é a base de Cardápio Digital
- * inteira, do país todo — o enunciado do objetivo 4 não fala em cidade, e
- * recortar por cidade mediria outra coisa. Ver `jornada.ts` para a disjunção.
+ * Os dois blocos medem bases DISJUNTAS: as cidades da OKR são marketplace
+ * (`cardapio_digital = 0/NULL`) e o KR 3 é a base de Cardápio Digital inteira,
+ * do país todo — o enunciado dele não fala em cidade, e recortar por cidade
+ * mediria outra coisa. Ver `jornada.ts` para a disjunção.
  *
  * A resposta traz as LISTAS nominais, não as porcentagens: a aba existe para
  * trabalhar a OKR, não só para exibir o placar, e a soma precisa descontar as
- * lojas que o CS tirou da conta (Supabase `okr_excluido`) e considerar as que
- * ele marcou como críticas (`okr_critica`). Quem soma é
+ * lojas que o CS tirou da conta (Supabase `okr_excluido`). Quem soma é
  * `src/utils/okrFiguras.ts` — somar aqui também criaria uma segunda verdade,
  * calculada sobre a base cheia e pronta para divergir da tela.
  *
@@ -38,25 +37,28 @@ import { checkOrigin } from './_shared/auth';
  * Jesus do Norte - ES" (ver o comentário longo em cidadesOkr.ts).
  *
  * ── Decisões de régua ────────────────────────────────────────────────────
- *  - pedido ACEITO = status IN (1, 2) — "confirmado ou recebido" do enunciado
- *    do KR 4.1, e a mesma régua que o resto do app já usa. Status 3 é
- *    cancelado e -1 é Pix não pago (conferido: todo status -1 é pix-* com
- *    status_pagamento 3); os dois ficam de fora.
+ *  - pedido ACEITO = status IN (1, 2). Status 3 é cancelado e -1 é Pix não
+ *    pago (conferido: todo status -1 é pix-* com status_pagamento 3); os dois
+ *    ficam de fora, aqui e no faturamento.
+ *  - FATURAMENTO da loja = SUM(pedido.total) dos aceitos, mesma régua de
+ *    `crm-gmv.ts`. É também, literalmente, o `gmv_liquido` da Comissao_View —
+ *    cuidado com o nome: o que o app chama de `gmvBruto` é o `gmv_liquido` de
+ *    lá, e o `gmv_bruto` da view é outra conta (subtotal + taxa de entrega).
  *  - LANÇAMENTO = MIN(venda.data_lancamento) entre os contratos VIVOS, caindo
  *    para o MIN de todo o histórico quando não sobrou nenhum — mesma regra da
  *    Jornada, que existe para o parceiro que cancelou e voltou não ficar
- *    ancorado no contrato antigo.
- *  - ENTROU EM RISCO (KR 2.3) olha o trimestre inteiro, não o dia de hoje: se
- *    o universo fosse "parada AGORA há 7+ dias", ele e o critério de reversão
- *    ("4 semanas seguidas com pedido") nunca se cruzariam — a loja sairia do
- *    universo no instante em que melhorasse, e o KR ficaria travado em zero.
- *    Por isso a marca é ter ficado 7+ dias corridos sem pedido em ALGUM
- *    momento do trimestre (contado a partir do lançamento, para parceiro novo
- *    não entrar em risco pelo tempo em que ainda nem existia).
- *  - TAXA DE CANCELAMENTO = cancelados / (aceitos + cancelados) nas 4 semanas.
- *    Pix não pago fica fora do denominador: o cliente desistir antes de pagar
- *    não é cancelamento da loja, e inflaria o denominador de quem vende por Pix.
- *  - "janela fechada" do KR 2.2 é medida contra `dadosAte` (MAX(pedido.data)),
+ *    ancorado no contrato antigo. (A mesma expressão vive em `jornada.ts`;
+ *    mexer numa e esquecer a outra faz as duas telas divergirem em silêncio.)
+ *  - TROCA DE DONO = o contrato anterior e o atual apontam para documentos
+ *    diferentes em `dados_faturamento`. A comparação é só de dígitos e cruza
+ *    `cpf_proprietario` nos dois sentidos, senão quem virou MEI (mesmo dono,
+ *    CPF que vira CNPJ) seria contado como loja nova de outro dono e sairia
+ *    da coorte sem motivo.
+ *  - CONTRATO VIVO (denominador do KR 3) = `venda.status NOT IN (2, 3, 5)`,
+ *    a régua canônica do app. NÃO usar `Parceiros_View` com STATUS='ativo':
+ *    ela devolve 126 lojas de CD, das quais 42 estão com `delivery` 2 ou 5
+ *    (cancelada / desistência).
+ *  - "janela fechada" do KR 1 é medida contra `dadosAte` (MAX(pedido.data)),
  *    e não contra hoje: a réplica que estas functions enxergam fica ~1 dia
  *    atrás do banco real, e contar como fechada uma janela cujo último dia
  *    ainda não chegou aqui reprovaria o parceiro por atraso de dado.
@@ -69,31 +71,25 @@ const erroHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-s
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
-/** Quanto do passado o `pedido` precisa trazer para o "sem pedido há N dias". */
-const DIAS_HISTORICO_MINIMO = 60;
+/**
+ * Quanto do passado o `pedido` precisa trazer. Tem de cobrir as DUAS janelas de
+ * 28 dias do KR 2 (a atual e a anterior, que é o "antes" do antes→depois) com
+ * folga para o "parado há N dias".
+ */
+const DIAS_HISTORICO_MINIMO = 70;
 
 const PADRAO = {
-    // KR 2.2 — safra 14d
+    // KR 1 — engajamento de novos parceiros
     janelaNovos: 14,
     pedidosNovos: 5,
-    metaKr22: 20,
-    // KR 2.3 — lojas em risco
-    diasParado: 7,
-    semanasReversao: 4,
-    tetoCancelamentoPct: 10,
-    metaKr23: 30,
-    // KR 4.1 — pedidos no Cardápio Digital
-    metaKr41: 15400,
-    desafioKr41: 16000,
-    /** Acumulado esperado ao fim de cada mês do trimestre. */
-    checkpointsKr41: [4350, 9350, 15400],
-    // KR 4.2 — lojas ativas no Cardápio Digital
-    janelaLojaAtiva: 30,
-    pedidosLojaAtiva: 30,
-    metaKr42: 40,
-    /** Ponto de partida declarado na OKR. */
-    baseKr42: 23,
-    checkpointsKr42: [28, 34, 40],
+    metaKr1: 80,
+    // KR 2 — lojas engajadas
+    janelaEngajada: 28,
+    pedidosEngajada: 14,
+    metaKr2: 38,
+    // KR 3 — faturamento no Cardápio Digital
+    faturamentoMinimo: 1000,
+    metaKr3: 50,
 };
 
 /** "Hoje" em Brasília — a function roda em UTC e viraria o dia às 21h. */
@@ -158,26 +154,35 @@ function casaPrefixo(cidade: string, prefixos: string[]): boolean {
     );
 }
 
-interface DiaPedidos { dia: string; aceitos: number; cancelados: number }
+/** Documento só com dígitos — "08.603.875/0001-12" e "08603875000112" são o mesmo. */
+function digitos(doc: unknown): string {
+    return String(doc ?? '').replace(/\D/g, '');
+}
+
+interface ContratoRow {
+    lancamento: string;
+    status: number;
+    cpfCnpj: string;
+    cpfProprietario: string;
+}
 
 /**
- * A maior sequência de dias corridos SEM pedido aceito dentro da janela.
- * Conta também as pontas: o silêncio antes do primeiro pedido e depois do
- * último valem tanto quanto um buraco no meio.
+ * O contrato anterior e o atual são do mesmo dono?
+ *
+ * Documento igual resolve o caso comum. O cruzamento com `cpf_proprietario`
+ * cobre o parceiro que virou MEI no meio do caminho: o contrato antigo está no
+ * CPF dele e o novo no CNPJ da empresa, mas o CPF continua gravado como
+ * proprietário. Sem isso, formalizar a empresa tiraria a loja da coorte do KR
+ * como se tivesse mudado de dono.
  */
-function maiorLacuna(dias: DiaPedidos[], de: string, ate: string): number {
-    if (diasEntre(de, ate) < 0) return 0;
-    const comPedido = dias
-        .filter(d => d.aceitos > 0 && d.dia >= de && d.dia <= ate)
-        .map(d => d.dia)
-        .sort();
-    if (comPedido.length === 0) return diasEntre(de, ate) + 1;
-
-    let maior = diasEntre(de, comPedido[0]);
-    for (let i = 1; i < comPedido.length; i++) {
-        maior = Math.max(maior, diasEntre(comPedido[i - 1], comPedido[i]) - 1);
-    }
-    return Math.max(maior, diasEntre(comPedido[comPedido.length - 1], ate));
+function mesmoDono(anterior: ContratoRow, atual: ContratoRow): boolean {
+    const docAnt = digitos(anterior.cpfCnpj);
+    const docAtual = digitos(atual.cpfCnpj);
+    if (!docAnt || !docAtual) return true; // sem documento não dá para afirmar troca
+    if (docAnt === docAtual) return true;
+    const propAnt = digitos(anterior.cpfProprietario);
+    const propAtual = digitos(atual.cpfProprietario);
+    return (propAtual !== '' && docAnt === propAtual) || (propAnt !== '' && docAtual === propAnt);
 }
 
 export const handler: Handler = async (event) => {
@@ -220,6 +225,18 @@ export const handler: Handler = async (event) => {
     const corte = hoje < fim ? hoje : fim;
     /** Limite superior exclusivo, porque `pedido.data` é datetime. */
     const corteExclusivo = somarDias(corte, 1);
+    const mesCorrente = corte.slice(0, 7);
+    /**
+     * O KR 3 é mensal, e no meio do mês o número sempre parece baixo — dia 19
+     * de outubro ainda não é outubro. Puxar o mês anterior junto dá a régua de
+     * comparação ("em setembro fecharam 33%"), que é como se lê um KR mensal
+     * antes de o mês acabar.
+     */
+    const mesAnterior = `${inicio.slice(0, 4)}-${inicio.slice(5, 7)}`.replace(/^(\d{4})-(\d{2})$/, (_, a, m) => {
+        const mes = Number(m) - 1;
+        return mes === 0 ? `${Number(a) - 1}-12` : `${a}-${String(mes).padStart(2, '0')}`;
+    });
+    const inicioFaturamento = `${mesAnterior}-01`;
 
     let connection;
     const started = Date.now();
@@ -231,7 +248,7 @@ export const handler: Handler = async (event) => {
         );
         const dadosAte = String(ultimo[0]?.ate ?? corte);
 
-        // ══ OBJETIVO 2 — as 5 cidades, marketplace ═══════════════════════
+        // ══ BIGOU APP — as cidades da OKR, marketplace ═══════════════════
 
         const [localidades] = await connection.query<RowDataPacket[]>(`SELECT id, nome FROM localidade`);
         const daOkr = localidades.filter(l => casaPrefixo(String(l.nome ?? ''), prefixos));
@@ -244,25 +261,40 @@ export const handler: Handler = async (event) => {
         }
         const localidadeIds = daOkr.map(l => Number(l.id));
 
+        // Uma linha POR CONTRATO (não agregada): o KR 1 precisa comparar o
+        // contrato anterior com o atual para saber se o dono mudou.
         const [contratos] = await connection.query<RowDataPacket[]>(
             `SELECT ve.estabelecimento_id AS estab,
-                    DATE_FORMAT(
-                        COALESCE(
-                            MIN(CASE WHEN v.status NOT IN (2, 3, 5) THEN v.data_lancamento END),
-                            MIN(v.data_lancamento)
-                        ), '%Y-%m-%d') AS lancamento,
-                    SUM(v.status NOT IN (2, 3, 5)) AS vivos
+                    DATE_FORMAT(v.data_lancamento, '%Y-%m-%d') AS lancamento,
+                    v.status AS status,
+                    df.cpf_cnpj AS cpf_cnpj,
+                    df.cpf_proprietario AS cpf_proprietario
              FROM venda v
              JOIN venda_estabelecimento ve ON ve.venda_id = v.id
              JOIN estabelecimento e ON e.id = ve.estabelecimento_id
+             LEFT JOIN dados_faturamento df ON df.id = v.dados_faturamento_id
              WHERE e.localidade_id IN (?)
                AND e.delivery IN (1, 2, 4, 5)
                AND (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)
-             GROUP BY ve.estabelecimento_id`,
+               AND v.data_lancamento IS NOT NULL
+             ORDER BY ve.estabelecimento_id, v.data_lancamento`,
             [localidadeIds],
         );
 
-        const idsCidades = contratos.map(r => Number(r.estab));
+        const contratosPorEstab = new Map<number, ContratoRow[]>();
+        for (const r of contratos) {
+            const estab = Number(r.estab);
+            const lista = contratosPorEstab.get(estab) ?? [];
+            lista.push({
+                lancamento: String(r.lancamento),
+                status: Number(r.status ?? 0),
+                cpfCnpj: String(r.cpf_cnpj ?? ''),
+                cpfProprietario: String(r.cpf_proprietario ?? ''),
+            });
+            contratosPorEstab.set(estab, lista);
+        }
+
+        const idsCidades = [...contratosPorEstab.keys()];
         const [estabs] = idsCidades.length > 0
             ? await connection.query<RowDataPacket[]>(
                 `SELECT e.id, e.nome, e.delivery, IFNULL(l.nome, '') AS cidade
@@ -274,122 +306,130 @@ export const handler: Handler = async (event) => {
             : [[] as RowDataPacket[]];
         const infoPorId = new Map(estabs.map(e => [Number(e.id), e]));
 
-        // Aceitos e cancelados no mesmo passe: a taxa de cancelamento do KR 2.3
-        // precisa dos dois, e o pedido é a tabela cara de varrer.
+        /**
+         * Lançamento, relançamento e troca de dono, por estabelecimento.
+         *
+         * O lançamento é o MIN entre os contratos VIVOS, caindo para o MIN de
+         * todo o histórico quando não sobrou nenhum — mesma regra da Jornada.
+         */
+        const perfilPorEstab = new Map<number, {
+            lancamento: string;
+            relancamento: boolean;
+            trocaDono: boolean;
+            docAnterior: string;
+            docAtual: string;
+        }>();
+        for (const [estab, lista] of contratosPorEstab) {
+            const vivos = lista.filter(c => ![2, 3, 5].includes(c.status));
+            const lancamento = (vivos.length > 0 ? vivos : lista)[0].lancamento;
+            const anteriores = lista.filter(c => c.lancamento < lancamento);
+            const atual = lista.find(c => c.lancamento === lancamento) ?? lista[0];
+            const anterior = anteriores.length > 0 ? anteriores[anteriores.length - 1] : null;
+            perfilPorEstab.set(estab, {
+                lancamento,
+                relancamento: anterior !== null,
+                trocaDono: anterior !== null && !mesmoDono(anterior, atual),
+                docAnterior: anterior?.cpfCnpj ?? '',
+                docAtual: atual.cpfCnpj,
+            });
+        }
+
+        // Pedidos aceitos. A janela precisa cobrir o trimestre inteiro (KR 1) e
+        // os últimos 28 dias (KR 2); o histórico mínimo é para o "parado há N".
         const desdePedidos = [inicio, somarDias(corte, -DIAS_HISTORICO_MINIMO)].sort()[0];
         const [pedidosCidades] = idsCidades.length > 0
             ? await connection.query<RowDataPacket[]>(
                 `SELECT estabelecimento_id AS estab,
                         DATE_FORMAT(data, '%Y-%m-%d') AS dia,
-                        SUM(status IN (1, 2)) AS aceitos,
-                        SUM(status = 3) AS cancelados
+                        COUNT(*) AS n
                  FROM pedido FORCE INDEX (data)
-                 WHERE status IN (1, 2, 3) AND data >= ? AND data < ? AND estabelecimento_id IN (?)
+                 WHERE status IN (1, 2) AND data >= ? AND data < ? AND estabelecimento_id IN (?)
                  GROUP BY estabelecimento_id, dia`,
                 [desdePedidos, corteExclusivo, idsCidades],
             )
             : [[] as RowDataPacket[]];
 
-        const diasPorEstab = new Map<number, DiaPedidos[]>();
+        const diasPorEstab = new Map<number, { dia: string; n: number }[]>();
         for (const p of pedidosCidades) {
             const estab = Number(p.estab);
             const lista = diasPorEstab.get(estab) ?? [];
-            lista.push({ dia: String(p.dia), aceitos: Number(p.aceitos ?? 0), cancelados: Number(p.cancelados ?? 0) });
+            lista.push({ dia: String(p.dia), n: Number(p.n ?? 0) });
             diasPorEstab.set(estab, lista);
         }
 
-        const parceiros = contratos.map(r => {
-            const id = Number(r.estab);
-            const info = infoPorId.get(id);
-            return {
-                id,
-                nome: String(info?.nome ?? `#${id}`),
-                cidade: String(info?.cidade ?? ''),
-                delivery: Number(info?.delivery ?? 0),
-                lancamento: String(r.lancamento ?? ''),
-                contratoVivo: Number(r.vivos ?? 0) > 0,
-            };
-        });
-
-        // ── KR 2.2 — safra de 14 dias ────────────────────────────────────
-        const coorte = parceiros
-            .filter(p => p.lancamento && p.lancamento >= inicio && p.lancamento <= corte)
-            .map(p => {
+        // ── KR 1 — novos parceiros ───────────────────────────────────────
+        const coorte = [...perfilPorEstab.entries()]
+            .filter(([, p]) => p.lancamento >= inicio && p.lancamento <= corte)
+            .map(([estab, p]) => {
+                const info = infoPorId.get(estab);
                 const fimJanela = somarDias(p.lancamento, PADRAO.janelaNovos); // exclusivo
-                const dias = diasPorEstab.get(p.id) ?? [];
+                const dias = diasPorEstab.get(estab) ?? [];
                 const pedidos = dias
                     .filter(d => d.dia >= p.lancamento && d.dia < fimJanela)
-                    .reduce((a, d) => a + d.aceitos, 0);
+                    .reduce((a, d) => a + d.n, 0);
                 const concluida = fimJanela <= dadosAte;
                 return {
-                    id: p.id,
-                    nome: p.nome,
-                    cidade: p.cidade,
+                    id: estab,
+                    nome: String(info?.nome ?? `#${estab}`),
+                    cidade: String(info?.cidade ?? ''),
                     lancamento: p.lancamento,
                     pedidos,
                     // Bateu é bateu: não espera a janela fechar para contar.
                     atingiu: pedidos >= PADRAO.pedidosNovos,
                     concluida,
                     diasRestantes: concluida ? 0 : Math.max(diasEntre(dadosAte, fimJanela), 0),
-                    cancelado: !p.contratoVivo,
+                    relancamento: p.relancamento,
+                    trocaDono: p.trocaDono,
+                    docAnterior: p.docAnterior,
+                    docAtual: p.docAtual,
                 };
             })
             .sort((a, b) => b.lancamento.localeCompare(a.lancamento));
 
-        // ── KR 2.3 — lojas em risco ──────────────────────────────────────
-        // Uma linha por loja ATIVA das 5 cidades, com os sinais crus. Quem
-        // decide o universo é a tela: entrou em risco no trimestre OU está
-        // marcada como crítica (a marcação mora no Supabase, fora daqui).
-        const semanas = Array.from({ length: PADRAO.semanasReversao }, (_, i) => ({
-            de: somarDias(corte, -7 * (i + 1) + 1),
-            ate: somarDias(corte, -7 * i),
-        }));
-
-        const risco = parceiros
-            .filter(p => p.delivery === 1 && p.lancamento && p.lancamento <= corte)
-            .map(p => {
-                const dias = diasPorEstab.get(p.id) ?? [];
-                const comAceito = dias.filter(d => d.aceitos > 0).map(d => d.dia).sort();
-                const ultimoPedido = comAceito.length > 0 ? comAceito[comAceito.length - 1] : null;
-
-                // Parceiro lançado no meio do trimestre não fica "em risco"
-                // pelo silêncio de antes de existir.
-                const inicioRisco = p.lancamento > inicio ? p.lancamento : inicio;
-                const lacuna = maiorLacuna(dias, inicioRisco, corte);
-
-                const janela = dias.filter(d => d.dia >= semanas[semanas.length - 1].de);
-                const aceitos4sem = janela.reduce((a, d) => a + d.aceitos, 0);
-                const cancelados4sem = janela.reduce((a, d) => a + d.cancelados, 0);
-                const baseTaxa = aceitos4sem + cancelados4sem;
-
+        // ── KR 2 — lojas engajadas ───────────────────────────────────────
+        const desdeEngajada = somarDias(corte, -PADRAO.janelaEngajada + 1);
+        // A janela imediatamente anterior, do mesmo tamanho. É o "antes" do
+        // antes→depois: loja que cruzou de 9 para 18 pedidos é resultado; lista
+        // de quem já estava engajado é participação, e não conta.
+        const desdeAnterior = somarDias(desdeEngajada, -PADRAO.janelaEngajada);
+        const ateAnterior = somarDias(desdeEngajada, -1);
+        const engajamento = [...perfilPorEstab.entries()]
+            .filter(([estab, p]) => Number(infoPorId.get(estab)?.delivery ?? 0) === 1 && p.lancamento <= corte)
+            .map(([estab, p]) => {
+                const info = infoPorId.get(estab);
+                const dias = diasPorEstab.get(estab) ?? [];
+                const pedidos28d = dias
+                    .filter(d => d.dia >= desdeEngajada)
+                    .reduce((a, d) => a + d.n, 0);
+                const pedidos28dAnterior = dias
+                    .filter(d => d.dia >= desdeAnterior && d.dia <= ateAnterior)
+                    .reduce((a, d) => a + d.n, 0);
+                const comPedido = dias.filter(d => d.n > 0).map(d => d.dia).sort();
+                const ultimoPedido = comPedido.length > 0 ? comPedido[comPedido.length - 1] : null;
                 return {
-                    id: p.id,
-                    nome: p.nome,
-                    cidade: p.cidade,
+                    id: estab,
+                    nome: String(info?.nome ?? `#${estab}`),
+                    cidade: String(info?.cidade ?? ''),
                     lancamento: p.lancamento,
+                    pedidos28d,
+                    pedidos28dAnterior,
+                    engajada: pedidos28d >= PADRAO.pedidosEngajada,
+                    /** Cruzou a régua nesta janela — é o "virou o jogo". */
+                    cruzou: pedidos28d >= PADRAO.pedidosEngajada && pedidos28dAnterior < PADRAO.pedidosEngajada,
+                    /** Caiu da régua — o vazamento que ninguém via. */
+                    caiu: pedidos28d < PADRAO.pedidosEngajada && pedidos28dAnterior >= PADRAO.pedidosEngajada,
                     ultimoPedido,
                     diasSemPedido: ultimoPedido ? diasEntre(ultimoPedido, corte) : null,
-                    /** Maior silêncio do trimestre — é o que põe a loja em risco. */
-                    maiorLacunaDias: lacuna,
-                    /** Da semana mais recente para a mais antiga. */
-                    semanasComPedido: semanas.map(s =>
-                        dias.some(d => d.dia >= s.de && d.dia <= s.ate && d.aceitos > 0),
-                    ),
-                    aceitos4sem,
-                    cancelados4sem,
-                    /** null = sem pedido nenhum na janela, não "0% de cancelamento". */
-                    taxaCancelamentoPct: baseTaxa > 0 ? Math.round((cancelados4sem / baseTaxa) * 1000) / 10 : null,
                 };
             })
-            .sort((a, b) => (b.taxaCancelamentoPct ?? -1) - (a.taxaCancelamentoPct ?? -1));
+            .sort((a, b) => b.pedidos28d - a.pedidos28d);
 
         // Quem não vendeu dentro da janela de histórico pode estar parado há
         // mais tempo que ela — ou nunca ter vendido. São coisas MUITO
-        // diferentes para quem vai recuperar a loja, e sem esta consulta as
-        // duas viram "nunca vendeu". Só para esses, que são poucos: varrer o
-        // histórico inteiro da base toda custaria os 14s que o comentário do
-        // `jornada.ts` descreve.
-        const semHistorico = risco.filter(l => l.ultimoPedido === null).map(l => l.id);
+        // diferentes para o CS, e sem esta consulta as duas viram "nunca
+        // vendeu". Só para esses, que são poucos: varrer o histórico inteiro
+        // da base toda custaria os 14s que o comentário do `jornada.ts` cita.
+        const semHistorico = engajamento.filter(l => l.ultimoPedido === null).map(l => l.id);
         if (semHistorico.length > 0) {
             const [antigos] = await connection.query<RowDataPacket[]>(
                 `SELECT estabelecimento_id AS estab, DATE_FORMAT(MAX(data), '%Y-%m-%d') AS ultimo
@@ -399,40 +439,39 @@ export const handler: Handler = async (event) => {
                 [corteExclusivo, semHistorico],
             );
             const ultimoPorEstab = new Map(antigos.map(r => [Number(r.estab), String(r.ultimo)]));
-            for (const l of risco) {
-                const ultimo = ultimoPorEstab.get(l.id);
-                if (!ultimo) continue;
-                l.ultimoPedido = ultimo;
-                l.diasSemPedido = diasEntre(ultimo, corte);
+            for (const l of engajamento) {
+                const u = ultimoPorEstab.get(l.id);
+                if (!u) continue;
+                l.ultimoPedido = u;
+                l.diasSemPedido = diasEntre(u, corte);
             }
         }
 
-        // ══ OBJETIVO 4 — Cardápio Digital, base inteira ══════════════════
-        // Sem recorte de cidade e sem filtro de delivery: o KR conta PEDIDOS do
-        // Cardápio Digital, e quem os gerou continua contando mesmo que a loja
-        // tenha sido desligada depois.
-        const [cdPorMes] = await connection.query<RowDataPacket[]>(
-            `SELECT p.estabelecimento_id AS estab,
-                    DATE_FORMAT(p.data, '%Y-%m') AS mes,
-                    COUNT(*) AS n
-             FROM pedido p FORCE INDEX (data)
-             WHERE p.status IN (1, 2) AND p.cardapio_digital = 1
-               AND p.data >= ? AND p.data < ?
-             GROUP BY p.estabelecimento_id, mes`,
-            [inicio, corteExclusivo],
+        // ══ CARDÁPIO DIGITAL — base inteira ══════════════════════════════
+        // Denominador do KR 3: contrato vivo, a régua canônica do app. A
+        // Parceiros_View com STATUS='ativo' NÃO serve — ver o cabeçalho.
+        const [cdVivas] = await connection.query<RowDataPacket[]>(
+            `SELECT DISTINCT ve.estabelecimento_id AS estab
+             FROM venda v
+             JOIN venda_estabelecimento ve ON ve.venda_id = v.id
+             JOIN estabelecimento e ON e.id = ve.estabelecimento_id
+             WHERE e.cardapio_digital = 1 AND v.status NOT IN (2, 3, 5)`,
         );
+        const idsCd = cdVivas.map(r => Number(r.estab));
 
-        const desde30d = somarDias(corte, -PADRAO.janelaLojaAtiva + 1);
-        const [cd30d] = await connection.query<RowDataPacket[]>(
-            `SELECT estabelecimento_id AS estab, COUNT(*) AS n
-             FROM pedido FORCE INDEX (data)
-             WHERE status IN (1, 2) AND cardapio_digital = 1
-               AND data >= ? AND data < ?
-             GROUP BY estabelecimento_id`,
-            [desde30d, corteExclusivo],
-        );
+        const [faturamentoCd] = idsCd.length > 0
+            ? await connection.query<RowDataPacket[]>(
+                `SELECT estabelecimento_id AS estab,
+                        DATE_FORMAT(data, '%Y-%m') AS mes,
+                        SUM(total) AS gmv
+                 FROM pedido FORCE INDEX (data)
+                 WHERE status IN (1, 2) AND cardapio_digital = 1
+                   AND data >= ? AND data < ? AND estabelecimento_id IN (?)
+                 GROUP BY estabelecimento_id, mes`,
+                [inicioFaturamento, corteExclusivo, idsCd],
+            )
+            : [[] as RowDataPacket[]];
 
-        const idsCd = [...new Set([...cdPorMes.map(r => Number(r.estab)), ...cd30d.map(r => Number(r.estab))])];
         const [estabsCd] = idsCd.length > 0
             ? await connection.query<RowDataPacket[]>(
                 `SELECT e.id, e.nome, e.delivery, IFNULL(l.nome, '') AS cidade
@@ -445,51 +484,44 @@ export const handler: Handler = async (event) => {
         const infoCd = new Map(estabsCd.map(e => [Number(e.id), e]));
 
         const porMesPorEstab = new Map<number, Record<string, number>>();
-        for (const r of cdPorMes) {
+        for (const r of faturamentoCd) {
             const estab = Number(r.estab);
             const atual = porMesPorEstab.get(estab) ?? {};
-            atual[String(r.mes)] = Number(r.n ?? 0);
+            atual[String(r.mes)] = Number(r.gmv ?? 0);
             porMesPorEstab.set(estab, atual);
         }
-        const trintaDiasPorEstab = new Map(cd30d.map(r => [Number(r.estab), Number(r.n ?? 0)]));
 
         const lojasCd = idsCd
             .map(id => {
                 const info = infoCd.get(id);
                 const porMes = porMesPorEstab.get(id) ?? {};
+                const faturamentoMes = porMes[mesCorrente] ?? 0;
                 return {
                     id,
                     nome: String(info?.nome ?? `#${id}`),
                     cidade: String(info?.cidade ?? ''),
-                    ativa: Number(info?.delivery ?? 0) === 1,
+                    /** delivery = 1 hoje. Contrato vivo com loja desligada existe. */
+                    ligada: Number(info?.delivery ?? 0) === 1,
                     porMes,
-                    pedidosTrimestre: meses.reduce((a, m) => a + (porMes[m] ?? 0), 0),
-                    pedidos30d: trintaDiasPorEstab.get(id) ?? 0,
+                    faturamentoMes,
+                    acima: faturamentoMes > PADRAO.faturamentoMinimo,
                 };
             })
-            .sort((a, b) => b.pedidos30d - a.pedidos30d || b.pedidosTrimestre - a.pedidosTrimestre);
+            .sort((a, b) => b.faturamentoMes - a.faturamentoMes);
 
         return {
             statusCode: 200,
             headers: jsonHeaders,
             body: JSON.stringify({
                 ok: true,
-                trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte, meses },
+                trimestre: { id: trimestreId, inicio, fim, corte, hoje, dadosAte, meses, mesCorrente, mesAnterior },
                 // Dedup por nome: a mesma cidade pode ter mais de uma localidade
                 // no cadastro (uma delas inativa, sem nenhum estabelecimento).
                 cidades: [...new Set(daOkr.map(l => String(l.nome)))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-                parametros: {
-                    ...PADRAO,
-                    semanas,
-                    desde30d,
-                },
-                kr22: { meta: PADRAO.metaKr22, parceiros: coorte },
-                kr23: { meta: PADRAO.metaKr23, parceiros: risco },
-                // Uma lista só para os dois KRs do objetivo 4: eles medem a
-                // mesma base por ângulos diferentes (pedidos e lojas ativas).
-                cardapioDigital: { lojas: lojasCd },
-                kr41: { meta: PADRAO.metaKr41, desafio: PADRAO.desafioKr41, checkpoints: PADRAO.checkpointsKr41 },
-                kr42: { meta: PADRAO.metaKr42, base: PADRAO.baseKr42, checkpoints: PADRAO.checkpointsKr42 },
+                parametros: { ...PADRAO, desdeEngajada, desdeAnterior, ateAnterior },
+                kr1: { meta: PADRAO.metaKr1, parceiros: coorte },
+                kr2: { meta: PADRAO.metaKr2, parceiros: engajamento },
+                kr3: { meta: PADRAO.metaKr3, lojas: lojasCd },
                 elapsedMs: Date.now() - started,
             }),
         };

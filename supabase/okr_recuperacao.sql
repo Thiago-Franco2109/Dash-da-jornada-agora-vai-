@@ -1,3 +1,7 @@
+-- ⚠️ ENCERRADA. O KR 2.3 (plano de recuperação) saiu da OKR em 2026-Q4 e a aba
+-- não lê mais esta tabela. O arquivo e a tabela ficam só como histórico de quem
+-- marcou o quê — `drop table` é irreversível e o rastro é o que sobrou do KR.
+--
 -- ─────────────────────────────────────────────────────────────────────────
 -- Plano de recuperação do KR 2.3 — as lojas selecionadas para trabalhar.
 --

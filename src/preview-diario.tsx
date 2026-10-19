@@ -127,18 +127,6 @@ if (extras > 0) {
     })];
 }
 
-/** Lojas selecionadas no plano do KR 2.3 — ver supabase/okr_recuperacao.sql. */
-const planoAmostra = OKR_AMOSTRA.kr23.parceiros.slice(0, 4).map(l => ({
-    partner_id: String(l.id),
-    motivo: 'parada no trimestre',
-    observacao: null,
-    nome: l.nome,
-    cidade: l.cidade,
-    incluido_em: new Date().toISOString(),
-    incluido_por: 'THIAGO',
-    atualizado_em: new Date().toISOString(),
-}));
-
 function chainFake(tabela: string) {
     let alvoId: string | null = null;
     let modo: 'select' | 'update' | 'delete' = 'select';
@@ -150,16 +138,14 @@ function chainFake(tabela: string) {
     let ate: string | null = null;
 
     const resultado = () => ({
+        // O bloco de engajamento do relatório sai direto de `kr2.lojas` da
+        // amostra — não depende de marcação nenhuma. O único dublê que sobra é
+        // `okr_excluido`, e vazio já é o estado certo dele.
         data: tabela === 'diario_cs'
             ? linhas
                 .filter(l => (!de || l.ocorrido_em >= de) && (!ate || l.ocorrido_em <= ate))
                 .sort((a, b) => b.ocorrido_em.localeCompare(a.ocorrido_em))
-            // Quatro das seis lojas da amostra entram no plano: assim o
-            // relatório tem o que mostrar nas duas seções (virou / em
-            // andamento) sem precisar de banco.
-            : tabela === 'okr_recuperacao'
-                ? planoAmostra
-                : [],
+            : [],
         error: null,
     });
 

@@ -5,43 +5,43 @@ import {
     trimestresRecentes,
     rotuloTrimestre,
     type OkrLojaCd,
-    type OkrParceiroNovo,
+    type OkrLojaEngajada,
     type OkrParametros,
+    type OkrParceiroNovo,
 } from '../hooks/useOkrTrimestre';
-import { useExclusaoOkr, useCriticaOkr, useRecuperacaoOkr, type Marcacao } from '../hooks/marcacoesOkr';
+import { useExclusaoOkr, type Marcacao } from '../hooks/marcacoesOkr';
 import {
     calcularFiguras,
     identificarNoRecorte,
-    type FigurasKr23,
-    type FigurasKr41,
+    type FigurasKr1,
+    type FigurasKr2,
+    type FigurasKr3,
     type LinhaCidade,
-    type GrupoElegivel,
-    type LojaRiscoAvaliada,
 } from '../utils/okrFiguras';
 import { MOTIVOS_EXCLUSAO, motivoExclusaoDef } from '../config/exclusaoOkr';
 import { rotuloOkrDaCidade } from '../config/cidadesOkr';
+import { formatBRL } from '../utils/crmData';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * A aba da OKR do trimestre — os quatro KRs de Sucesso do Cliente.
+ * A aba da OKR do trimestre — os três KRs de Sucesso do Cliente.
  *
  * Os dois objetivos medem bases DISJUNTAS, e a tela diz isso o tempo todo: o
- * objetivo 2 é marketplace nas 5 cidades, o objetivo 4 é a base de Cardápio
- * Digital inteira. Misturar os dois num "total da OKR" seria somar laranja com
- * banana — por isso não existe número agregado nesta tela.
+ * Bigou App é marketplace nas 5 cidades da OKR, o Cardápio Digital é a base
+ * inteira. Misturar os dois num "total da OKR" seria somar laranja com banana —
+ * por isso não existe número agregado nesta tela.
  *
- * Cada KR é uma CONTAGEM contra uma meta, e abaixo do cartão vem a LISTA
- * NOMINAL de quem está dentro e de quem falta — é isso que transforma o placar
- * em trabalho. O cartão selecionado manda no painel de baixo.
+ * Cada KR é uma PORCENTAGEM contra uma meta de patamar, e abaixo do cartão vem
+ * a LISTA NOMINAL de quem ainda não conta — é isso que transforma o placar em
+ * trabalho. O cartão selecionado manda no painel de baixo.
  *
- * Duas marcações manuais convivem aqui (Supabase, ver marcacoesOkr.ts):
- *   fora da conta → a loja sai de todos os KRs
- *   crítica       → a loja entra no universo do KR 2.3 mesmo sem estar parada
- * As duas aparecem em lista própria, com autor e data: o número vai para o
- * CEO, e mexer no denominador sem deixar rastro é outra coisa.
+ * Uma marcação manual convive aqui (Supabase, ver marcacoesOkr.ts): "fora da
+ * conta" tira a loja dos três KRs. Ela aparece em lista própria, com autor e
+ * data: o número vai para o CEO, e mexer no denominador sem deixar rastro é
+ * outra coisa.
  */
 
-type KrId = 'kr22' | 'kr23' | 'kr41' | 'kr42';
+type KrId = 'kr1' | 'kr2' | 'kr3';
 
 /** O mínimo para identificar uma loja na hora de marcá-la. */
 interface ParceiroAlvo {
@@ -49,8 +49,6 @@ interface ParceiroAlvo {
     nome: string;
     cidade: string;
 }
-
-type ModoMarcacao = 'fora' | 'critica';
 
 /** '2026-10-07' → '07/10'. */
 function diaMes(iso: string): string {
@@ -74,6 +72,17 @@ function mesCurto(iso: string): string {
 
 const num = (n: number) => n.toLocaleString('pt-BR');
 
+/** "falta 1 pedido" / "faltam 3 pedidos" — concorda verbo e substantivo. */
+function faltamTexto(n: number, singular: string, plural: string): string {
+    return n === 1 ? `falta 1 ${singular}` : `faltam ${n} ${plural}`;
+}
+
+/** Vírgula decimal: "34,6%". Ponto vira leitura de milhar em português. */
+function pctTexto(pct: number | null): string {
+    if (pct === null) return '—';
+    return `${pct.toFixed(1).replace('.0', '').replace('.', ',')}%`;
+}
+
 /** Cidade longa do cadastro → rótulo curto da OKR ("Bom Jesus"). */
 function cidadeCurta(cidade: string): string {
     return rotuloOkrDaCidade(cidade) ?? cidade;
@@ -83,55 +92,65 @@ const TONS = {
     verde: { texto: 'text-emerald-600 dark:text-emerald-400', barra: 'bg-emerald-500', borda: 'border-emerald-300 dark:border-emerald-700' },
     ambar: { texto: 'text-amber-600 dark:text-amber-400', barra: 'bg-amber-500', borda: 'border-amber-300 dark:border-amber-700' },
     vermelho: { texto: 'text-red-600 dark:text-red-400', barra: 'bg-red-500', borda: 'border-red-300 dark:border-red-700' },
-    neutro: { texto: 'text-slate-500 dark:text-slate-300', barra: 'bg-slate-400 dark:bg-slate-500', borda: 'border-slate-200 dark:border-slate-700' },
+    neutro: { texto: 'text-slate-400', barra: 'bg-slate-300 dark:bg-slate-600', borda: 'border-slate-200 dark:border-slate-700' },
 } as const;
 
 type Tom = keyof typeof TONS;
 
-/** Referência de onde o KR deveria estar hoje — checkpoint da OKR ou ritmo. */
-interface Referencia {
-    valor: number;
-    rotulo: string;
+function tomDoKr(pct: number | null, metaPct: number): Tom {
+    if (pct === null) return 'neutro';
+    if (pct >= metaPct) return 'verde';
+    // 80% da meta ainda é recuperável no trimestre; abaixo disso o KR precisa
+    // de uma decisão, não de mais uma semana de acompanhamento.
+    return pct >= metaPct * 0.8 ? 'ambar' : 'vermelho';
 }
 
-function tomDoKr(feito: number, meta: number, ref: Referencia | null): Tom {
-    if (feito >= meta) return 'verde';
-    if (!ref || ref.valor <= 0) return 'neutro';
-    if (feito >= ref.valor) return 'verde';
-    return feito >= ref.valor * 0.8 ? 'ambar' : 'vermelho';
-}
-
-function BarraKr({ pct, referenciaPct, tom, titulo }: { pct: number; referenciaPct: number | null; tom: Tom; titulo?: string }) {
+/**
+ * Barra numa escala 0–100 de porcentagem real, com a meta como tique. Para KR
+ * de patamar isso lê melhor que normalizar contra a meta: vê-se onde o número
+ * está E onde é a linha.
+ */
+function BarraKr({ pct, metaPct, potencialPct, tom }: {
+    pct: number | null;
+    metaPct: number;
+    potencialPct?: number | null;
+    tom: Tom;
+}) {
     return (
         <div className="relative h-2 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${TONS[tom].barra}`} style={{ width: `${pct}%` }} />
-            {referenciaPct !== null && (
-                <div
-                    className="absolute top-0 bottom-0 w-px bg-slate-900/40 dark:bg-white/50"
-                    style={{ left: `${Math.min(referenciaPct, 100)}%` }}
-                    title={titulo}
-                />
+            {/* Teto do KR 1 se todo mundo que ainda está na janela converter —
+                impede o cartão de parecer desastre na primeira semana. */}
+            {potencialPct != null && potencialPct > (pct ?? 0) && (
+                <div className={`absolute inset-y-0 left-0 rounded-full opacity-25 ${TONS[tom].barra}`}
+                     style={{ width: `${Math.min(potencialPct, 100)}%` }} />
             )}
+            <div className={`absolute inset-y-0 left-0 rounded-full transition-all ${TONS[tom].barra}`}
+                 style={{ width: `${Math.min(pct ?? 0, 100)}%` }} />
+            <div
+                className="absolute top-0 bottom-0 w-px bg-slate-900/40 dark:bg-white/50"
+                style={{ left: `${Math.min(metaPct, 100)}%` }}
+                title={`Meta: ${metaPct}%`}
+            />
         </div>
     );
 }
 
 function KrCard({
-    id, rotulo, titulo, feito, meta, progressoPct, referencia, detalhe, foraDaConta, selecionado, onSelect,
+    id, rotulo, titulo, figuras, unidade, detalhe, foraDaConta, potencialPct, selecionado, onSelect,
 }: {
     id: KrId;
     rotulo: string;
     titulo: string;
-    feito: number;
-    meta: number;
-    progressoPct: number;
-    referencia: Referencia | null;
+    figuras: { feito: number; base: number; pct: number | null; metaPct: number; faltam: number };
+    /** Como chamar o que está sendo contado: "parceiros", "lojas". */
+    unidade: string;
     detalhe: string;
     foraDaConta: number;
+    potencialPct?: number | null;
     selecionado: boolean;
     onSelect: (id: KrId) => void;
 }) {
-    const tom = tomDoKr(feito, meta, referencia);
+    const tom = tomDoKr(figuras.pct, figuras.metaPct);
     return (
         <button
             type="button"
@@ -146,18 +165,14 @@ function KrCard({
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{rotulo}</span>
             <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mt-0.5 min-h-[2.5rem]">{titulo}</p>
             <p className="mt-2 flex items-baseline gap-1.5">
-                <span className={`text-3xl font-black tabular-nums ${TONS[tom].texto}`}>{num(feito)}</span>
-                <span className="text-sm font-bold text-slate-400 tabular-nums">/ {num(meta)}</span>
+                <span className={`text-3xl font-black tabular-nums ${TONS[tom].texto}`}>{pctTexto(figuras.pct)}</span>
+                <span className="text-sm font-bold text-slate-400 tabular-nums">/ {figuras.metaPct}%</span>
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                {referencia ? `${referencia.rotulo}: ${num(referencia.valor)}` : ' '}
+                {num(figuras.feito)} de {num(figuras.base)} {unidade}
+                {figuras.faltam > 0 && <> · <strong>{figuras.faltam === 1 ? 'falta 1' : `faltam ${figuras.faltam}`}</strong></>}
             </p>
-            <BarraKr
-                pct={progressoPct}
-                referenciaPct={referencia && meta > 0 ? (referencia.valor / meta) * 100 : null}
-                tom={tom}
-                titulo={referencia ? `${referencia.rotulo}: ${num(referencia.valor)}` : undefined}
-            />
+            <BarraKr pct={figuras.pct} metaPct={figuras.metaPct} potencialPct={potencialPct} tom={tom} />
             <p className="text-[11px] text-slate-400 mt-2">
                 {detalhe}
                 {foraDaConta > 0 && (
@@ -189,33 +204,23 @@ function TituloLista({ children, contagem }: { children: React.ReactNode; contag
     );
 }
 
-function BotaoLinha({ icone, titulo, tom, onClick }: {
-    icone: string;
-    titulo: string;
-    tom: 'vermelho' | 'ambar' | 'verde';
-    onClick: () => void;
-}) {
-    const cores = {
-        vermelho: 'hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20',
-        ambar: 'hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20',
-        verde: 'hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20',
-    };
+function BotaoTirar({ onClick }: { onClick: () => void }) {
     return (
         <button
             type="button"
             onClick={onClick}
-            title={titulo}
-            className={`p-1 rounded-lg text-slate-300 dark:text-slate-600 transition-colors ${cores[tom]}`}
+            title="Tirar esta loja da conta da OKR"
+            className="p-1 rounded-lg text-slate-300 dark:text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
         >
-            <span className="material-symbols-outlined text-[18px]">{icone}</span>
+            <span className="material-symbols-outlined text-[18px]">do_not_disturb_on</span>
         </button>
     );
 }
 
-function LinhaParceiro({ parceiro, direita, acoes }: {
+function LinhaParceiro({ parceiro, direita, onTirar }: {
     parceiro: ParceiroAlvo;
     direita: React.ReactNode;
-    acoes?: React.ReactNode;
+    onTirar?: (alvo: ParceiroAlvo) => void;
 }) {
     return (
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
@@ -227,402 +232,290 @@ function LinhaParceiro({ parceiro, direita, acoes }: {
             </div>
             <div className="flex items-center gap-2 shrink-0">
                 <div className="text-right">{direita}</div>
-                {acoes}
+                {onTirar && <BotaoTirar onClick={() => onTirar(parceiro)} />}
             </div>
         </div>
     );
 }
 
-// ── KR 2.2 ───────────────────────────────────────────────────────────────
-
-function PainelSafra({ parceiros, p, onTirar }: {
-    parceiros: OkrParceiroNovo[];
-    p: OkrParametros;
-    onTirar: (alvo: ParceiroAlvo) => void;
-}) {
-    // Quem já bateu vem primeiro: é a lista que o KR conta.
-    const ordenados = [...parceiros].sort((a, b) =>
-        Number(b.atingiu) - Number(a.atingiu) || b.lancamento.localeCompare(a.lancamento));
-
+/** Aviso de quanto falta — o número mais acionável da tela. */
+function Faltam({ texto }: { texto: string }) {
     return (
-        <div>
-            <TituloLista contagem={parceiros.length}>
-                Safra do trimestre — lançados desde o início
-            </TituloLista>
-            <Lista>
-                {ordenados.length === 0 ? (
-                    <Vazio texto="Nenhum parceiro lançado no trimestre ainda." />
-                ) : ordenados.map(n => (
-                    <LinhaParceiro
-                        key={n.id}
-                        parceiro={n}
-                        acoes={<BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(n)} />}
-                        direita={
-                            <>
-                                <p className={`font-bold tabular-nums ${n.atingiu
-                                    ? 'text-emerald-600 dark:text-emerald-400'
-                                    : n.concluida ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                                    {n.pedidos}/{p.pedidosNovos}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                    {n.atingiu
-                                        ? `conta no KR · lançou ${diaMes(n.lancamento)}`
-                                        : n.concluida
-                                            ? `janela fechada · lançou ${diaMes(n.lancamento)}`
-                                            : `faltam ${n.diasRestantes}d · lançou ${diaMes(n.lancamento)}`}
-                                </p>
-                            </>
-                        }
-                    />
-                ))}
-            </Lista>
-            <p className="text-[11px] text-slate-400 mt-2">
-                Conta quem chegou a {p.pedidosNovos} pedidos nos primeiros {p.janelaNovos} dias — bateu é bateu, não
-                espera a janela fechar. Quem fecha a janela sem bater não dá para recuperar: o KR depende de novas
-                ativações.
-            </p>
-        </div>
+        <p className="mb-2 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-900/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 first-letter:uppercase">
+            {texto}
+        </p>
     );
 }
 
-// ── KR 2.3 ───────────────────────────────────────────────────────────────
+// ── KR 1 — novos parceiros ───────────────────────────────────────────────
 
-/** As N semanas, da mais antiga (esquerda) para a mais recente (direita). */
-function TiraSemanas({ semanas }: { semanas: boolean[] }) {
-    return (
-        <span className="inline-flex gap-0.5 align-middle" title="Semanas com pedido, da mais antiga para a mais recente">
-            {[...semanas].reverse().map((teve, i) => (
-                <span
-                    key={i}
-                    className={`inline-block w-2 h-2 rounded-full ${teve ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-600'}`}
-                />
-            ))}
-        </span>
-    );
-}
-
-type ContextoRisco = 'plano' | 'elegivel' | 'candidata';
-
-/**
- * Os grupos da lista de elegíveis, na ordem em que aparecem. Separar importa:
- * a loja zerada há cinco meses e a que vendeu anteontem e esfriou não são a
- * mesma conversa, e uma lista única ordenada por dias parados misturaria as
- * duas no meio do caminho.
- */
-const GRUPOS_ELEGIVEIS: { id: GrupoElegivel; titulo: string; rodape: string }[] = [
-    {
-        id: 'zerada',
-        titulo: 'Zeradas no trimestre',
-        rodape: 'Zeradas: nenhum pedido aceito desde o início do trimestre.',
-    },
-    {
-        id: 'esfriando',
-        titulo: 'Esfriando — venderam no trimestre e pararam',
-        rodape: 'Esfriando: venderam no trimestre e estão paradas há 7+ dias.',
-    },
-    {
-        id: 'lista',
-        titulo: 'Na lista de risco — ainda vendendo',
-        rodape: 'Lista de risco: elegíveis por marcação, mesmo vendendo.',
-    },
-    {
-        id: 'voltou',
-        titulo: 'Já voltaram sozinhas',
-        rodape: 'Já voltaram: ficaram 7+ dias paradas antes no trimestre e retomaram — recuperação que aconteceu, e que só conta no KR se entrar no plano.',
-    },
-];
-
-function LinhaRisco({ loja, p, contexto, anoRef, onTirar, onCritica, onPlano }: {
-    loja: LojaRiscoAvaliada;
+function PainelNovos({ coorte, foraPorTroca, kr1, p, anoRef, onTirar }: {
+    coorte: OkrParceiroNovo[];
+    foraPorTroca: OkrParceiroNovo[];
+    kr1: FigurasKr1;
     p: OkrParametros;
-    contexto: ContextoRisco;
-    /** Ano do trimestre — datas de outro ano ganham o sufixo. */
     anoRef: string;
     onTirar: (alvo: ParceiroAlvo) => void;
-    onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
-    onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
 }) {
-    const taxa = loja.taxaCancelamentoPct;
-    const corTaxa = taxa === null ? 'text-slate-400'
-        : taxa < p.tetoCancelamentoPct ? 'text-emerald-600 dark:text-emerald-400'
-        : 'text-red-600 dark:text-red-400';
+    // Quem ainda está na janela vem primeiro: é a única parte da coorte onde a
+    // porcentagem ainda se move. Dentro dela, quem está a menos pedidos da meta.
+    const naJanela = coorte
+        .filter(n => !n.concluida && !n.atingiu)
+        .sort((a, b) => b.pedidos - a.pedidos);
+    const bateram = coorte.filter(n => n.atingiu).sort((a, b) => b.pedidos - a.pedidos);
+    const perdidos = coorte.filter(n => n.concluida && !n.atingiu);
 
-    const acoes = (
-        <>
-            {contexto === 'plano' ? (
-                <BotaoLinha icone="playlist_remove" titulo="Tirar do plano de recuperação" tom="ambar" onClick={() => onPlano(loja, true)} />
-            ) : contexto === 'elegivel' ? (
-                <BotaoLinha icone="add_circle" titulo="Selecionar para o plano de recuperação" tom="verde" onClick={() => onPlano(loja, false)} />
-            ) : null}
-            {contexto !== 'plano' && (
-                <BotaoLinha
-                    icone={loja.critica ? 'bookmark_remove' : 'bookmark_add'}
-                    titulo={loja.critica ? 'Tirar da lista de risco de cancelamento' : 'Pôr na lista de risco de cancelamento'}
-                    tom={loja.critica ? 'verde' : 'ambar'}
-                    onClick={() => onCritica(loja, loja.critica)}
-                />
-            )}
-            <BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(loja)} />
-        </>
-    );
-
-    if (contexto === 'plano') {
-        return (
-            <LinhaParceiro
-                parceiro={loja}
-                acoes={acoes}
-                direita={
-                    <>
-                        <p className="flex items-center justify-end gap-2">
-                            <TiraSemanas semanas={loja.semanasComPedido} />
-                            <span className={`font-bold tabular-nums ${corTaxa}`}>{taxa === null ? '—' : `${taxa}%`}</span>
-                        </p>
-                        <p className="text-xs text-slate-400">
-                            {loja.revertida
-                                ? 'revertida · conta no KR'
-                                : loja.falta.includes('semanas')
-                                    ? `${loja.semanasComPedido.filter(Boolean).length}/${p.semanasReversao} semanas com pedido`
-                                    : `cancelamento acima de ${p.tetoCancelamentoPct}%`}
-                        </p>
-                    </>
-                }
-            />
-        );
-    }
-
-    return (
+    const linha = (n: OkrParceiroNovo, tom: string, sub: string) => (
         <LinhaParceiro
-            parceiro={loja}
-            acoes={acoes}
+            key={n.id}
+            parceiro={n}
+            onTirar={onTirar}
             direita={
                 <>
-                    <p className={`font-bold tabular-nums ${corTaxa}`}>{taxa === null ? '—' : `${taxa}%`} </p>
-                    <p className="text-xs text-slate-400">
-                        {loja.zerada
-                            ? (loja.ultimoPedido === null
-                                ? 'nunca vendeu'
-                                : `zerada há ${loja.diasSemPedido}d · último em ${dataCurta(loja.ultimoPedido, anoRef)}`)
-                            : loja.motivoElegivel === 'parada'
-                                ? `parada há ${loja.diasSemPedido}d`
-                                : loja.motivoElegivel === 'lista'
-                                    ? 'na lista de risco'
-                                    : loja.motivoElegivel === 'voltou'
-                                        ? `esteve ${loja.maiorLacunaDias}d parada · já voltou`
-                                        : `cancelamento de ${taxa ?? 0}%`}
-                    </p>
+                    <p className={`font-bold tabular-nums ${tom}`}>{n.pedidos}/{p.pedidosNovos}</p>
+                    <p className="text-xs text-slate-400">{sub}</p>
                 </>
             }
         />
     );
-}
-
-function PainelRisco({ risco, figuras, p, anoRef, onTirar, onCritica, onPlano, onSelecionarTodas }: {
-    risco: LojaRiscoAvaliada[];
-    figuras: FigurasKr23;
-    p: OkrParametros;
-    anoRef: string;
-    onTirar: (alvo: ParceiroAlvo) => void;
-    onCritica: (alvo: ParceiroAlvo, marcada: boolean) => void;
-    onPlano: (alvo: ParceiroAlvo, dentro: boolean) => void;
-    onSelecionarTodas: (lojas: ParceiroAlvo[]) => void;
-}) {
-    const plano = risco.filter(l => l.noPlano);
-    const fora = risco.filter(l => l.elegivel && !l.noPlano);
-    const elegiveis = GRUPOS_ELEGIVEIS
-        .map(g => ({
-            ...g,
-            lojas: fora
-                .filter(l => l.grupoElegivel === g.id)
-                // Quem está parada há mais tempo primeiro; quem nunca vendeu no fim.
-                .sort((a, b) => (b.diasSemPedido ?? -1) - (a.diasSemPedido ?? -1)),
-        }))
-        .filter(g => g.lojas.length > 0);
-    // Quem não é elegível mas cancela muito: é daqui que sai a lista de risco.
-    const candidatas = risco
-        .filter(l => !l.elegivel && !l.noPlano && l.taxaCancelamentoPct !== null && l.taxaCancelamentoPct >= p.tetoCancelamentoPct)
-        .slice(0, 10);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-                <TituloLista contagem={plano.length}>Plano de recuperação — revertidas primeiro</TituloLista>
-                {figuras.faltamNoPlano > 0 && (
-                    <p className="mb-2 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-900/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                        O plano tem {plano.length} {plano.length === 1 ? 'loja' : 'lojas'} e a meta é reverter{' '}
-                        {figuras.meta}. Mesmo que todas revertam, faltam <strong>{figuras.faltamNoPlano}</strong> —
-                        selecione mais ao lado.
-                    </p>
+                <TituloLista contagem={naJanela.length}>
+                    Ainda na janela — dá para converter
+                </TituloLista>
+                {kr1.faltam > 0 && naJanela.length > 0 && (
+                    <Faltam texto={`${faltamTexto(kr1.faltam, 'parceiro', 'parceiros')} para chegar a ${kr1.metaPct}%, e há ${naJanela.length} ainda dentro dos ${p.janelaNovos} dias.`} />
                 )}
                 <Lista>
-                    {plano.length === 0 ? (
-                        <Vazio texto="Nenhuma loja selecionada ainda. Escolha ao lado quem entra no plano." />
-                    ) : plano.map(l => (
-                        <LinhaRisco key={l.id} loja={l} p={p} contexto="plano" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                    {naJanela.length === 0 ? (
+                        <Vazio texto="Nenhum parceiro na janela agora." />
+                    ) : naJanela.map(n => linha(
+                        n,
+                        'text-slate-700 dark:text-slate-200',
+                        `${faltamTexto(Math.max(p.pedidosNovos - n.pedidos, 0), 'pedido', 'pedidos')} · ${n.diasRestantes}d`,
                     ))}
                 </Lista>
                 <p className="text-[11px] text-slate-400 mt-2">
-                    Reverte quem tem pedido nas {p.semanasReversao} semanas seguidas (bolinhas, da mais antiga para a
-                    mais recente) e cancelamento abaixo de {p.tetoCancelamentoPct}%. A loja fica no plano depois de
-                    reverter — é assim que o KR acumula.
+                    Conta quem chega a {p.pedidosNovos} pedidos nos primeiros {p.janelaNovos} dias — bateu é bateu, não
+                    espera a janela fechar.
                 </p>
             </div>
 
             <div className="space-y-6">
                 <div>
-                    <TituloLista contagem={fora.length}>Elegíveis fora do plano</TituloLista>
-                    <Lista altura="max-h-[46vh]">
-                        {elegiveis.length === 0 ? (
-                            <Vazio texto={`Nenhuma loja parada há ${p.diasParado}+ dias fora do plano.`} />
-                        ) : elegiveis.map(g => (
-                            <div key={g.id}>
-                                {/* Cabeçalho gruda no topo: a lista é longa e sem isso
-                                    some a informação de em qual grupo o olho está. */}
-                                <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-1.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700/60">
-                                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                        {g.titulo} <span className="text-slate-300 dark:text-slate-600 tabular-nums">{g.lojas.length}</span>
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => onSelecionarTodas(g.lojas)}
-                                        className="text-[11px] font-semibold text-primary hover:underline shrink-0"
-                                    >
-                                        selecionar {g.lojas.length === 1 ? 'esta' : 'estas'}
-                                    </button>
-                                </div>
-                                <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                                    {g.lojas.map(l => (
-                                        <LinhaRisco key={l.id} loja={l} p={p} contexto="elegivel" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
-                                    ))}
-                                </div>
-                            </div>
+                    <TituloLista contagem={bateram.length}>Bateram — contam no KR</TituloLista>
+                    <Lista altura="max-h-[22vh]">
+                        {bateram.length === 0 ? (
+                            <Vazio texto="Nenhum parceiro bateu a meta ainda." />
+                        ) : bateram.map(n => linha(
+                            n,
+                            'text-emerald-600 dark:text-emerald-400',
+                            `lançou ${dataCurta(n.lancamento, anoRef)}`,
                         ))}
                     </Lista>
-                    <p className="text-[11px] text-slate-400 mt-2">
-                        {GRUPOS_ELEGIVEIS.map(g => g.rodape).join(' ')}
-                    </p>
                 </div>
 
                 <div>
-                    <TituloLista contagem={candidatas.length}>
-                        Candidatas à lista de risco — vendendo, mas cancelando muito
-                    </TituloLista>
-                    <Lista altura="max-h-[22vh]">
-                        {candidatas.length === 0 ? (
-                            <Vazio texto={`Nenhuma loja ativa passa de ${p.tetoCancelamentoPct}% de cancelamento.`} />
-                        ) : candidatas.map(l => (
-                            <LinhaRisco key={l.id} loja={l} p={p} contexto="candidata" anoRef={anoRef} onTirar={onTirar} onCritica={onCritica} onPlano={onPlano} />
+                    <TituloLista contagem={perdidos.length}>Janela fechada sem bater</TituloLista>
+                    <Lista altura="max-h-[18vh]">
+                        {perdidos.length === 0 ? (
+                            <Vazio texto="Nenhuma janela fechou sem bater. 🎉" />
+                        ) : perdidos.map(n => linha(
+                            n,
+                            'text-red-600 dark:text-red-400',
+                            `lançou ${dataCurta(n.lancamento, anoRef)}`,
                         ))}
                     </Lista>
-                    <p className="text-[11px] text-slate-400 mt-2">
-                        Nenhum corte de taxa reproduz as 18 da apresentação — o banco sugere, o marcador decide. Pôr na
-                        lista torna a loja elegível mesmo sem estar parada.
-                    </p>
                 </div>
+
+                {foraPorTroca.length > 0 && (
+                    <div>
+                        <TituloLista contagem={foraPorTroca.length}>
+                            Fora da coorte — relançou com troca de dono
+                        </TituloLista>
+                        <Lista altura="max-h-[18vh]">
+                            {foraPorTroca.map(n => (
+                                <LinhaParceiro
+                                    key={n.id}
+                                    parceiro={n}
+                                    direita={
+                                        <>
+                                            <p className="font-bold tabular-nums text-slate-400">{n.pedidos}/{p.pedidosNovos}</p>
+                                            <p className="text-xs text-slate-400">lançou {dataCurta(n.lancamento, anoRef)}</p>
+                                        </>
+                                    }
+                                />
+                            ))}
+                        </Lista>
+                        <p className="text-[11px] text-slate-400 mt-2">
+                            O enunciado do KR manda tirar da conta quem relançou trocando de dono. Relançamento pelo
+                            mesmo dono continua na coorte — inclusive quem só virou MEI (CPF que vira CNPJ).
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
-// ── Objetivo 4 ───────────────────────────────────────────────────────────
+// ── KR 2 — lojas engajadas ───────────────────────────────────────────────
 
-function PainelPedidosCd({ kr41, lojas, mesDoCorte, onTirar }: {
-    kr41: FigurasKr41;
-    lojas: OkrLojaCd[];
-    /** 'YYYY-MM' do corte — separa mês corrido de mês que ainda não chegou. */
-    mesDoCorte: string;
+function Tendencia({ loja }: { loja: OkrLojaEngajada }) {
+    const delta = loja.pedidos28d - loja.pedidos28dAnterior;
+    if (delta === 0) return <span className="text-slate-300 dark:text-slate-600">=</span>;
+    const sobe = delta > 0;
+    return (
+        <span
+            className={sobe ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}
+            title={`${loja.pedidos28dAnterior} na janela anterior`}
+        >
+            {sobe ? '▲' : '▼'} {Math.abs(delta)}
+        </span>
+    );
+}
+
+function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar }: {
+    lojas: OkrLojaEngajada[];
+    kr2: FigurasKr2;
+    p: OkrParametros;
+    anoRef: string;
     onTirar: (alvo: ParceiroAlvo) => void;
 }) {
-    const top = lojas.filter(l => l.pedidosTrimestre > 0).slice(0, 40);
+    const engajadas = lojas.filter(l => l.engajada).sort((a, b) => b.pedidos28d - a.pedidos28d);
+    const quaseLa = lojas
+        .filter(l => !l.engajada && l.pedidos28d >= p.pedidosEngajada / 2)
+        .sort((a, b) => b.pedidos28d - a.pedidos28d);
+    const longe = lojas
+        .filter(l => !l.engajada && l.pedidos28d < p.pedidosEngajada / 2)
+        .sort((a, b) => b.pedidos28d - a.pedidos28d);
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-                <TituloLista>Acumulado contra o esperado</TituloLista>
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-800/50">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                                <th className="px-3 py-2 text-left font-semibold">Mês</th>
-                                <th className="px-3 py-2 text-right font-semibold">No mês</th>
-                                <th className="px-3 py-2 text-right font-semibold">Acumulado</th>
-                                <th className="px-3 py-2 text-right font-semibold">Esperado</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                            {kr41.porMes.map(m => {
-                                // Mês que ainda não começou não tem acumulado para
-                                // julgar — repetir o número de hoje em vermelho diria
-                                // que novembro já fracassou em outubro.
-                                const futuro = m.mes > mesDoCorte;
-                                const bateu = m.acumulado >= m.checkpoint;
-                                return (
-                                    <tr key={m.mes}>
-                                        <td className={`px-3 py-2 font-medium ${futuro ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>{mesCurto(m.mes)}</td>
-                                        <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{futuro ? '—' : num(m.pedidos)}</td>
-                                        <td className={`px-3 py-2 text-right tabular-nums font-bold ${futuro ? 'text-slate-300 dark:text-slate-600'
-                                            : bateu ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                                            {futuro ? '—' : num(m.acumulado)}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums text-slate-400">{num(m.checkpoint)}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-2">
-                    Pedido confirmado ou recebido. Cancelado e Pix não pago ficam de fora, como manda o KR. Desafio do
-                    trimestre: {num(kr41.desafio)}.
-                </p>
-            </div>
-
-            <div>
-                <TituloLista contagem={top.length}>Quem está gerando os pedidos</TituloLista>
+                <TituloLista contagem={quaseLa.length}>
+                    Quase lá — {Math.ceil(p.pedidosEngajada / 2)} a {p.pedidosEngajada - 1} pedidos
+                </TituloLista>
+                {kr2.faltam > 0 && (
+                    <Faltam texto={`${faltamTexto(kr2.faltam, 'loja', 'lojas')} para ${kr2.metaPct}%, e há ${quaseLa.length} nesta faixa.`} />
+                )}
                 <Lista>
-                    {top.length === 0 ? (
-                        <Vazio texto="Nenhum pedido de Cardápio Digital no trimestre." />
-                    ) : top.map(l => (
+                    {quaseLa.length === 0 ? (
+                        <Vazio texto="Nenhuma loja nesta faixa." />
+                    ) : quaseLa.map(l => (
                         <LinhaParceiro
                             key={l.id}
                             parceiro={l}
-                            acoes={<BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(l)} />}
+                            onTirar={onTirar}
                             direita={
                                 <>
-                                    <p className="font-bold tabular-nums text-slate-700 dark:text-slate-200">{num(l.pedidosTrimestre)}</p>
-                                    <p className="text-xs text-slate-400">{num(l.pedidos30d)} em 30d{l.ativa ? '' : ' · loja desligada'}</p>
+                                    <p className="font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                                        {l.pedidos28d} <Tendencia loja={l} />
+                                    </p>
+                                    <p className="text-xs text-slate-400">{faltamTexto(p.pedidosEngajada - l.pedidos28d, 'pedido', 'pedidos')}</p>
                                 </>
                             }
                         />
                     ))}
                 </Lista>
+                <p className="text-[11px] text-slate-400 mt-2">
+                    É daqui que o KR cresce: cada uma destas precisa de poucos pedidos a mais em {p.janelaEngajada} dias.
+                    A seta compara com a janela anterior ({diaMes(p.desdeAnterior)} a {diaMes(p.ateAnterior)}).
+                </p>
+            </div>
+
+            <div className="space-y-6">
+                <div>
+                    <TituloLista contagem={engajadas.length}>
+                        Engajadas — {p.pedidosEngajada}+ pedidos desde {diaMes(p.desdeEngajada)}
+                    </TituloLista>
+                    <Lista altura="max-h-[24vh]">
+                        {engajadas.length === 0 ? (
+                            <Vazio texto="Nenhuma loja engajada na janela." />
+                        ) : engajadas.map(l => (
+                            <LinhaParceiro
+                                key={l.id}
+                                parceiro={l}
+                                onTirar={onTirar}
+                                direita={
+                                    <>
+                                        <p className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                            {l.pedidos28d} <Tendencia loja={l} />
+                                        </p>
+                                        <p className="text-xs text-slate-400">{l.cruzou ? 'virou o jogo nesta janela' : 'conta no KR'}</p>
+                                    </>
+                                }
+                            />
+                        ))}
+                    </Lista>
+                    {(kr2.cruzaram > 0 || kr2.cairam > 0) && (
+                        <p className="text-[11px] text-slate-400 mt-2">
+                            {kr2.cruzaram > 0 && <><strong className="text-emerald-600/80 dark:text-emerald-400/80">{kr2.cruzaram} cruzaram</strong> a régua nesta janela</>}
+                            {kr2.cruzaram > 0 && kr2.cairam > 0 && ' · '}
+                            {kr2.cairam > 0 && <><strong className="text-red-600/80 dark:text-red-400/80">{kr2.cairam} caíram</strong> dela</>}
+                            {' '}— é o antes→depois que vai para o relatório semanal.
+                        </p>
+                    )}
+                </div>
+
+                <div>
+                    <TituloLista contagem={longe.length}>
+                        Longe — menos de {Math.ceil(p.pedidosEngajada / 2)} pedidos
+                    </TituloLista>
+                    <Lista altura="max-h-[20vh]">
+                        {longe.length === 0 ? (
+                            <Vazio texto="Nenhuma loja nesta faixa. 🎉" />
+                        ) : longe.map(l => (
+                            <LinhaParceiro
+                                key={l.id}
+                                parceiro={l}
+                                onTirar={onTirar}
+                                direita={
+                                    <>
+                                        <p className="font-bold tabular-nums text-slate-500 dark:text-slate-400">{l.pedidos28d}</p>
+                                        <p className="text-xs text-slate-400">
+                                            {l.ultimoPedido === null
+                                                ? 'nunca vendeu'
+                                                : `último em ${dataCurta(l.ultimoPedido, anoRef)}`}
+                                        </p>
+                                    </>
+                                }
+                            />
+                        ))}
+                    </Lista>
+                </div>
             </div>
         </div>
     );
 }
 
-function PainelLojasCd({ lojas, p, desde, onTirar }: {
+// ── KR 3 — faturamento no Cardápio Digital ───────────────────────────────
+
+function PainelFaturamento({ lojas, kr3, p, trimestre, onTirar }: {
     lojas: OkrLojaCd[];
+    kr3: FigurasKr3;
     p: OkrParametros;
-    desde: string;
+    trimestre: { mesCorrente: string; mesAnterior: string };
     onTirar: (alvo: ParceiroAlvo) => void;
 }) {
-    const ativas = lojas.filter(l => l.pedidos30d >= p.pedidosLojaAtiva);
-    const quase = lojas.filter(l => l.pedidos30d < p.pedidosLojaAtiva && l.pedidos30d >= p.pedidosLojaAtiva / 2);
+    const acima = lojas.filter(l => l.acima);
+    const quaseLa = lojas
+        .filter(l => !l.acima && l.faturamentoMes >= p.faturamentoMinimo / 2)
+        .sort((a, b) => b.faturamentoMes - a.faturamentoMes);
+    const abaixo = lojas
+        .filter(l => !l.acima && l.faturamentoMes < p.faturamentoMinimo / 2)
+        .sort((a, b) => b.faturamentoMes - a.faturamentoMes);
 
-    const linha = (l: OkrLojaCd) => (
+    const linha = (l: OkrLojaCd, tom: string, sub: string) => (
         <LinhaParceiro
             key={l.id}
             parceiro={l}
-            acoes={<BotaoLinha icone="do_not_disturb_on" titulo="Tirar esta loja da conta da OKR" tom="vermelho" onClick={() => onTirar(l)} />}
+            onTirar={onTirar}
             direita={
                 <>
-                    <p className={`font-bold tabular-nums ${l.pedidos30d >= p.pedidosLojaAtiva ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                        {num(l.pedidos30d)}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                        {l.pedidos30d >= p.pedidosLojaAtiva
-                            ? 'conta no KR'
-                            : `faltam ${p.pedidosLojaAtiva - l.pedidos30d} para contar`}
-                    </p>
+                    <p className={`font-bold tabular-nums ${tom}`}>{formatBRL(l.faturamentoMes)}</p>
+                    <p className="text-xs text-slate-400">{sub}</p>
                 </>
             }
         />
@@ -631,25 +524,66 @@ function PainelLojasCd({ lojas, p, desde, onTirar }: {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-                <TituloLista contagem={ativas.length}>
-                    Ativas — {p.pedidosLojaAtiva}+ pedidos desde {diaMes(desde)}
+                <TituloLista contagem={quaseLa.length}>
+                    Quase lá — entre {formatBRL(p.faturamentoMinimo / 2)} e {formatBRL(p.faturamentoMinimo)}
                 </TituloLista>
-                <Lista>{ativas.length === 0 ? <Vazio texto="Nenhuma loja ativa na janela." /> : ativas.map(linha)}</Lista>
-            </div>
-            <div>
-                <TituloLista contagem={quase.length}>
-                    Quase lá — entre {Math.ceil(p.pedidosLojaAtiva / 2)} e {p.pedidosLojaAtiva - 1} pedidos
-                </TituloLista>
-                <Lista>{quase.length === 0 ? <Vazio texto="Nenhuma loja na faixa de empurrão." /> : quase.map(linha)}</Lista>
+                {kr3.faltam > 0 && (
+                    <Faltam texto={`${faltamTexto(kr3.faltam, 'loja', 'lojas')} para ${kr3.metaPct}%, e há ${quaseLa.length} nesta faixa.`} />
+                )}
+                <Lista>
+                    {quaseLa.length === 0 ? (
+                        <Vazio texto="Nenhuma loja nesta faixa." />
+                    ) : quaseLa.map(l => linha(
+                        l,
+                        'text-amber-600 dark:text-amber-400',
+                        `faltam ${formatBRL(p.faturamentoMinimo - l.faturamentoMes)}${l.ligada ? '' : ' · loja desligada'}`,
+                    ))}
+                </Lista>
                 <p className="text-[11px] text-slate-400 mt-2">
-                    É daqui que o KR cresce: cada uma destas precisa de poucos pedidos a mais por mês para virar ativa.
+                    O KR é mensal e {mesCurto(trimestre.mesCorrente)} ainda está correndo — em{' '}
+                    {mesCurto(trimestre.mesAnterior)} fecharam <strong>{kr3.acimaMesAnterior}</strong> lojas
+                    ({pctTexto(kr3.pctMesAnterior)}), que é a régua de leitura até o mês virar.
                 </p>
+            </div>
+
+            <div className="space-y-6">
+                <div>
+                    <TituloLista contagem={acima.length}>
+                        Acima de {formatBRL(p.faturamentoMinimo)} em {mesCurto(trimestre.mesCorrente)}
+                    </TituloLista>
+                    <Lista altura="max-h-[24vh]">
+                        {acima.length === 0 ? (
+                            <Vazio texto="Nenhuma loja passou da régua neste mês." />
+                        ) : acima.map(l => linha(l, 'text-emerald-600 dark:text-emerald-400', 'conta no KR'))}
+                    </Lista>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                        Faturamento total do mês nas {num(kr3.base)} lojas com contrato vivo: {formatBRL(kr3.faturamentoTotal)}.
+                    </p>
+                </div>
+
+                <div>
+                    <TituloLista contagem={abaixo.length}>
+                        Longe — abaixo de {formatBRL(p.faturamentoMinimo / 2)}
+                    </TituloLista>
+                    <Lista altura="max-h-[20vh]">
+                        {abaixo.length === 0 ? (
+                            <Vazio texto="Nenhuma loja nesta faixa. 🎉" />
+                        ) : abaixo.map(l => linha(
+                            l,
+                            'text-slate-500 dark:text-slate-400',
+                            l.faturamentoMes === 0 ? 'não faturou no mês' : `${l.ligada ? '' : 'loja desligada'}`,
+                        ))}
+                    </Lista>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                        {kr3.semFaturamento} com contrato vivo não faturaram nada em {mesCurto(trimestre.mesCorrente)}.
+                    </p>
+                </div>
             </div>
         </div>
     );
 }
 
-// ── por cidade (só o objetivo 2) ─────────────────────────────────────────
+// ── por cidade (só o Bigou App) ──────────────────────────────────────────
 
 function TabelaCidades({ linhas, krSelecionado }: { linhas: LinhaCidade[]; krSelecionado: KrId }) {
     return (
@@ -658,21 +592,21 @@ function TabelaCidades({ linhas, krSelecionado }: { linhas: LinhaCidade[]; krSel
                 <thead>
                     <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700">
                         <th className="px-3 py-2 text-left font-semibold">Cidade</th>
-                        <th className="px-3 py-2 text-right font-semibold">KR 2.2 Safra</th>
-                        <th className="px-3 py-2 text-right font-semibold">KR 2.3 Revertidas</th>
+                        <th className="px-3 py-2 text-right font-semibold">KR 1 Novos</th>
+                        <th className="px-3 py-2 text-right font-semibold">KR 2 Engajadas</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                     {linhas.map(l => (
                         <tr key={l.cidade}>
                             <td className="px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{cidadeCurta(l.cidade)}</td>
-                            <td className={`px-3 py-2 text-right tabular-nums ${krSelecionado === 'kr22' ? 'bg-slate-50 dark:bg-slate-800/60' : ''}`}>
-                                <span className="font-bold text-slate-700 dark:text-slate-200">{l.kr22.atingiram}</span>
-                                <span className="text-slate-400"> de {l.kr22.coorte} lançados</span>
+                            <td className={`px-3 py-2 text-right tabular-nums ${krSelecionado === 'kr1' ? 'bg-slate-50 dark:bg-slate-800/60' : ''}`}>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">{l.kr1.atingiram}</span>
+                                <span className="text-slate-400"> de {l.kr1.coorte} lançados</span>
                             </td>
-                            <td className={`px-3 py-2 text-right tabular-nums ${krSelecionado === 'kr23' ? 'bg-slate-50 dark:bg-slate-800/60' : ''}`}>
-                                <span className="font-bold text-slate-700 dark:text-slate-200">{l.kr23.revertidas}</span>
-                                <span className="text-slate-400"> de {l.kr23.noPlano} no plano</span>
+                            <td className={`px-3 py-2 text-right tabular-nums ${krSelecionado === 'kr2' ? 'bg-slate-50 dark:bg-slate-800/60' : ''}`}>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">{pctTexto(l.kr2.pct)}</span>
+                                <span className="block text-[11px] text-slate-400">{l.kr2.engajadas}/{l.kr2.base}</span>
                             </td>
                         </tr>
                     ))}
@@ -682,27 +616,22 @@ function TabelaCidades({ linhas, krSelecionado }: { linhas: LinhaCidade[]; krSel
     );
 }
 
-// ── marcações ────────────────────────────────────────────────────────────
+// ── marcação "fora da conta" ─────────────────────────────────────────────
 
 /**
- * Modal das duas marcações. "Fora da conta" exige motivo: esse número vai para
- * o CEO, e tirar uma loja sem dizer por quê é a diferença entre limpar a base e
- * maquiar o KR. "Crítica" só aumenta o denominador do KR 2.3 — pede contexto,
- * não justificativa.
+ * O motivo é obrigatório de propósito: esse número vai para o CEO, e tirar uma
+ * loja sem dizer por quê é a diferença entre limpar a base e maquiar o KR.
  */
-function ModalMarcar({ parceiro, modo, salvando, onConfirmar, onFechar }: {
+function ModalTirarDaConta({ parceiro, salvando, onConfirmar, onFechar }: {
     parceiro: ParceiroAlvo;
-    modo: ModoMarcacao;
     salvando: boolean;
-    onConfirmar: (motivo: string | null, observacao: string) => void;
+    onConfirmar: (motivo: string, observacao: string) => void;
     onFechar: () => void;
 }) {
     const [motivo, setMotivo] = useState('');
     const [observacao, setObservacao] = useState('');
-    const ehFora = modo === 'fora';
-    const def = ehFora && motivo ? motivoExclusaoDef(motivo) : null;
+    const def = motivo ? motivoExclusaoDef(motivo) : null;
     const faltaDetalhe = Boolean(def?.pedeDetalhe) && observacao.trim().length === 0;
-    const podeSalvar = ehFora ? Boolean(motivo) && !faltaDetalhe : true;
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onFechar}>
@@ -711,9 +640,7 @@ function ModalMarcar({ parceiro, modo, salvando, onConfirmar, onFechar }: {
                 onClick={e => e.stopPropagation()}
             >
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
-                    <h2 className="font-bold text-slate-900 dark:text-white">
-                        {ehFora ? 'Tirar da conta da OKR' : 'Marcar como crítica de cancelamento'}
-                    </h2>
+                    <h2 className="font-bold text-slate-900 dark:text-white">Tirar da conta da OKR</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                         {parceiro.nome} <span className="text-xs text-slate-400 tabular-nums">#{parceiro.id}</span>
                         {parceiro.cidade ? ` · ${cidadeCurta(parceiro.cidade)}` : ''}
@@ -722,25 +649,22 @@ function ModalMarcar({ parceiro, modo, salvando, onConfirmar, onFechar }: {
 
                 <div className="px-5 py-4 space-y-3">
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {ehFora
-                            ? 'Sai de todos os KRs ao mesmo tempo, para todo mundo que abrir o painel. Continua visível na lista "fora da conta" e dá para devolver quando quiser.'
-                            : 'Entra no universo do KR 2.3 mesmo sem estar parada, e passa a contar como revertida quando emendar as 4 semanas com cancelamento baixo.'}
+                        Sai dos três KRs ao mesmo tempo, para todo mundo que abrir o painel. Continua visível na lista
+                        "fora da conta" e dá para devolver quando quiser.
                     </p>
-                    {ehFora && (
-                        <label className="block">
-                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Motivo</span>
-                            <select
-                                value={motivo}
-                                onChange={e => setMotivo(e.target.value)}
-                                className="mt-1 w-full text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none"
-                            >
-                                <option value="">Escolha o motivo…</option>
-                                {MOTIVOS_EXCLUSAO.map(m => (
-                                    <option key={m.motivo} value={m.motivo}>{m.label}</option>
-                                ))}
-                            </select>
-                        </label>
-                    )}
+                    <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Motivo</span>
+                        <select
+                            value={motivo}
+                            onChange={e => setMotivo(e.target.value)}
+                            className="mt-1 w-full text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 px-3 py-2 focus:outline-none"
+                        >
+                            <option value="">Escolha o motivo…</option>
+                            {MOTIVOS_EXCLUSAO.map(m => (
+                                <option key={m.motivo} value={m.motivo}>{m.label}</option>
+                            ))}
+                        </select>
+                    </label>
                     <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                             Observação {def?.pedeDetalhe ? '(obrigatória)' : '(opcional)'}
@@ -765,13 +689,11 @@ function ModalMarcar({ parceiro, modo, salvando, onConfirmar, onFechar }: {
                     </button>
                     <button
                         type="button"
-                        disabled={!podeSalvar || salvando}
-                        onClick={() => onConfirmar(ehFora ? motivo : null, observacao)}
-                        className={`text-sm px-3 py-2 rounded-lg text-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-                            ehFora ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'
-                        }`}
+                        disabled={!motivo || faltaDetalhe || salvando}
+                        onClick={() => onConfirmar(motivo, observacao)}
+                        className="text-sm px-3 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
-                        {salvando ? 'Salvando…' : ehFora ? 'Tirar da conta' : 'Marcar como crítica'}
+                        {salvando ? 'Tirando…' : 'Tirar da conta'}
                     </button>
                 </div>
             </div>
@@ -779,20 +701,17 @@ function ModalMarcar({ parceiro, modo, salvando, onConfirmar, onFechar }: {
     );
 }
 
-function PainelMarcacoes({ titulo, rodape, marcacoes, comMotivo, noRecorte, onDesfazer }: {
-    titulo: string;
-    rodape: string;
+function PainelForaDaConta({ marcacoes, noRecorte, onDevolver }: {
     marcacoes: Marcacao[];
-    comMotivo: boolean;
     noRecorte: (id: number) => { nome: string; cidade: string } | null;
-    onDesfazer: (id: string) => void;
+    onDevolver: (id: string) => void;
 }) {
     return (
         <div className="mt-6">
-            <TituloLista contagem={marcacoes.length}>{titulo}</TituloLista>
+            <TituloLista contagem={marcacoes.length}>Fora da conta</TituloLista>
             <Lista altura="max-h-[30vh]">
                 {marcacoes.map(m => {
-                    const def = comMotivo && m.motivo ? motivoExclusaoDef(m.motivo) : null;
+                    const def = m.motivo ? motivoExclusaoDef(m.motivo) : null;
                     const vivo = noRecorte(Number(m.partnerId));
                     const nome = vivo?.nome ?? m.nome ?? `#${m.partnerId}`;
                     const cidade = vivo?.cidade ?? m.cidade ?? '';
@@ -815,149 +734,113 @@ function PainelMarcacoes({ titulo, rodape, marcacoes, comMotivo, noRecorte, onDe
                                         {def.chip}
                                     </span>
                                 )}
-                                <BotaoLinha icone="undo" titulo="Desfazer esta marcação" tom="verde" onClick={() => onDesfazer(m.partnerId)} />
+                                <button
+                                    type="button"
+                                    onClick={() => onDevolver(m.partnerId)}
+                                    title="Devolver esta loja para a conta da OKR"
+                                    className="p-1 rounded-lg text-slate-300 dark:text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                >
+                                    <span className="material-symbols-outlined text-[18px]">undo</span>
+                                </button>
                             </div>
                         </div>
                     );
                 })}
             </Lista>
-            <p className="text-[11px] text-slate-400 mt-2">{rodape}</p>
+            <p className="text-[11px] text-slate-400 mt-2">
+                Estas lojas não entram em nenhum KR. Devolver recalcula os números na hora.
+            </p>
         </div>
     );
 }
 
 // ── tela ─────────────────────────────────────────────────────────────────
 
-const OBJETIVOS: { id: 2 | 4; titulo: string; escopo: string; krs: KrId[] }[] = [
+const OBJETIVOS: { titulo: string; escopo: string; krs: KrId[] }[] = [
     {
-        id: 2,
-        titulo: 'Oferta e retenção de parceiros nas 5 cidades',
+        titulo: 'Bigou App',
         escopo: 'marketplace, só nas cidades da OKR',
-        krs: ['kr22', 'kr23'],
+        krs: ['kr1', 'kr2'],
     },
     {
-        id: 4,
-        titulo: 'Base do Cardápio Digital',
+        titulo: 'Cardápio Digital',
         escopo: 'base inteira do CD, sem recorte de cidade',
-        krs: ['kr41', 'kr42'],
+        krs: ['kr3'],
     },
 ];
 
 export default function OkrView() {
     const [trimestre, setTrimestre] = useState(trimestreAtual);
-    const [kr, setKr] = useState<KrId>('kr23');
-    const [alvo, setAlvo] = useState<{ parceiro: ParceiroAlvo; modo: ModoMarcacao } | null>(null);
+    const [kr, setKr] = useState<KrId>('kr2');
+    const [alvo, setAlvo] = useState<ParceiroAlvo | null>(null);
     const [salvando, setSalvando] = useState(false);
     const { dados, loading, error, refetch } = useOkrTrimestre(trimestre);
     const fora = useExclusaoOkr();
-    const critica = useCriticaOkr();
-    const plano = useRecuperacaoOkr();
     const { user } = useAuth();
 
     const opcoes = useMemo(() => trimestresRecentes(4), []);
+    // Vem do trimestre que o servidor realmente calculou, não do estado local:
+    // os dois podem discordar, e quem manda no rótulo é o dado que está na tela.
     const ehAtual = (dados?.trimestre.id ?? trimestre) === trimestreAtual();
 
     const figuras = useMemo(
-        () => (dados ? calcularFiguras(dados, fora.ids, critica.ids, plano.ids) : null),
-        [dados, fora.ids, critica.ids, plano.ids],
+        () => (dados ? calcularFiguras(dados, fora.ids) : null),
+        [dados, fora.ids],
     );
 
-    const porData = (a: Marcacao, b: Marcacao) => b.quando.localeCompare(a.quando);
-    const listaFora = useMemo(() => Object.values(fora.marcacoes).sort(porData), [fora.marcacoes]);
-    const listaCritica = useMemo(() => Object.values(critica.marcacoes).sort(porData), [critica.marcacoes]);
+    const listaFora = useMemo(
+        () => Object.values(fora.marcacoes).sort((a, b) => b.quando.localeCompare(a.quando)),
+        [fora.marcacoes],
+    );
 
     const diasRestantes = dados
         ? Math.max(Math.round((Date.parse(`${dados.trimestre.fim}T00:00:00Z`) - Date.parse(`${dados.trimestre.corte}T00:00:00Z`)) / 86400000), 0)
         : 0;
 
-    /** Fração do trimestre já corrida — vira o "ritmo" dos KRs sem checkpoint. */
-    const andamento = dados
-        ? Math.min(Math.max(
-            (Date.parse(`${dados.trimestre.corte}T00:00:00Z`) - Date.parse(`${dados.trimestre.inicio}T00:00:00Z`)) /
-            (Date.parse(`${dados.trimestre.fim}T00:00:00Z`) - Date.parse(`${dados.trimestre.inicio}T00:00:00Z`)), 0), 1)
-        : 0;
-
-    const quem = user?.name || user?.email || null;
-
-    const confirmarMarcacao = async (motivo: string | null, observacao: string) => {
+    const confirmarExclusao = async (motivo: string, observacao: string) => {
         if (!alvo) return;
         setSalvando(true);
-        const hook = alvo.modo === 'fora' ? fora : critica;
-        await hook.marcar(alvo.parceiro.id, {
+        await fora.marcar(alvo.id, {
             motivo,
             observacao,
-            nome: alvo.parceiro.nome,
-            cidade: alvo.parceiro.cidade,
-            quem,
+            nome: alvo.nome,
+            cidade: alvo.cidade,
+            quem: user?.name || user?.email || null,
         });
         setSalvando(false);
         setAlvo(null);
     };
 
-    const alternarCritica = (parceiro: ParceiroAlvo, marcada: boolean) => {
-        if (marcada) { void critica.desmarcar(parceiro.id); return; }
-        setAlvo({ parceiro, modo: 'critica' });
-    };
-
-    // Entrar no plano não pede justificativa: é escolher em quem trabalhar, e
-    // exigir um formulário a cada loja faria o CS desistir de curar a lista.
-    const alternarPlano = (parceiro: ParceiroAlvo, dentro: boolean) => {
-        if (dentro) { void plano.desmarcar(parceiro.id); return; }
-        void plano.marcar(parceiro.id, { nome: parceiro.nome, cidade: parceiro.cidade, quem });
-    };
-
-    const selecionarTodas = (lojas: ParceiroAlvo[]) => {
-        void plano.marcarVarios(lojas.map(l => ({
-            partnerId: l.id,
-            dados: { nome: l.nome, cidade: l.cidade, quem },
-        })));
-    };
-
     const cartoes: Record<KrId, Omit<React.ComponentProps<typeof KrCard>, 'selecionado' | 'onSelect'>> | null =
         dados && figuras ? {
-            kr22: {
-                id: 'kr22',
-                rotulo: 'KR 2.2 · Safra 14d',
+            kr1: {
+                id: 'kr1',
+                rotulo: 'KR 1 · Novos parceiros',
                 titulo: `${dados.parametros.pedidosNovos} pedidos nos primeiros ${dados.parametros.janelaNovos} dias`,
-                feito: figuras.kr22.feito,
-                meta: figuras.kr22.meta,
-                progressoPct: figuras.kr22.progressoPct,
-                referencia: { valor: Math.round(figuras.kr22.meta * andamento), rotulo: 'ritmo do trimestre' },
-                detalhe: `${figuras.kr22.coorte} lançados · ${figuras.kr22.naJanela} ainda na janela · ${figuras.kr22.perdidos} fecharam sem bater`,
-                foraDaConta: figuras.foraDaConta.kr22,
+                figuras: figuras.kr1,
+                unidade: 'lançados no trimestre',
+                detalhe: `${figuras.kr1.naJanela} ainda na janela · ${figuras.kr1.perdidos} fecharam sem bater${
+                    figuras.kr1.trocaDono > 0 ? ` · ${figuras.kr1.trocaDono} fora por troca de dono` : ''}`,
+                foraDaConta: figuras.foraDaConta.kr1,
+                potencialPct: figuras.kr1.potencialPct,
             },
-            kr23: {
-                id: 'kr23',
-                rotulo: 'KR 2.3 · Lojas em risco',
-                titulo: `${dados.parametros.semanasReversao} semanas seguidas com pedido e cancelamento < ${dados.parametros.tetoCancelamentoPct}%`,
-                feito: figuras.kr23.feito,
-                meta: figuras.kr23.meta,
-                progressoPct: figuras.kr23.progressoPct,
-                referencia: { valor: Math.round(figuras.kr23.meta * andamento), rotulo: 'ritmo do trimestre' },
-                detalhe: `${figuras.kr23.noPlano} no plano · ${figuras.kr23.pendentes} a reverter · ${figuras.kr23.elegiveisFora} elegíveis fora`,
-                foraDaConta: figuras.foraDaConta.kr23,
+            kr2: {
+                id: 'kr2',
+                rotulo: 'KR 2 · Lojas engajadas',
+                titulo: `${dados.parametros.pedidosEngajada}+ pedidos nos últimos ${dados.parametros.janelaEngajada} dias`,
+                figuras: figuras.kr2,
+                unidade: 'parceiros ativos',
+                detalhe: `${figuras.kr2.quaseLa} quase lá · ${figuras.kr2.cruzaram} cruzaram · ${figuras.kr2.cairam} caíram`,
+                foraDaConta: figuras.foraDaConta.kr2,
             },
-            kr41: {
-                id: 'kr41',
-                rotulo: 'KR 4.1 · Pedidos Cardápio',
-                titulo: 'Pedidos confirmados ou recebidos no Cardápio Digital',
-                feito: figuras.kr41.feito,
-                meta: figuras.kr41.meta,
-                progressoPct: figuras.kr41.progressoPct,
-                referencia: { valor: figuras.kr41.esperadoAgora, rotulo: 'esperado hoje' },
-                detalhe: `${mesCurto(dados.trimestre.corte)} fecha em ${num(figuras.kr41.checkpointAtual)} · desafio ${num(figuras.kr41.desafio)}`,
-                foraDaConta: figuras.foraDaConta.cd,
-            },
-            kr42: {
-                id: 'kr42',
-                rotulo: 'KR 4.2 · Lojas ativas',
-                titulo: `${dados.parametros.pedidosLojaAtiva}+ pedidos nos últimos ${dados.parametros.janelaLojaAtiva} dias`,
-                feito: figuras.kr42.feito,
-                meta: figuras.kr42.meta,
-                progressoPct: figuras.kr42.progressoPct,
-                referencia: { valor: figuras.kr42.esperadoAgora, rotulo: 'esperado hoje' },
-                detalhe: `${mesCurto(dados.trimestre.corte)} fecha em ${figuras.kr42.checkpointAtual} · partiu de ${figuras.kr42.base} · ${figuras.kr42.quaseLa} quase lá`,
-                foraDaConta: figuras.foraDaConta.cd,
+            kr3: {
+                id: 'kr3',
+                rotulo: 'KR 3 · Faturamento Cardápio',
+                titulo: `Faturando mais de ${formatBRL(dados.parametros.faturamentoMinimo)} no mês`,
+                figuras: figuras.kr3,
+                unidade: 'lojas com contrato vivo',
+                detalhe: `${mesCurto(dados.trimestre.mesAnterior)} fechou em ${pctTexto(figuras.kr3.pctMesAnterior)} · ${figuras.kr3.quaseLa} quase lá`,
+                foraDaConta: figuras.foraDaConta.kr3,
             },
         } : null;
 
@@ -1002,7 +885,7 @@ export default function OkrView() {
             </div>
 
             <div className="p-6">
-                {loading || fora.carregando || critica.carregando || plano.carregando ? (
+                {loading || fora.carregando ? (
                     <p className="text-sm text-slate-400">Calculando os KRs no banco…</p>
                 ) : error ? (
                     <div className="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-4 text-amber-700 dark:text-amber-300 text-sm">
@@ -1012,23 +895,18 @@ export default function OkrView() {
                     <p className="text-sm text-slate-400">Sem dados para este trimestre.</p>
                 ) : (
                     <>
-                        {(fora.erro || critica.erro || plano.erro) && (
+                        {fora.erro && (
                             <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-900/10 p-3 text-amber-700 dark:text-amber-300 text-sm">
-                                As marcações não estão sendo salvas ({fora.erro ?? critica.erro ?? plano.erro}). Faltam
-                                as tabelas okr_excluido / okr_critica / okr_recuperacao no Supabase — ver supabase/.
+                                As marcações não estão sendo salvas ({fora.erro}). Falta a tabela okr_excluido no
+                                Supabase — ver supabase/okr_excluido.sql.
                             </div>
                         )}
 
                         {OBJETIVOS.map(obj => (
-                            <div key={obj.id} className="mb-6">
-                                {/* h2, não h1: o h1 da tela é "OKR do trimestre", e dois
-                                    h1 na mesma página quebram a hierarquia para leitor de
-                                    tela. O peso visual é de headline do mesmo jeito. */}
-                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                                    Objetivo {obj.id} — {obj.titulo}
-                                </h2>
+                            <div key={obj.titulo} className="mb-6">
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{obj.titulo}</h2>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 mb-3">{obj.escopo}</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className={`grid grid-cols-1 gap-4 ${obj.krs.length > 1 ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:max-w-[50%]'}`}>
                                     {obj.krs.map(id => (
                                         <KrCard key={id} {...cartoes[id]} selecionado={kr === id} onSelect={setKr} />
                                     ))}
@@ -1037,83 +915,62 @@ export default function OkrView() {
                         ))}
 
                         <div className="mt-6">
-                            {kr === 'kr22' && (
-                                <PainelSafra
-                                    parceiros={figuras.novos}
-                                    p={dados.parametros}
-                                    onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
-                                />
-                            )}
-                            {kr === 'kr23' && (
-                                <PainelRisco
-                                    risco={figuras.risco}
-                                    figuras={figuras.kr23}
+                            {kr === 'kr1' && (
+                                <PainelNovos
+                                    coorte={figuras.coorteKr1}
+                                    foraPorTroca={figuras.foraPorTrocaDono}
+                                    kr1={figuras.kr1}
                                     p={dados.parametros}
                                     anoRef={dados.trimestre.inicio.slice(0, 4)}
-                                    onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
-                                    onCritica={alternarCritica}
-                                    onPlano={alternarPlano}
-                                    onSelecionarTodas={selecionarTodas}
+                                    onTirar={setAlvo}
                                 />
                             )}
-                            {kr === 'kr41' && (
-                                <PainelPedidosCd
-                                    kr41={figuras.kr41}
-                                    lojas={figuras.lojasCd}
-                                    mesDoCorte={dados.trimestre.corte.slice(0, 7)}
-                                    onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
-                                />
-                            )}
-                            {kr === 'kr42' && (
-                                <PainelLojasCd
-                                    lojas={figuras.lojasCd}
+                            {kr === 'kr2' && (
+                                <PainelEngajadas
+                                    lojas={figuras.engajamento}
+                                    kr2={figuras.kr2}
                                     p={dados.parametros}
-                                    desde={dados.parametros.desde30d}
-                                    onTirar={parceiro => setAlvo({ parceiro, modo: 'fora' })}
+                                    anoRef={dados.trimestre.inicio.slice(0, 4)}
+                                    onTirar={setAlvo}
+                                />
+                            )}
+                            {kr === 'kr3' && (
+                                <PainelFaturamento
+                                    lojas={figuras.lojasCd}
+                                    kr3={figuras.kr3}
+                                    p={dados.parametros}
+                                    trimestre={dados.trimestre}
+                                    onTirar={setAlvo}
                                 />
                             )}
                         </div>
 
-                        {(kr === 'kr22' || kr === 'kr23') && (
+                        {(kr === 'kr1' || kr === 'kr2') && (
                             <>
                                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-6 mb-2">
-                                    Por cidade — objetivo 2
+                                    Por cidade — Bigou App
                                 </p>
                                 <TabelaCidades linhas={figuras.porCidade} krSelecionado={kr} />
                             </>
                         )}
 
-                        {listaCritica.length > 0 && (
-                            <PainelMarcacoes
-                                titulo="Lista de risco de cancelamento"
-                                rodape="Ficam elegíveis ao plano do KR 2.3 mesmo sem estarem paradas. Desfazer só tira a elegibilidade — quem está no plano continua no plano."
-                                marcacoes={listaCritica}
-                                comMotivo={false}
-                                noRecorte={id => identificarNoRecorte(dados, id)}
-                                onDesfazer={critica.desmarcar}
-                            />
-                        )}
-
                         {listaFora.length > 0 && (
-                            <PainelMarcacoes
-                                titulo="Fora da conta"
-                                rodape="Estas lojas não entram em nenhum KR. Devolver recalcula os números na hora."
+                            <PainelForaDaConta
                                 marcacoes={listaFora}
-                                comMotivo
                                 noRecorte={id => identificarNoRecorte(dados, id)}
-                                onDesfazer={fora.desmarcar}
+                                onDevolver={fora.desmarcar}
                             />
                         )}
 
                         {!ehAtual && (
                             <p className="text-xs text-amber-600 dark:text-amber-400/80 mt-6">
-                                Trimestre fechado: o KR 2.3 usa a lista de lojas ativas de HOJE — suspensão de loja não
-                                tem histórico no banco, então quem foi suspenso depois não aparece na elegibilidade de lá.
+                                Trimestre fechado: o KR 2 usa a lista de parceiros ativos de HOJE — suspensão de loja não
+                                tem histórico no banco, então quem foi suspenso depois não aparece no denominador de lá.
                             </p>
                         )}
                         <p className="text-xs text-slate-400 mt-6">
-                            Objetivo 2: marketplace nas cidades da OKR. Objetivo 4: base inteira do Cardápio Digital — são
-                            bases disjuntas, por isso não há total somado. Banco de teste, réplica diária — pedidos até
+                            Bigou App: marketplace nas cidades da OKR. Cardápio Digital: base inteira — são bases
+                            disjuntas, por isso não há total somado. Banco de teste, réplica diária — pedidos até
                             {' '}{diaMes(dados.trimestre.dadosAte)}. Cálculo em {dados.elapsedMs ?? '—'}ms.
                         </p>
                     </>
@@ -1121,11 +978,10 @@ export default function OkrView() {
             </div>
 
             {alvo && (
-                <ModalMarcar
-                    parceiro={alvo.parceiro}
-                    modo={alvo.modo}
+                <ModalTirarDaConta
+                    parceiro={alvo}
                     salvando={salvando}
-                    onConfirmar={confirmarMarcacao}
+                    onConfirmar={confirmarExclusao}
                     onFechar={() => setAlvo(null)}
                 />
             )}

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { CIDADES_OKR } from '../config/cidadesOkr';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Os três KRs do trimestre — Netlify Function `okr-trimestre` (banco de teste).
+// Os três KRs de Sucesso do Cliente — Netlify Function `okr-trimestre`
+// (banco de teste). KR 1 e 2 são marketplace nas cidades da OKR; o KR 3 é a
+// base de Cardápio Digital inteira.
 //
 // Os prefixos das cidades vão NA CHAMADA, vindos de config/cidadesOkr.ts: é a
 // mesma lista que acende o chip "Cidades OKR" no painel inteiro, e assim o
@@ -23,71 +25,70 @@ export interface OkrParceiroNovo {
     atingiu: boolean;
     concluida: boolean;
     diasRestantes: number;
-    cancelado: boolean;
+    /** Já tinha contrato antes deste lançamento. */
+    relancamento: boolean;
+    /** Relançou com documento diferente — sai da coorte do KR 1. */
+    trocaDono: boolean;
+    docAnterior: string;
+    docAtual: string;
 }
 
-export interface OkrLojaRisco {
+export interface OkrLojaEngajada {
     id: number;
     nome: string;
     cidade: string;
     lancamento: string;
+    pedidos28d: number;
+    /** A janela imediatamente anterior — o "antes" do antes→depois. */
+    pedidos28dAnterior: number;
+    engajada: boolean;
+    /** Cruzou a régua nesta janela: é resultado, não participação. */
+    cruzou: boolean;
+    /** Caiu da régua: o vazamento do KR. */
+    caiu: boolean;
     ultimoPedido: string | null;
     /** null = nenhum pedido no histórico consultado, não "há 0 dias". */
     diasSemPedido: number | null;
-    /** Maior silêncio do trimestre — 7+ põe a loja no universo do KR 2.3. */
-    maiorLacunaDias: number;
-    /** Da semana mais recente para a mais antiga. */
-    semanasComPedido: boolean[];
-    aceitos4sem: number;
-    cancelados4sem: number;
-    /** null = sem pedido na janela, não "0% de cancelamento". */
-    taxaCancelamentoPct: number | null;
 }
 
 export interface OkrLojaCd {
     id: number;
     nome: string;
     cidade: string;
-    /** delivery = 1 hoje. Pedido de loja já desligada continua contando. */
-    ativa: boolean;
+    /** delivery = 1 hoje. Contrato vivo com loja desligada existe. */
+    ligada: boolean;
     porMes: Record<string, number>;
-    pedidosTrimestre: number;
-    pedidos30d: number;
+    faturamentoMes: number;
+    acima: boolean;
 }
 
 export interface OkrParametros {
     janelaNovos: number;
     pedidosNovos: number;
-    metaKr22: number;
-    diasParado: number;
-    semanasReversao: number;
-    tetoCancelamentoPct: number;
-    metaKr23: number;
-    metaKr41: number;
-    desafioKr41: number;
-    checkpointsKr41: number[];
-    janelaLojaAtiva: number;
-    pedidosLojaAtiva: number;
-    metaKr42: number;
-    baseKr42: number;
-    checkpointsKr42: number[];
-    /** Da mais recente para a mais antiga. */
-    semanas: { de: string; ate: string }[];
-    desde30d: string;
+    metaKr1: number;
+    janelaEngajada: number;
+    pedidosEngajada: number;
+    metaKr2: number;
+    faturamentoMinimo: number;
+    metaKr3: number;
+    desdeEngajada: string;
+    desdeAnterior: string;
+    ateAnterior: string;
 }
 
 export interface OkrTrimestre {
     ok: true;
-    trimestre: { id: string; inicio: string; fim: string; corte: string; hoje: string; dadosAte: string; meses: string[] };
+    trimestre: {
+        id: string; inicio: string; fim: string; corte: string; hoje: string;
+        dadosAte: string; meses: string[]; mesCorrente: string; mesAnterior: string;
+    };
     cidades: string[];
     parametros: OkrParametros;
     // Listas nominais, sem placar: quem soma é utils/okrFiguras.ts, que precisa
-    // descontar as lojas fora da conta e somar as marcadas como críticas.
-    kr22: { meta: number; parceiros: OkrParceiroNovo[] };
-    kr23: { meta: number; parceiros: OkrLojaRisco[] };
-    cardapioDigital: { lojas: OkrLojaCd[] };
-    kr41: { meta: number; desafio: number; checkpoints: number[] };
-    kr42: { meta: number; base: number; checkpoints: number[] };
+    // descontar as lojas fora da conta antes de fechar a porcentagem.
+    kr1: { meta: number; parceiros: OkrParceiroNovo[] };
+    kr2: { meta: number; parceiros: OkrLojaEngajada[] };
+    kr3: { meta: number; lojas: OkrLojaCd[] };
     elapsedMs?: number;
 }
 

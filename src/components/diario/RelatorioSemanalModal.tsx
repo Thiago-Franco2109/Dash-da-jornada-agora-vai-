@@ -2,10 +2,10 @@ import { useCallback, useMemo } from 'react';
 import type { AnotacaoDiario } from '../../types/diario';
 import { useDiario } from '../../hooks/useDiario';
 import { useTrelloAtividadeHoje } from '../../hooks/useTrelloAtividadeHoje';
-import { useOkrTrimestre, trimestreAtual, rotuloTrimestre } from '../../hooks/useOkrTrimestre';
-import { useExclusaoOkr, useCriticaOkr, useRecuperacaoOkr } from '../../hooks/marcacoesOkr';
+import { useOkrTrimestre, trimestreAtual } from '../../hooks/useOkrTrimestre';
+import { useExclusaoOkr } from '../../hooks/marcacoesOkr';
 import { calcularFiguras } from '../../utils/okrFiguras';
-import { secoesRecuperacao } from '../../utils/relatorioRecuperacao';
+import { secoesEngajamento } from '../../utils/relatorioEngajamento';
 import type { BlocoExtra } from './RelatorioModal';
 import { janelaDaSemana, semanaAnterior, rotuloPeriodo, hojeSP, fimDaSemana } from '../../utils/diarioDatas';
 import { montarRelatorioSemanal } from '../../utils/relatorioSemanal';
@@ -49,35 +49,34 @@ export default function RelatorioSemanalModal({
         de: anterior.de, ate: anterior.ate, anexos: true,
     });
 
-    // ── Plano de recuperação (KR 2.3) ────────────────────────────────────
+    // ── Engajamento das lojas (KR 2) ─────────────────────────────────────
     const trimestre = trimestreAtual();
     const { dados: okr } = useOkrTrimestre(trimestre);
     const fora = useExclusaoOkr();
-    const critica = useCriticaOkr();
-    const plano = useRecuperacaoOkr();
 
     const figuras = useMemo(
-        () => (okr ? calcularFiguras(okr, fora.ids, critica.ids, plano.ids) : null),
-        [okr, fora.ids, critica.ids, plano.ids],
+        () => (okr ? calcularFiguras(okr, fora.ids) : null),
+        [okr, fora.ids],
     );
 
     const secoesPlano = useMemo(
         () => (okr && figuras
-            ? secoesRecuperacao({
-                risco: figuras.risco,
+            ? secoesEngajamento({
+                lojas: figuras.engajamento,
                 parametros: okr.parametros,
-                meta: figuras.kr23.meta,
-                trimestre: rotuloTrimestre(trimestre),
+                engajadas: figuras.kr2.feito,
+                base: figuras.kr2.base,
+                pct: figuras.kr2.pct,
             })
             : []),
-        [okr, figuras, trimestre],
+        [okr, figuras],
     );
 
     const blocosExtras: BlocoExtra[] = useMemo(
         () => (secoesPlano.length === 0 || !figuras ? [] : [{
             id: 'recuperacao',
-            titulo: 'Plano de recuperação (KR 2.3)',
-            detalhe: `${figuras.kr23.feito} viraram · ${figuras.kr23.pendentes} em andamento`,
+            titulo: 'Engajamento das lojas (KR 2)',
+            detalhe: `${figuras.kr2.cruzaram} viraram · ${figuras.kr2.quaseLa} quase lá · ${figuras.kr2.cairam} caíram`,
         }]),
         [secoesPlano, figuras],
     );
