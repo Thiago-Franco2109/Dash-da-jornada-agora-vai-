@@ -24,12 +24,24 @@ import type { Connection, RowDataPacket } from 'mysql2/promise';
  * interpola a posição da data alvo supondo crescimento parecido ao longo do
  * tempo, e desconta uma margem folgada.
  *
- * ── Por que a margem não é frescura ──────────────────────────────────────
- * A interpolação erra quando o volume muda de ritmo (mês de pico, migração
- * que inseriu tudo de uma vez). Errar para MAIS é inofensivo: lê algumas
- * dezenas de milhares de linhas a mais e o `WHERE data >= ?` filtra. Errar
- * para MENOS esconderia registro do usuário, e ninguém perceberia. Por isso a
- * margem é generosa e o resultado nunca passa de `MIN(id)`.
+ * ── Por que a margem não bastava ─────────────────────────────────────────
+ * A interpolação erra quando o volume muda de ritmo, e a base INTEIRA mudou
+ * de ritmo: ela cresceu. Chutar pela média dos sete anos coloca o alvo antigo
+ * à frente de onde ele está de verdade, porque os anos recentes têm muito mais
+ * linhas por dia que os antigos.
+ *
+ * Errar para MENOS é inofensivo: lê algumas dezenas de milhares de linhas a
+ * mais e o `WHERE data >= ?` filtra. Errar para MAIS esconde registro do
+ * usuário, em silêncio. A margem de 5% cobria janela de um ano e MEDIDA, não
+ * cobria janela longa: para `log` em 2023-11-01 a interpolação devolvia
+ * id 1.298.827 contra os 975.692 reais — 323 mil linhas que sumiriam da tela
+ * sem nenhum aviso. Em `cupom_desconto` o mesmo acontecia a partir de 2022.
+ *
+ * Por isso a estimativa agora é CONFERIDA: lê a data no id estimado e, se ela
+ * já passou do alvo, volta em passos que dobram (5%, 10%, 20%…) até ficar
+ * atrás. Cada passo é uma leitura pela PK — barata — e o caso comum (janela
+ * curta, estimativa certa) paga uma só. Esgotados os passos, devolve 0: a
+ * consulta fica lenta, nunca errada.
  *
  * ⚠️ Vale só para coluna de CRIAÇÃO, que cresce junto com o id. Não use sobre
  * `data_fim` de cupom ou qualquer data que o sistema edite depois.
@@ -42,7 +54,31 @@ import type { Connection, RowDataPacket } from 'mysql2/promise';
 /** Fração do intervalo de ids descontada como folga da interpolação. */
 const MARGEM = 0.05;
 
+/**
+ * Quantas vezes o passo pode dobrar antes de desistir. Começando em 5% e
+ * dobrando, seis tentativas cobrem 5+10+20+40+80+160% — mais que a tabela
+ * inteira, então na prática o laço sempre termina pela conferência.
+ */
+const MAX_PASSOS = 6;
+
 const FORMATO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * As duas pontas de cada tabela, lembradas entre chamadas.
+ *
+ * São duas idas ao banco (~300ms de latência pura) para descobrir números que
+ * não mudam de verdade: a primeira linha é imutável e a última anda alguns
+ * milhares de ids por minuto. Uma function que chama `idDesde` para três
+ * tabelas paga 0,9s só nisso, e paga de novo a cada troca de janela na tela.
+ *
+ * Ficar com valor velho não cria risco: quem garante a correção é a
+ * conferência lá embaixo, não a estimativa. O TTL curto é só para a
+ * interpolação não ficar enviesada numa instância de vida longa.
+ */
+const PONTAS_TTL_MS = 5 * 60 * 1000;
+const pontasMemo = new Map<string, { em: number; valor: [Ponta | null, Ponta | null] }>();
+
+interface Ponta { id: number; data: string }
 
 export async function idDesde(
     connection: Connection,
@@ -50,7 +86,7 @@ export async function idDesde(
     coluna: string,
     alvo: string,
 ): Promise<number> {
-    const ponta = async (ordem: 'ASC' | 'DESC') => {
+    const ponta = async (ordem: 'ASC' | 'DESC'): Promise<Ponta | null> => {
         // O filtro de data não é enfeite: `cupom_desconto` tem '0000-00-00'
         // (a data zero do MySQL) na primeira linha, e ela vira NaN em JS. Com
         // `ORDER BY id` o otimizador caminha pela PK e para na primeira linha
@@ -65,7 +101,16 @@ export async function idDesde(
         return r && FORMATO_DATA.test(String(r.d)) ? { id: Number(r.id), data: String(r.d) } : null;
     };
 
-    const [primeiro, ultimo] = await Promise.all([ponta('ASC'), ponta('DESC')]);
+    const memoKey = `${tabela}.${coluna}`;
+    const guardado = pontasMemo.get(memoKey);
+    let pontas: [Ponta | null, Ponta | null];
+    if (guardado && Date.now() - guardado.em < PONTAS_TTL_MS) {
+        pontas = guardado.valor;
+    } else {
+        pontas = await Promise.all([ponta('ASC'), ponta('DESC')]);
+        pontasMemo.set(memoKey, { em: Date.now(), valor: pontas });
+    }
+    const [primeiro, ultimo] = pontas;
     if (!primeiro || !ultimo || ultimo.id <= primeiro.id) return 0;
 
     // Alvo fora do intervalo: antes do começo lê tudo; depois do fim, o filtro
@@ -83,5 +128,33 @@ export async function idDesde(
     const estimado = primeiro.id + Math.floor(faixa * fracao) - Math.ceil(faixa * MARGEM);
     // Qualquer NaN que escape vira "sem corte": a consulta fica lenta, nunca
     // errada. Um id NaN iria direto para o SQL e derrubaria a function.
-    return Number.isFinite(estimado) ? Math.max(estimado, primeiro.id) : 0;
+    if (!Number.isFinite(estimado)) return 0;
+
+    /** Data da primeira linha a partir de um id — leitura pela PK, instantânea. */
+    const dataNoId = async (id: number): Promise<string | null> => {
+        const [linhas] = await connection.query<RowDataPacket[]>(
+            `SELECT DATE_FORMAT(\`${coluna}\`, '%Y-%m-%d') AS d
+             FROM \`${tabela}\`
+             WHERE id >= ? AND \`${coluna}\` > '1971-01-01'
+             ORDER BY id ASC LIMIT 1`,
+            [id],
+        );
+        const d = linhas[0]?.d;
+        return d && FORMATO_DATA.test(String(d)) ? String(d) : null;
+    };
+
+    // Conferência: o corte só serve se a linha que ele encontra ainda estiver
+    // ATRÁS do alvo. Se já passou, a interpolação cortou dentro da janela e
+    // estaria escondendo linhas — volta em passos que dobram até ficar atrás.
+    let candidato = Math.max(estimado, primeiro.id);
+    let passo = Math.max(Math.ceil(faixa * MARGEM), 1);
+    for (let i = 0; i < MAX_PASSOS; i++) {
+        if (candidato <= primeiro.id) return primeiro.id;
+        const d = await dataNoId(candidato);
+        if (d === null || d <= alvo) return candidato;
+        candidato -= passo;
+        passo *= 2;
+    }
+    // Estourou os passos (crescimento muito torto): sem corte. Lento, correto.
+    return 0;
 }
