@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format, subDays } from 'date-fns';
-import { formatarFormaPagamento, formatarMoedaBRL } from '../config/cdContracts';
+import { formatarMoedaBRL } from '../config/cdContracts';
 import { type EnrichedPerformanceRow, DESEMPENHO_WEEKS_COUNT, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel, getWeekValue } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep, type MenuFunnelSourceLink } from './MenuFunnel';
 import { ACCESS_DATA_SOURCE, THIAGO_DATA_SOURCE } from '../config/dataSource';
@@ -720,8 +720,26 @@ export default function PartnerDetailsView({
                                                 <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
                                                     {partner.valor_contrato != null ? formatarMoedaBRL(partner.valor_contrato) : '—'}
                                                 </p>
-                                                {partner.contrato_pagamento && (
-                                                    <p className="text-xs text-slate-400 mt-1">{formatarFormaPagamento(partner.contrato_pagamento)}</p>
+                                                {/* Rótulos já vêm legíveis do Trello ("Pix", "Cartão de Crédito"). */}
+                                                {(partner.contrato_plano || partner.contrato_pagamento) && (
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        {[partner.contrato_plano, partner.contrato_pagamento].filter(Boolean).join(' · ')}
+                                                    </p>
+                                                )}
+                                                {partner.contrato_derivado_do_total && (
+                                                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                                                        derivado do total do contrato
+                                                    </p>
+                                                )}
+                                                {partner.contrato_card_url && (
+                                                    <a
+                                                        href={partner.contrato_card_url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block"
+                                                    >
+                                                        ver card no Trello
+                                                    </a>
                                                 )}
                                             </div>
                                             <div>

@@ -1,0 +1,74 @@
+{
+  "_comment": "Retrato REDUZIDO da resposta de netlify/functions/cd-contratos.ts, só com os casos que src/preview-contratos-cd.tsx exercita. Não é fonte de verdade de contrato nenhum — o valor real vem sempre do Trello, em tempo de execução.",
+  "ok": true,
+  "atualizado_em": "2026-10-20T12:44:25.639Z",
+  "mrr_total": 5892.16,
+  "contratos_ativos": 65,
+  "contratos": [
+    {
+      "estabelecimento_id": 28210,
+      "estabelecimento": "LS Lanchonete",
+      "valor_mensal": 119.9,
+      "plano": "Mensalidade",
+      "forma_pagamento": "Cardápio Digital (Saldo Online)",
+      "link_contrato": "https://app.clicksign.com/accounts/283120/folders/121315773/documents/68ad9336-1cd8-44ea-8f77-114c36e1ece7",
+      "lista": "Treinado: Acompanhar Pagamento",
+      "ativo": true,
+      "card_url": "https://trello.com/c/sUwR59P5",
+      "derivado_do_total": false
+    },
+    {
+      "estabelecimento_id": 28062,
+      "estabelecimento": "Nani Lanches",
+      "valor_mensal": 59.93,
+      "plano": "12 meses",
+      "forma_pagamento": "Saldo Online (Cardápio)",
+      "lista": "Treinado: Acompanhar Pagamento",
+      "ativo": true,
+      "card_url": "https://trello.com/c/X33alaNx",
+      "derivado_do_total": true
+    },
+    {
+      "estabelecimento_id": 28014,
+      "estabelecimento": "Like Açaí",
+      "valor_mensal": 89.9,
+      "plano": "3 meses",
+      "forma_pagamento": "Cartão de crédito",
+      "lista": "Treinado: Acompanhar Pagamento",
+      "ativo": true,
+      "card_url": "https://trello.com/c/qAO9nr1a",
+      "derivado_do_total": true
+    },
+    {
+      "estabelecimento_id": 27987,
+      "estabelecimento": "Bebelinda Burguer",
+      "valor_mensal": 59.93,
+      "plano": "Assinatura Mensal",
+      "forma_pagamento": "Pix",
+      "lista": "Treinado: Acompanhar Pagamento",
+      "ativo": true,
+      "card_url": "https://trello.com/c/PkF2kSto",
+      "derivado_do_total": true
+    },
+    {
+      "estabelecimento_id": 28204,
+      "estabelecimento": "Lanchonete Rosestolato",
+      "valor_mensal": 89.9,
+      "plano": "Assinatura",
+      "forma_pagamento": "Cardápio Digital (Saldo Online)",
+      "link_contrato": "https://app.clicksign.com/accounts/283120/folders/244049112/documents/643234b2-06ec-4173-aca9-798765fa7a60",
+      "lista": "Treinado: Acompanhar Pagamento",
+      "ativo": true,
+      "card_url": "https://trello.com/c/to2hQUkR",
+      "derivado_do_total": false
+    }
+  ],
+  "aliases": {
+    "26501": 27987,
+    "26530": 28014,
+    "26600": 28062,
+    "27510": 28014,
+    "28047": 28210,
+    "28170": 28204
+  }
+}

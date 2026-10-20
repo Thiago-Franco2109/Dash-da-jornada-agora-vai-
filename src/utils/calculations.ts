@@ -1,5 +1,6 @@
 import type { PerformanceRow } from '../components/PerformanceTable';
-import { calcularPedidosPorDia, findContractForPartner, isMrrEmRisco, type ContractPayment, type ContractStatus } from '../config/cdContracts';
+import { calcularPedidosPorDia, isMrrEmRisco } from '../config/cdContracts';
+import type { ContratoCD } from '../hooks/useContratosCD';
 import { getManagerForPartner, type ProductModeKey } from '../config/managerMapping';
 import { getPartnerState, type PartnerState } from '../config/partnerState';
 import type { PausaOnboarding } from '../config/pausaOnboarding';
@@ -19,9 +20,16 @@ export type CalculatedMetrics = {
     risco_churn?: number;
     /** Contrato CD */
     valor_contrato?: number;
-    contrato_status?: ContractStatus;
-    contrato_pagamento?: ContractPayment;
-    contrato_vencimento?: string;
+    contrato_ativo?: boolean;
+    contrato_plano?: string;
+    contrato_pagamento?: string;
+    contrato_card_url?: string;
+    /** Lista do Trello onde o card está — a origem de `contrato_ativo`. */
+    contrato_lista?: string;
+    /** Mensalidade saiu de uma divisão do total do contrato, não de campo próprio. */
+    contrato_derivado_do_total?: boolean;
+    /** Id do card do contrato: a mesma loja pode ter dois cadastros na tabela. */
+    contrato_estab_id?: number;
     pedidos_por_dia?: number;
     mrr_em_risco?: boolean;
     /** Pausa do onboarding (Supabase `onboarding_pausa`) — ver utils/pausaOverlay.ts. */
@@ -263,12 +271,30 @@ export const enrichPartnerData = (
     };
 };
 
+/**
+ * Contrato da loja pelo estabelecimento_id.
+ *
+ * Só por ID: nome de loja se repete entre cidades (há três "Ponto do Sabor"
+ * com cadastros diferentes), então casar por nome pendura o contrato de uma
+ * loja em outra. O mapa já traz os aliases, então o id do cadastro de
+ * marketplace encontra o card aberto no cadastro do CD.
+ */
+function findContractForPartner(
+    estabId: string | undefined,
+    contratos?: Map<number, ContratoCD>,
+): ContratoCD | undefined {
+    if (!contratos || !estabId) return undefined;
+    const id = Number(String(estabId).trim());
+    return Number.isFinite(id) ? contratos.get(id) : undefined;
+}
+
 /** Enriquecimento para aba Todas as Lojas — sem jornada de lançamento, foco em churn */
 export const enrichDesempenhoPartnerData = (
     partner: PerformanceRow,
     logoUrl?: string,
     noCityIndex?: number,
     productMode: ProductModeKey = 'cardapio_digital',
+    contratos?: Map<number, ContratoCD>,
 ): EnrichedPerformanceRow => {
     const total_pedidos = calculateTotalPedidosDesempenho(partner);
     const tendencia_pedidos = calculateTendenciaPedidosDesempenho(partner);
@@ -286,7 +312,7 @@ export const enrichDesempenhoPartnerData = (
 
     const analista = getManagerForPartner(partner.cidade, partner.analista || '', noCityIndex, productMode, partner.estab_id);
     const state = getPartnerState(partner.estab_id || partner.estabelecimento);
-    const contrato = findContractForPartner(partner.estabelecimento);
+    const contrato = findContractForPartner(partner.estab_id, contratos);
     const pedidos_por_dia = calcularPedidosPorDia(partner.week_1);
 
     return {
@@ -304,10 +330,14 @@ export const enrichDesempenhoPartnerData = (
         media_semanal,
         analista,
         logo_url: logoUrl || partner.logo_url,
-        valor_contrato: contrato?.valorMensal,
-        contrato_status: contrato?.status,
-        contrato_pagamento: contrato?.formaPagamento,
-        contrato_vencimento: contrato?.vencimento,
+        valor_contrato: contrato?.valor_mensal,
+        contrato_ativo: contrato?.ativo,
+        contrato_plano: contrato?.plano,
+        contrato_pagamento: contrato?.forma_pagamento,
+        contrato_card_url: contrato?.card_url,
+        contrato_lista: contrato?.lista,
+        contrato_derivado_do_total: contrato?.derivado_do_total,
+        contrato_estab_id: contrato?.estabelecimento_id,
         pedidos_por_dia,
         mrr_em_risco: isMrrEmRisco(pedidos_por_dia, contrato),
     };

@@ -7,6 +7,7 @@ import EstabelecimentoStatusPanel from './EstabelecimentoStatusPanel';
 import PerformanceTable, { type CampaignStatusChangeHandler, type SortConfig } from './PerformanceTable';
 import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
+import type { ContratosCD } from '../hooks/useContratosCD';
 import { isIndicadorChurnAtRisk } from '../utils/indicadorPerformance';
 
 interface CDDesempenhoViewProps {
@@ -36,6 +37,10 @@ interface CDDesempenhoViewProps {
     /** cd_desempenho | marketplace (jornada) | indicador (INDICADOR_FORMATADO) */
     dataSource?: 'cd_desempenho' | 'marketplace' | 'indicador';
     pedidosMesHeader?: string;
+    /** Carteira inteira de contratos do CD — base do card "MRR total". */
+    carteiraContratos?: ContratosCD;
+    /** Falha ao ler os contratos no Trello: a coluna CONTRATO vem vazia. */
+    contratosError?: string | null;
 }
 
 const CHURN_RISK_MIN = 3;
@@ -78,6 +83,8 @@ export default function CDDesempenhoView({
     preset = 'all',
     dataSource = 'cd_desempenho',
     pedidosMesHeader,
+    carteiraContratos,
+    contratosError,
 }: CDDesempenhoViewProps) {
     const isChurnPreset = preset === 'churn';
     const isMarketplace = dataSource === 'marketplace';
@@ -146,7 +153,10 @@ export default function CDDesempenhoView({
         [baseData],
     );
 
-    const mrrMetrics = useMemo(() => calcularMRRMetrics(filteredData), [filteredData]);
+    const mrrMetrics = useMemo(
+        () => calcularMRRMetrics(filteredData, carteiraContratos),
+        [filteredData, carteiraContratos],
+    );
 
     return (
         <div className={`flex-1 min-w-0 min-h-0 bg-white dark:bg-slate-900 xl:border-r border-slate-200 dark:border-slate-700 ${isChurnPreset ? 'overflow-y-auto' : 'flex flex-col'}`}>
@@ -305,7 +315,7 @@ export default function CDDesempenhoView({
                                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">MRR total</p>
                                     <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{formatarMoedaBRL(mrrMetrics.mrrTotal)}</p>
-                                    <p className="text-xs text-slate-400 mt-1">{mrrMetrics.contratosAtivos} contratos ativos no cadastro</p>
+                                    <p className="text-xs text-slate-400 mt-1">{mrrMetrics.contratosAtivos} contratos ativos na carteira</p>
                                 </div>
                                 <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-900/10 p-4 shadow-sm">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">MRR seguro</p>
@@ -324,15 +334,25 @@ export default function CDDesempenhoView({
                                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">% MRR em risco</p>
                                     <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{mrrMetrics.mrrEmRiscoPct.toFixed(1)}%</p>
-                                    <p className="text-xs text-slate-400 mt-1">sobre lojas com contrato na planilha</p>
+                                    <p className="text-xs text-slate-400 mt-1">sobre as lojas exibidas com contrato</p>
                                 </div>
                                 <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 shadow-sm">
                                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Lojas c/ contrato</p>
                                     <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{mrrMetrics.lojasComContrato}</p>
-                                    <p className="text-xs text-slate-400 mt-1">casadas com o cadastro de contratos</p>
+                                    <p className="text-xs text-slate-400 mt-1">entre as lojas exibidas</p>
                                 </div>
                             </>
                         )}
+                    </div>
+                )}
+
+                {/* Sem isso, falha de leitura do Trello vira coluna vazia e passa
+                    por "loja sem contrato" — foi assim que a lista velha enganou. */}
+                {contratosError && (
+                    <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2">
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                            Não deu pra ler os contratos no Trello: {contratosError}. A coluna CONTRATO está vazia por isso, não por falta de contrato.
+                        </p>
                     </div>
                 )}
 

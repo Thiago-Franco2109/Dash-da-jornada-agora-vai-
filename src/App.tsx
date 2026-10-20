@@ -60,6 +60,7 @@ import { getCampaignOverrideField, isEditableCampaign, type CampaignTypeId } fro
 import { useOfertasDaCasa } from './hooks/useOfertasDaCasa';
 import { useDataSync } from './hooks/useDataSync';
 import { useRelevanceMap } from './hooks/useRelevanceMap';
+import { useContratosCD } from './hooks/useContratosCD';
 import { useCampanhas } from './hooks/useCampanhas';
 import { overlayCampanhas, normalizeNome } from './utils/campanhasOverlay';
 import { aplicarPausaOnboarding } from './utils/pausaOverlay';
@@ -330,6 +331,9 @@ function App() {
 
   // Fonte única de relevância (app-wide), usada por todas as telas.
   const { relevanceMap: relMap, updateRelevance: updateRel } = useRelevanceMap();
+  // Contratos do CD (valor vem dos campos do Trello) — alimentam a coluna
+  // CONTRATO e os cards de MRR da aba Todas as Lojas.
+  const { data: contratosCD, error: contratosCDError } = useContratosCD();
   // Pausa do onboarding: desconta da jornada os dias em que a loja não operou
   // (ver utils/pausaOverlay.ts). Sem isto, quem está parado segue sendo cobrado.
   const { pausaMap } = usePausaOnboarding();
@@ -623,13 +627,13 @@ function App() {
     const linhas = desempenhoRawRows.map(row => {
       const partnerKey = row.estab_id || row.estabelecimento;
       const noCityIndex = noCityIndexMap.get(partnerKey);
-      return enrichDesempenhoPartnerData(row, undefined, noCityIndex, enrichMode);
+      return enrichDesempenhoPartnerData(row, undefined, noCityIndex, enrichMode, contratosCD.porEstabelecimento);
     }).filter((row: EnrichedPerformanceRow) => {
       const status = row.status?.toLowerCase().trim() || '';
       return status !== 'cancelado' && status !== 'cancelada';
     });
     return filtrarPorCidade(linhas, row => row.cidade);
-  }, [desempenhoRawRows, mappingVersion, mode, isCD, filtrarPorCidade]);
+  }, [desempenhoRawRows, mappingVersion, mode, isCD, filtrarPorCidade, contratosCD]);
 
 
   /**
@@ -1193,6 +1197,8 @@ function App() {
               preset="churn"
               dataSource={isCD ? 'cd_desempenho' : 'indicador'}
               pedidosMesHeader={indicadorPedidosMesHeader}
+              carteiraContratos={contratosCD}
+              contratosError={contratosCDError}
             />
           )
         ) : currentView === 'cd_desempenho' ? (
@@ -1230,6 +1236,8 @@ function App() {
               onRelevanceChange={handleRelevanceChange}
               preset="all"
               dataSource="cd_desempenho"
+              carteiraContratos={contratosCD}
+              contratosError={contratosCDError}
             />
           )
         ) : (
