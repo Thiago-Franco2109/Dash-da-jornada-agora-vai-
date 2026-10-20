@@ -817,7 +817,10 @@ function App() {
   const preLancamento7d = preLancamentoNaTela.filter(r => (r.pre_lancamento?.dias ?? 0) >= 7).length;
   const preLancamento14d = preLancamentoNaTela.filter(r => (r.pre_lancamento?.dias ?? 0) >= 14).length;
 
-  const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros'
+  // 'okr' entra aqui porque a lista do KR 2 é montada sobre indicadorEnrichedData:
+  // reconciliar a linha contra o pool da Jornada pegaria uma versão de outra
+  // origem, ou nenhuma.
+  const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros' || currentView === 'okr'
     ? (isCD ? enrichedDesempenhoData : indicadorEnrichedData)
     : currentView === 'cd_desempenho'
       ? enrichedDesempenhoData
@@ -966,15 +969,9 @@ function App() {
               // A carteira dá à lista do KR 2 as mesmas colunas de contexto da
               // tela "Todos os Parceiros" — é a mesma fonte (INDICADOR).
               carteira={indicadorEnrichedData}
-              onAbrirParceiro={loja => handleRowClick({
-                // A OKR guarda id, nome e cidade — o resto a ficha busca sozinha
-                // pelo estab_id. `handleRowClick` tenta achar a linha completa no
-                // pool e cai nesta quando a loja não está na Jornada (é o caso da
-                // maioria: a Jornada só tem os 28 primeiros dias).
-                estab_id: String(loja.id),
-                estabelecimento: loja.nome,
-                cidade: loja.cidade,
-              } as unknown as EnrichedPerformanceRow)}
+              // A linha vem pronta da tabela (é a mesma da carteira), então vai
+              // direto: remontá-la aqui perdia os campos e quebrava a ficha.
+              onAbrirParceiro={handleRowClick}
             />
           )
         ) : currentView === 'cs_kpis' ? (

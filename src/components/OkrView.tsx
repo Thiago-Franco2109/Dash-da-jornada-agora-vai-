@@ -399,7 +399,7 @@ function PainelEngajadas({ lojas, kr2, p, carteira, onAbrirParceiro }: {
     /** Linhas da carteira (INDICADOR), para a lista ter o mesmo contexto de
      *  "Todos os Parceiros": logo, relevância, evolução, promoções, risco. */
     carteira: EnrichedPerformanceRow[];
-    onAbrirParceiro?: (loja: { id: number; nome: string; cidade: string }) => void;
+    onAbrirParceiro?: (row: EnrichedPerformanceRow) => void;
 }) {
     const [trilha, setTrilha] = useState<TrilhaKr2>('converter');
     const [ordem, setOrdem] = useState<SortConfig>(ordemDaTrilha('converter'));
@@ -426,13 +426,18 @@ function PainelEngajadas({ lojas, kr2, p, carteira, onAbrirParceiro }: {
         .map(l => {
             const base = porId.get(String(l.id));
             const row = (base ?? {
-                estab_id: String(l.id),
                 estabelecimento: l.nome,
                 cidade: l.cidade,
                 status: 'ativo',
             }) as EnrichedPerformanceRow;
             return {
                 ...row,
+                // O id SEMPRE vem da OKR, nunca da carteira. Na carteira o
+                // `estab_id` é string de planilha e pode vir vazia; sem id a
+                // ficha casava o parceiro por NOME, e nome repete entre cidades
+                // (ver utils/partnerIdentity.ts — há 4 "Mega Lanches"). Resultado
+                // era abrir a loja errada, ou `?estabId=NaN` e 400 nas functions.
+                estab_id: String(l.id),
                 okr_pedidos28d: l.pedidos28d,
                 okr_delta: l.delta,
                 okr_faltam: l.faltam,
@@ -493,11 +498,7 @@ function PainelEngajadas({ lojas, kr2, p, carteira, onAbrirParceiro }: {
                     data={ordenadas}
                     sortConfig={ordem}
                     requestSort={pedirOrdem}
-                    onRowClick={row => onAbrirParceiro?.({
-                        id: Number(row.estab_id),
-                        nome: row.estabelecimento,
-                        cidade: row.cidade,
-                    })}
+                    onRowClick={row => onAbrirParceiro?.(row)}
                     variant="okr"
                     fillHeight={false}
                     pedidosMesHeader="Faturamento"
@@ -794,8 +795,15 @@ const OBJETIVOS: { titulo: string; escopo: string; krs: KrId[] }[] = [
 ];
 
 export default function OkrView({ onAbrirParceiro, carteira = [] }: {
-    /** Abre a ficha do parceiro a partir da lista — é lá que mora "por que caiu?". */
-    onAbrirParceiro?: (loja: { id: number; nome: string; cidade: string }) => void;
+    /**
+     * Abre a ficha do parceiro a partir da lista — é lá que mora "por que caiu?".
+     *
+     * Recebe a LINHA inteira, não id/nome/cidade: a tabela já trabalha com
+     * `EnrichedPerformanceRow`, e remontar a linha do outro lado perdia os
+     * campos da carteira e quebrava quando `estab_id` não era numérico
+     * (`Number('')` → NaN → `?estabId=NaN` → 400 nas functions da ficha).
+     */
+    onAbrirParceiro?: (row: EnrichedPerformanceRow) => void;
     /** Linhas da carteira (INDICADOR) — dão à lista do KR 2 o mesmo contexto
      *  de "Todos os Parceiros". Sem elas a tabela ainda funciona, só sem as
      *  colunas de relevância, evolução, promoções e risco. */
