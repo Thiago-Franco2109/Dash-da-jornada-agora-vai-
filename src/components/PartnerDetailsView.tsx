@@ -32,6 +32,7 @@ import { useParceiroAcesso } from '../hooks/useParceiroAcesso';
 import PartnerDiagnosticoSection from './PartnerDiagnosticoSection';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import PartnerPedidosSection from './PartnerPedidosSection';
+import PartnerHistoricoSection from './PartnerHistoricoSection';
 import { OFERTAS_DA_CASA_CAMPAIGN } from '../config/crmCampaigns';
 
 interface PartnerDetailsViewProps {
@@ -1257,19 +1258,7 @@ export default function PartnerDetailsView({
                 )}
 
                 {activeTab === 'historico' && (
-                    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
-                        <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-12 flex flex-col items-center gap-4 text-center">
-                            <div className="size-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 border border-slate-200 dark:border-slate-700 shadow-sm">
-                                <span className="material-symbols-outlined text-4xl">history_edu</span>
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200">Histórico de Interações</h3>
-                                <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto">
-                                    Em breve você poderá registrar anotações, atas de reuniões e ver a linha do tempo de tudo o que aconteceu com este parceiro.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <PartnerHistoricoSection partner={partner} />
                 )}
             </div>
 
