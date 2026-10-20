@@ -837,7 +837,10 @@ function App() {
   const handleRowClick = (row: EnrichedPerformanceRow) => {
     const latest = findPartner(activeEnrichedPool, row) ?? row;
     setSelectedRow(latest);
-    if (currentView !== 'dashboard' && currentView !== 'cd_desempenho' && currentView !== 'churn' && currentView !== 'todos_parceiros') {
+    // 'okr' entra na lista: a ficha abre SOBRE a aba da OKR. Mandar o CS para
+    // a Jornada no meio da varredura da lista de trabalho perderia o lugar dele.
+    if (currentView !== 'dashboard' && currentView !== 'cd_desempenho' && currentView !== 'churn'
+        && currentView !== 'todos_parceiros' && currentView !== 'okr') {
       setCurrentView('dashboard');
     }
   };
@@ -944,7 +947,33 @@ function App() {
           {currentView === 'home' ? (
             <HomeView rows={homeRows} onPartnerClick={handleRowClick} onNavigate={setCurrentView} />
         ) : currentView === 'okr' ? (
-            <OkrView />
+          currentSelectedRow ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <PartnerDetailsView
+                partner={currentSelectedRow}
+                onBack={() => setSelectedRow(null)}
+                dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+                onRefresh={() => setMappingVersion(v => v + 1)}
+                viewContext={undefined}
+                crmPartner={crmPartnerForSelected}
+                topCities={topCitiesByGmv}
+                onStatusChange={handleStatusChange}
+                onCampaignStatusChange={handleCampaignStatusChange}
+              />
+            </div>
+          ) : (
+            <OkrView
+              onAbrirParceiro={loja => handleRowClick({
+                // A OKR guarda id, nome e cidade — o resto a ficha busca sozinha
+                // pelo estab_id. `handleRowClick` tenta achar a linha completa no
+                // pool e cai nesta quando a loja não está na Jornada (é o caso da
+                // maioria: a Jornada só tem os 28 primeiros dias).
+                estab_id: String(loja.id),
+                estabelecimento: loja.nome,
+                cidade: loja.cidade,
+              } as unknown as EnrichedPerformanceRow)}
+            />
+          )
         ) : currentView === 'cs_kpis' ? (
             <CsKpisView />
         ) : currentView === 'trello' ? (

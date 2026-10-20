@@ -49,6 +49,9 @@ export interface OkrLojaEngajada {
     ultimoPedido: string | null;
     /** null = nenhum pedido no histórico consultado, não "há 0 dias". */
     diasSemPedido: number | null;
+    /** Melhor mês nos últimos 180 dias — separa quem já provou de quem nunca. */
+    recordeMes: number;
+    recordeEm: string | null;
 }
 
 export interface OkrLojaCd {
@@ -69,6 +72,7 @@ export interface OkrParametros {
     janelaEngajada: number;
     pedidosEngajada: number;
     metaKr2: number;
+    janelaRecorde: number;
     faturamentoMinimo: number;
     metaKr3: number;
     desdeEngajada: string;

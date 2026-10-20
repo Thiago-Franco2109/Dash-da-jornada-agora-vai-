@@ -46,6 +46,29 @@ export interface FigurasKr1 extends FigurasKr {
     trocaDono: number;
 }
 
+/**
+ * A trilha de trabalho da loja no KR 2. São quatro conversas diferentes, e
+ * misturá-las numa fila só faz o CSM gastar a hora dele no lugar errado.
+ *
+ * A ordem é por DISTÂNCIA, não por história: loja a 4 pedidos da régua entra em
+ * `converter` mesmo tendo feito 60 no passado, porque o que resolve ela este
+ * mês é uma campanha, não uma investigação.
+ */
+export type TrilhaKr2 = 'defender' | 'converter' | 'ressuscitar' | 'fora';
+
+export interface LojaEngajamento extends OkrLojaEngajada {
+    trilha: TrilhaKr2;
+    /** Quantos pedidos faltam para contar no KR — a unidade de trabalho. */
+    faltam: number;
+    /** Variação contra a janela anterior. */
+    delta: number;
+    /**
+     * Conta, mas por pouco: cai com um fim de semana ruim. Medido: 30 das 104
+     * lojas atravessaram a régua nas últimas 14 semanas, ~5 por semana.
+     */
+    fragil: boolean;
+}
+
 export interface FigurasKr2 extends FigurasKr {
     /** Entre metade da régua e a régua — é daqui que o KR cresce. */
     quaseLa: number;
@@ -53,6 +76,10 @@ export interface FigurasKr2 extends FigurasKr {
     cruzaram: number;
     /** Caíram da régua — o vazamento. */
     cairam: number;
+    /** Quantas lojas em cada trilha de trabalho. */
+    trilhas: Record<TrilhaKr2, number>;
+    /** Das engajadas, quantas estão por pouco. */
+    frageis: number;
 }
 
 export interface FigurasKr3 extends FigurasKr {
@@ -83,7 +110,7 @@ export interface FigurasOkr {
     coorteKr1: OkrParceiroNovo[];
     /** Quem saiu da coorte — a tela lista, porque o número vai para o CEO. */
     foraPorTrocaDono: OkrParceiroNovo[];
-    engajamento: OkrLojaEngajada[];
+    engajamento: LojaEngajamento[];
     lojasCd: OkrLojaCd[];
     /** Quantas lojas saíram da base de cada KR pela marcação manual. */
     foraDaConta: { kr1: number; kr2: number; kr3: number };
@@ -125,7 +152,21 @@ export function calcularFiguras(dados: OkrTrimestre, foraDaConta: ReadonlySet<nu
     };
 
     // ── KR 2 — lojas engajadas ───────────────────────────────────────────
-    const engajamento = dentro(dados.kr2.parceiros);
+    // A régua de TRABALHO é maior que a do KR: defender na linha é gerenciar
+    // ruído, porque a loja atravessa nos dois sentidos sem ninguém fazer nada.
+    const folga = Math.ceil(p.pedidosEngajada * 1.25);
+    const meiaRegua = p.pedidosEngajada / 2;
+    const engajamento: LojaEngajamento[] = dentro(dados.kr2.parceiros).map(l => ({
+        ...l,
+        trilha: l.engajada
+            ? 'defender'
+            : l.pedidos28d >= meiaRegua
+                ? 'converter'
+                : l.recordeMes >= p.pedidosEngajada ? 'ressuscitar' : 'fora',
+        faltam: Math.max(p.pedidosEngajada - l.pedidos28d, 0),
+        delta: l.pedidos28d - l.pedidos28dAnterior,
+        fragil: l.engajada && l.pedidos28d < folga,
+    }));
     const engajadas = engajamento.filter(l => l.engajada).length;
     const kr2: FigurasKr2 = {
         feito: engajadas,
@@ -137,6 +178,13 @@ export function calcularFiguras(dados: OkrTrimestre, foraDaConta: ReadonlySet<nu
             !l.engajada && l.pedidos28d >= p.pedidosEngajada / 2).length,
         cruzaram: engajamento.filter(l => l.cruzou).length,
         cairam: engajamento.filter(l => l.caiu).length,
+        trilhas: {
+            defender: engajamento.filter(l => l.trilha === 'defender').length,
+            converter: engajamento.filter(l => l.trilha === 'converter').length,
+            ressuscitar: engajamento.filter(l => l.trilha === 'ressuscitar').length,
+            fora: engajamento.filter(l => l.trilha === 'fora').length,
+        },
+        frageis: engajamento.filter(l => l.fragil).length,
     };
 
     // ── KR 3 — faturamento no Cardápio Digital ───────────────────────────

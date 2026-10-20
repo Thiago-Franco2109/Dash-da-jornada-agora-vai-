@@ -87,6 +87,8 @@ const PADRAO = {
     janelaEngajada: 28,
     pedidosEngajada: 14,
     metaKr2: 38,
+    /** Quanto do passado define o "recorde" da loja — ver a consulta. */
+    janelaRecorde: 180,
     // KR 3 — faturamento no Cardápio Digital
     faturamentoMinimo: 1000,
     metaKr3: 50,
@@ -420,9 +422,62 @@ export const handler: Handler = async (event) => {
                     caiu: pedidos28d < PADRAO.pedidosEngajada && pedidos28dAnterior >= PADRAO.pedidosEngajada,
                     ultimoPedido,
                     diasSemPedido: ultimoPedido ? diasEntre(ultimoPedido, corte) : null,
+                    /** Melhor mês em 12 meses — preenchido logo abaixo. */
+                    recordeMes: 0,
+                    recordeEm: null as string | null,
                 };
             })
             .sort((a, b) => b.pedidos28d - a.pedidos28d);
+
+        // ── o recorde de cada loja ───────────────────────────────────────
+        // Separa "caiu do próprio pico" de "nunca decolou", que são trilhas de
+        // trabalho diferentes: loja que já fez 67 pedidos num mês tem demanda
+        // provada e a pergunta é o que quebrou; loja cujo melhor mês foram 11
+        // precisa de mudança estrutural, não de ligação.
+        //
+        // É o melhor MÊS e não a melhor janela de 28 dias corridos: custa uma
+        // consulta agrupada em vez de varrer dia a dia um ano inteiro, e é como
+        // a meta é falada na operação ("14 pedidos por mês").
+        // Duas escolhas medidas aqui, e as duas contra-intuitivas:
+        //
+        // 1. A lista de ids é só a das lojas ATIVAS (as do KR 2), não as ~320
+        //    que já lançaram. Era isso que custava caro: com a lista cheia a
+        //    function ia a 7,9s; com as 103 ativas, a mesma consulta leva 1,6s.
+        // 2. `FORCE INDEX (data)` AQUI é o hint certo — ao contrário da
+        //    consulta de um parceiro só. Como são 100 lojas de uma vez, varrer
+        //    a janela de datas uma vez sai mais barato que percorrer o
+        //    histórico de cada uma (medido em 180 dias: 1.643ms com hint,
+        //    2.737ms sem).
+        //
+        // 180 dias e não 365: a pergunta é "já passou de 14 recentemente", e o
+        // ano inteiro custa o dobro (3.471ms) para mudar pouca coisa.
+        const idsAtivos = engajamento.map(l => l.id);
+        const desdeRecorde = somarDias(corte, -PADRAO.janelaRecorde);
+        const [recordes] = idsAtivos.length > 0
+            ? await connection.query<RowDataPacket[]>(
+                `SELECT estabelecimento_id AS estab,
+                        DATE_FORMAT(data, '%Y-%m') AS mes,
+                        COUNT(*) AS n
+                 FROM pedido FORCE INDEX (data)
+                 WHERE status IN (1, 2) AND data >= ? AND data < ?
+                   AND estabelecimento_id IN (?)
+                 GROUP BY estabelecimento_id, mes`,
+                [desdeRecorde, corteExclusivo, idsAtivos],
+            )
+            : [[] as RowDataPacket[]];
+
+        const recordePorEstab = new Map<number, { mes: string; n: number }>();
+        for (const r of recordes) {
+            const estab = Number(r.estab);
+            const n = Number(r.n ?? 0);
+            const atual = recordePorEstab.get(estab);
+            if (!atual || n > atual.n) recordePorEstab.set(estab, { mes: String(r.mes), n });
+        }
+        for (const l of engajamento) {
+            const rec = recordePorEstab.get(l.id);
+            l.recordeMes = rec?.n ?? 0;
+            l.recordeEm = rec?.mes ?? null;
+        }
 
         // Quem não vendeu dentro da janela de histórico pode estar parado há
         // mais tempo que ela — ou nunca ter vendido. São coisas MUITO

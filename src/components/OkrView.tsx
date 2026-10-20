@@ -5,7 +5,6 @@ import {
     trimestresRecentes,
     rotuloTrimestre,
     type OkrLojaCd,
-    type OkrLojaEngajada,
     type OkrParametros,
     type OkrParceiroNovo,
 } from '../hooks/useOkrTrimestre';
@@ -17,6 +16,8 @@ import {
     type FigurasKr2,
     type FigurasKr3,
     type LinhaCidade,
+    type LojaEngajamento,
+    type TrilhaKr2,
 } from '../utils/okrFiguras';
 import { MOTIVOS_EXCLUSAO, motivoExclusaoDef } from '../config/exclusaoOkr';
 import { rotuloOkrDaCidade } from '../config/cidadesOkr';
@@ -362,130 +363,159 @@ function PainelNovos({ coorte, foraPorTroca, kr1, p, anoRef, onTirar }: {
 
 // ── KR 2 — lojas engajadas ───────────────────────────────────────────────
 
-function Tendencia({ loja }: { loja: OkrLojaEngajada }) {
-    const delta = loja.pedidos28d - loja.pedidos28dAnterior;
-    if (delta === 0) return <span className="text-slate-300 dark:text-slate-600">=</span>;
-    const sobe = delta > 0;
+/**
+ * As quatro trilhas, na ordem em que o CSM deve gastar a hora dele.
+ *
+ * A medição que define essa ordem: nas últimas 14 semanas, 30 das 104 lojas
+ * atravessaram a régua dos 14 pedidos — ~5 travessias por semana, e na última
+ * janela 5 cruzaram contra 5 que caíram. Com líquido zero, quem só persegue
+ * conversão corre numa esteira. Defender é a ordem mais barata do mês.
+ */
+const TRILHAS: { id: TrilhaKr2; titulo: string; conversa: string }[] = [
+    { id: 'defender', titulo: 'Defender', conversa: 'já contam — a ordem mais barata é a que você não perde' },
+    { id: 'converter', titulo: 'Converter', conversa: 'a poucos pedidos da régua: é daqui que o KR sobe este mês' },
+    { id: 'ressuscitar', titulo: 'Ressuscitar', conversa: 'já passaram de 14 antes — a pergunta é o que quebrou' },
+    { id: 'fora', titulo: 'Fora do jogo', conversa: 'nunca passaram de 14: é mudança estrutural, não ligação' },
+];
+
+function Delta({ valor }: { valor: number }) {
+    if (valor === 0) return <span className="text-slate-300 dark:text-slate-600">=</span>;
+    const sobe = valor > 0;
     return (
-        <span
-            className={sobe ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}
-            title={`${loja.pedidos28dAnterior} na janela anterior`}
-        >
-            {sobe ? '▲' : '▼'} {Math.abs(delta)}
+        <span className={sobe ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+            {sobe ? '▲' : '▼'}{Math.abs(valor)}
         </span>
     );
 }
 
-function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar }: {
-    lojas: OkrLojaEngajada[];
+function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar, onAbrirParceiro }: {
+    lojas: LojaEngajamento[];
     kr2: FigurasKr2;
     p: OkrParametros;
     anoRef: string;
     onTirar: (alvo: ParceiroAlvo) => void;
+    onAbrirParceiro?: (loja: LojaEngajamento) => void;
 }) {
-    const engajadas = lojas.filter(l => l.engajada).sort((a, b) => b.pedidos28d - a.pedidos28d);
-    const quaseLa = lojas
-        .filter(l => !l.engajada && l.pedidos28d >= p.pedidosEngajada / 2)
-        .sort((a, b) => b.pedidos28d - a.pedidos28d);
-    const longe = lojas
-        .filter(l => !l.engajada && l.pedidos28d < p.pedidosEngajada / 2)
-        .sort((a, b) => b.pedidos28d - a.pedidos28d);
+    const [trilha, setTrilha] = useState<TrilhaKr2>('converter');
+
+    const daTrilha = useMemo(
+        () => lojas
+            .filter(l => l.trilha === trilha)
+            // Dentro da trilha, quem está mais perto de mudar de lado primeiro.
+            .sort((a, b) => (trilha === 'defender'
+                ? a.pedidos28d - b.pedidos28d
+                : b.pedidos28d - a.pedidos28d)),
+        [lojas, trilha],
+    );
+    const def = TRILHAS.find(t => t.id === trilha)!;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-                <TituloLista contagem={quaseLa.length}>
-                    Quase lá — {Math.ceil(p.pedidosEngajada / 2)} a {p.pedidosEngajada - 1} pedidos
-                </TituloLista>
-                {kr2.faltam > 0 && (
-                    <Faltam texto={`${faltamTexto(kr2.faltam, 'loja', 'lojas')} para ${kr2.metaPct}%, e há ${quaseLa.length} nesta faixa.`} />
-                )}
-                <Lista>
-                    {quaseLa.length === 0 ? (
-                        <Vazio texto="Nenhuma loja nesta faixa." />
-                    ) : quaseLa.map(l => (
-                        <LinhaParceiro
-                            key={l.id}
-                            parceiro={l}
-                            onTirar={onTirar}
-                            direita={
-                                <>
-                                    <p className="font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                                        {l.pedidos28d} <Tendencia loja={l} />
-                                    </p>
-                                    <p className="text-xs text-slate-400">{faltamTexto(p.pedidosEngajada - l.pedidos28d, 'pedido', 'pedidos')}</p>
-                                </>
-                            }
-                        />
-                    ))}
-                </Lista>
-                <p className="text-[11px] text-slate-400 mt-2">
-                    É daqui que o KR cresce: cada uma destas precisa de poucos pedidos a mais em {p.janelaEngajada} dias.
-                    A seta compara com a janela anterior ({diaMes(p.desdeAnterior)} a {diaMes(p.ateAnterior)}).
-                </p>
+        <div>
+            <div className="flex items-center gap-1 flex-wrap mb-3">
+                {TRILHAS.map(t => (
+                    <button
+                        key={t.id}
+                        onClick={() => setTrilha(t.id)}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 ${
+                            trilha === t.id
+                                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                                : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                    >
+                        {t.titulo}
+                        <span className="tabular-nums opacity-60">{kr2.trilhas[t.id]}</span>
+                        {t.id === 'defender' && kr2.frageis > 0 && (
+                            <span className="text-[10px] px-1 rounded bg-amber-400/90 text-amber-950">{kr2.frageis} por pouco</span>
+                        )}
+                    </button>
+                ))}
             </div>
 
-            <div className="space-y-6">
-                <div>
-                    <TituloLista contagem={engajadas.length}>
-                        Engajadas — {p.pedidosEngajada}+ pedidos desde {diaMes(p.desdeEngajada)}
-                    </TituloLista>
-                    <Lista altura="max-h-[24vh]">
-                        {engajadas.length === 0 ? (
-                            <Vazio texto="Nenhuma loja engajada na janela." />
-                        ) : engajadas.map(l => (
-                            <LinhaParceiro
-                                key={l.id}
-                                parceiro={l}
-                                onTirar={onTirar}
-                                direita={
-                                    <>
-                                        <p className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                                            {l.pedidos28d} <Tendencia loja={l} />
-                                        </p>
-                                        <p className="text-xs text-slate-400">{l.cruzou ? 'virou o jogo nesta janela' : 'conta no KR'}</p>
-                                    </>
-                                }
-                            />
-                        ))}
-                    </Lista>
-                    {(kr2.cruzaram > 0 || kr2.cairam > 0) && (
-                        <p className="text-[11px] text-slate-400 mt-2">
-                            {kr2.cruzaram > 0 && <><strong className="text-emerald-600/80 dark:text-emerald-400/80">{kr2.cruzaram} cruzaram</strong> a régua nesta janela</>}
-                            {kr2.cruzaram > 0 && kr2.cairam > 0 && ' · '}
-                            {kr2.cairam > 0 && <><strong className="text-red-600/80 dark:text-red-400/80">{kr2.cairam} caíram</strong> dela</>}
-                            {' '}— é o antes→depois que vai para o relatório semanal.
-                        </p>
-                    )}
-                </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                <strong>{def.titulo}</strong> — {def.conversa}.
+                {trilha === 'converter' && kr2.faltam > 0 && (
+                    <> Para a meta fechar, <strong>{kr2.faltam === 1 ? '1 delas precisa' : `${kr2.faltam} delas precisam`}</strong> cruzar.</>
+                )}
+            </p>
 
-                <div>
-                    <TituloLista contagem={longe.length}>
-                        Longe — menos de {Math.ceil(p.pedidosEngajada / 2)} pedidos
-                    </TituloLista>
-                    <Lista altura="max-h-[20vh]">
-                        {longe.length === 0 ? (
-                            <Vazio texto="Nenhuma loja nesta faixa. 🎉" />
-                        ) : longe.map(l => (
-                            <LinhaParceiro
-                                key={l.id}
-                                parceiro={l}
-                                onTirar={onTirar}
-                                direita={
-                                    <>
-                                        <p className="font-bold tabular-nums text-slate-500 dark:text-slate-400">{l.pedidos28d}</p>
-                                        <p className="text-xs text-slate-400">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-800/50">
+                <div className="max-h-[52vh] overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
+                            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                                <th className="px-3 py-2 text-left font-semibold">Loja</th>
+                                <th className="px-3 py-2 text-right font-semibold">Pedidos 28d</th>
+                                <th className="px-3 py-2 text-right font-semibold">
+                                    {trilha === 'defender' ? 'Folga' : 'Faltam'}
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold">Recorde</th>
+                                <th className="px-3 py-2 text-right font-semibold">Último pedido</th>
+                                <th className="px-3 py-2" />
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
+                            {daTrilha.length === 0 ? (
+                                <tr><td colSpan={6}><Vazio texto="Nenhuma loja nesta trilha." /></td></tr>
+                            ) : daTrilha.map(l => {
+                                const folga = l.pedidos28d - p.pedidosEngajada;
+                                return (
+                                    <tr
+                                        key={l.id}
+                                        onClick={() => onAbrirParceiro?.(l)}
+                                        className={`${onAbrirParceiro ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60' : ''} ${l.fragil ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}`}
+                                    >
+                                        <td className="px-3 py-2">
+                                            <p className="font-medium text-slate-800 dark:text-slate-100 truncate max-w-[20rem]">
+                                                {l.nome} <span className="text-[11px] text-slate-300 dark:text-slate-600 tabular-nums">#{l.id}</span>
+                                            </p>
+                                            <p className="text-xs text-slate-400 truncate">{cidadeCurta(l.cidade)}</p>
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                            <span className="font-bold text-slate-700 dark:text-slate-200">{l.pedidos28d}</span>
+                                            {' '}<Delta valor={l.delta} />
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums">
+                                            {trilha === 'defender' ? (
+                                                <span className={folga <= 3 ? 'font-bold text-amber-600 dark:text-amber-400' : 'text-slate-400'}>
+                                                    +{folga}
+                                                </span>
+                                            ) : (
+                                                <span className={`font-bold ${l.faltam <= 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                    {l.faltam}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                            {l.recordeMes > 0 ? (
+                                                <>
+                                                    {l.recordeMes}
+                                                    {l.recordeEm && <span className="text-[11px] text-slate-400"> em {mesCurto(l.recordeEm)}</span>}
+                                                </>
+                                            ) : '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-xs text-slate-400 whitespace-nowrap">
                                             {l.ultimoPedido === null
                                                 ? 'nunca vendeu'
-                                                : `último em ${dataCurta(l.ultimoPedido, anoRef)}`}
-                                        </p>
-                                    </>
-                                }
-                            />
-                        ))}
-                    </Lista>
+                                                : l.diasSemPedido === 0
+                                                    ? 'hoje'
+                                                    : `${dataCurta(l.ultimoPedido, anoRef)} · ${l.diasSemPedido}d`}
+                                        </td>
+                                        <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                                            <BotaoTirar onClick={() => onTirar(l)} />
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 </div>
             </div>
+
+            <p className="text-[11px] text-slate-400 mt-2">
+                A seta compara com a janela anterior ({diaMes(p.desdeAnterior)} a {diaMes(p.ateAnterior)}). Recorde é o
+                melhor mês nos últimos {p.janelaRecorde} dias. Linha em âmbar conta no KR com folga de 3 pedidos ou
+                menos{onAbrirParceiro ? ' — clique na loja para abrir a ficha e ver por que caiu' : ''}.
+            </p>
         </div>
     );
 }
@@ -769,7 +799,10 @@ const OBJETIVOS: { titulo: string; escopo: string; krs: KrId[] }[] = [
     },
 ];
 
-export default function OkrView() {
+export default function OkrView({ onAbrirParceiro }: {
+    /** Abre a ficha do parceiro a partir da lista — é lá que mora "por que caiu?". */
+    onAbrirParceiro?: (loja: { id: number; nome: string; cidade: string }) => void;
+} = {}) {
     const [trimestre, setTrimestre] = useState(trimestreAtual);
     const [kr, setKr] = useState<KrId>('kr2');
     const [alvo, setAlvo] = useState<ParceiroAlvo | null>(null);
@@ -830,7 +863,7 @@ export default function OkrView() {
                 titulo: `${dados.parametros.pedidosEngajada}+ pedidos nos últimos ${dados.parametros.janelaEngajada} dias`,
                 figuras: figuras.kr2,
                 unidade: 'parceiros ativos',
-                detalhe: `${figuras.kr2.quaseLa} quase lá · ${figuras.kr2.cruzaram} cruzaram · ${figuras.kr2.cairam} caíram`,
+                detalhe: `${figuras.kr2.trilhas.converter} a converter · ${figuras.kr2.frageis} por pouco · ${figuras.kr2.cairam} caíram`,
                 foraDaConta: figuras.foraDaConta.kr2,
             },
             kr3: {
@@ -932,6 +965,7 @@ export default function OkrView() {
                                     p={dados.parametros}
                                     anoRef={dados.trimestre.inicio.slice(0, 4)}
                                     onTirar={setAlvo}
+                                    onAbrirParceiro={onAbrirParceiro}
                                 />
                             )}
                             {kr === 'kr3' && (
