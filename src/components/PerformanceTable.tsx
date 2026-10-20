@@ -82,6 +82,15 @@ export type PerformanceRow = {
         cardUrl?: string;
         dataAdesao?: string;
     };
+    /**
+     * Números do KR 2 enxertados na linha da carteira (variante 'okr'). Ficam
+     * aqui e não num tipo próprio porque a tabela já recebe `PerformanceRow` de
+     * três pipelines diferentes — e sem eles a lista da OKR perderia justamente
+     * a coluna que diz o que fazer com a loja. Ver OkrView.
+     */
+    okr_pedidos28d?: number;
+    okr_delta?: number;
+    okr_faltam?: number;
 };
 
 /**
@@ -168,7 +177,7 @@ interface PerformanceTableProps {
     /** Marca a relevância (0-5) de um parceiro inline. 0 = limpar. */
     onRelevanceChange?: (partnerId: string, score: number) => void;
     /** journey = onboarding 28 dias; desempenho = Todas as Lojas CD; indicador = carteira INDICADOR_FORMATADO */
-    variant?: 'journey' | 'desempenho' | 'indicador';
+    variant?: 'journey' | 'desempenho' | 'indicador' | 'okr';
     /** Cabeçalho da coluna de pedidos mensais (ex. jun./26) */
     pedidosMesHeader?: string;
     /** true (padrão): tabela preenche altura e rola internamente.
@@ -472,7 +481,11 @@ function RelevanceCell({
 // ──────────────────────────────────────────────────────────────
 export default function PerformanceTable({ data, sortConfig, requestSort, onRowClick, onCampaignStatusChange, onStatusChange, onRelevanceChange, variant = 'journey', pedidosMesHeader, fillHeight = true, vazio }: PerformanceTableProps) {
     const isDesempenho = variant === 'desempenho';
-    const isIndicador = variant === 'indicador';
+    // 'okr' é o 'indicador' com duas colunas de trabalho na frente: a lista da
+    // OKR precisa do mesmo contexto de carteira (relevância, evolução,
+    // promoções, risco) e, além dele, da distância até a régua dos 14 pedidos.
+    const isOkr = variant === 'okr';
+    const isIndicador = variant === 'indicador' || isOkr;
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
     const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
 
@@ -649,6 +662,16 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('status')}>
                                     Status {renderSortIcon('status')}
                                 </th>
+                                {isOkr && (
+                                    <>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('okr_pedidos28d')}>
+                                            Pedidos 28d {renderSortIcon('okr_pedidos28d')}
+                                        </th>
+                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('okr_faltam')}>
+                                            Faltam {renderSortIcon('okr_faltam')}
+                                        </th>
+                                    </>
+                                )}
                                 {isIndicador ? (
                                     <>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors" onClick={() => requestSort('pedidos_mes_value')}>
@@ -867,14 +890,42 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 {row.pre_lancamento ? 'Pré-lançamento' : row.status}
                                             </span>
                                         </td>
+                                        {isOkr && (
+                                            <>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center tabular-nums">
+                                                    <span className="font-bold text-lg text-slate-900 dark:text-white">{row.okr_pedidos28d ?? 0}</span>
+                                                    {row.okr_delta != null && row.okr_delta !== 0 && (
+                                                        <span className={`ml-1 text-xs font-semibold ${row.okr_delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                                            {row.okr_delta > 0 ? '▲' : '▼'}{Math.abs(row.okr_delta)}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-4 text-sm text-center tabular-nums">
+                                                    {(row.okr_faltam ?? 0) === 0 ? (
+                                                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">conta no KR</span>
+                                                    ) : (
+                                                        <span className={`font-bold ${(row.okr_faltam ?? 0) <= 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                                            {row.okr_faltam}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </>
+                                        )}
                                         {isIndicador ? (
                                             <>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                                    <span className={`font-bold text-lg ${(row.total_pedidos ?? 0) <= 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
-                                                        {row.pedidos_mes_raw && row.pedidos_mes_raw !== '—'
-                                                            ? row.pedidos_mes_raw
-                                                            : (row.total_pedidos ?? 0)}
-                                                    </span>
+                                                    {/* Sem dado NENHUM vira traço, não zero: a lista da OKR traz
+                                                        lojas que ainda não entraram no INDICADOR, e um "0" vermelho
+                                                        ali leria como "não vendeu nada" em vez de "não sei". */}
+                                                    {!row.pedidos_mes_raw && row.total_pedidos == null ? (
+                                                        <Traco />
+                                                    ) : (
+                                                        <span className={`font-bold text-lg ${(row.total_pedidos ?? 0) <= 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>
+                                                            {row.pedidos_mes_raw && row.pedidos_mes_raw !== '—'
+                                                                ? row.pedidos_mes_raw
+                                                                : (row.total_pedidos ?? 0)}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                                     <Sparkline data={row.gmv_mensal} />

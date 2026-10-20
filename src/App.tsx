@@ -963,6 +963,9 @@ function App() {
             </div>
           ) : (
             <OkrView
+              // A carteira dá à lista do KR 2 as mesmas colunas de contexto da
+              // tela "Todos os Parceiros" — é a mesma fonte (INDICADOR).
+              carteira={indicadorEnrichedData}
               onAbrirParceiro={loja => handleRowClick({
                 // A OKR guarda id, nome e cidade — o resto a ficha busca sozinha
                 // pelo estab_id. `handleRowClick` tenta achar a linha completa no

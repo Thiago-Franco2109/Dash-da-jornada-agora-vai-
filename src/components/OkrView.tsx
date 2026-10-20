@@ -19,6 +19,8 @@ import {
     type LojaEngajamento,
     type TrilhaKr2,
 } from '../utils/okrFiguras';
+import PerformanceTable, { type SortConfig } from './PerformanceTable';
+import type { EnrichedPerformanceRow } from '../utils/calculations';
 import { MOTIVOS_EXCLUSAO, motivoExclusaoDef } from '../config/exclusaoOkr';
 import { rotuloOkrDaCidade } from '../config/cidadesOkr';
 import { formatBRL } from '../utils/crmData';
@@ -378,36 +380,84 @@ const TRILHAS: { id: TrilhaKr2; titulo: string; conversa: string }[] = [
     { id: 'fora', titulo: 'Fora do jogo', conversa: 'nunca passaram de 14: é mudança estrutural, não ligação' },
 ];
 
-function Delta({ valor }: { valor: number }) {
-    if (valor === 0) return <span className="text-slate-300 dark:text-slate-600">=</span>;
-    const sobe = valor > 0;
-    return (
-        <span className={sobe ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
-            {sobe ? '▲' : '▼'}{Math.abs(valor)}
-        </span>
-    );
+/**
+ * A ordem inicial de cada trilha — é a fila de trabalho, não um default neutro.
+ *
+ * Em Defender o topo é quem tem MENOS pedidos: a loja com folga de 1 é a que
+ * cai na semana que vem. Nas outras o topo é quem está mais perto de cruzar.
+ */
+function ordemDaTrilha(trilha: TrilhaKr2): SortConfig {
+    return trilha === 'defender'
+        ? { key: 'okr_pedidos28d', direction: 'asc' }
+        : { key: 'okr_faltam', direction: 'asc' };
 }
 
-function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar, onAbrirParceiro }: {
+function PainelEngajadas({ lojas, kr2, p, carteira, onAbrirParceiro }: {
     lojas: LojaEngajamento[];
     kr2: FigurasKr2;
     p: OkrParametros;
-    anoRef: string;
-    onTirar: (alvo: ParceiroAlvo) => void;
-    onAbrirParceiro?: (loja: LojaEngajamento) => void;
+    /** Linhas da carteira (INDICADOR), para a lista ter o mesmo contexto de
+     *  "Todos os Parceiros": logo, relevância, evolução, promoções, risco. */
+    carteira: EnrichedPerformanceRow[];
+    onAbrirParceiro?: (loja: { id: number; nome: string; cidade: string }) => void;
 }) {
     const [trilha, setTrilha] = useState<TrilhaKr2>('converter');
+    const [ordem, setOrdem] = useState<SortConfig>(ordemDaTrilha('converter'));
 
-    const daTrilha = useMemo(
-        () => lojas
-            .filter(l => l.trilha === trilha)
-            // Dentro da trilha, quem está mais perto de mudar de lado primeiro.
-            .sort((a, b) => (trilha === 'defender'
-                ? a.pedidos28d - b.pedidos28d
-                : b.pedidos28d - a.pedidos28d)),
-        [lojas, trilha],
-    );
+    // Trocar de trilha troca a pergunta, e com ela a ordem útil. O CSM pode
+    // reordenar por qualquer coluna depois — isto é só o ponto de partida.
+    const irPara = (t: TrilhaKr2) => { setTrilha(t); setOrdem(ordemDaTrilha(t)); };
+
+    const porId = useMemo(() => {
+        const m = new Map<string, EnrichedPerformanceRow>();
+        for (const r of carteira) if (r.estab_id) m.set(String(r.estab_id), r);
+        return m;
+    }, [carteira]);
+
+    /**
+     * A linha da carteira com os números do KR enxertados.
+     *
+     * Loja da OKR que não está na carteira não some: vira uma linha mínima com
+     * o que a OKR sabe. Sumir seria pior que mostrar traço — o CSM contaria
+     * uma fila menor do que a real e nunca saberia.
+     */
+    const linhas = useMemo(() => lojas
+        .filter(l => l.trilha === trilha)
+        .map(l => {
+            const base = porId.get(String(l.id));
+            const row = (base ?? {
+                estab_id: String(l.id),
+                estabelecimento: l.nome,
+                cidade: l.cidade,
+                status: 'ativo',
+            }) as EnrichedPerformanceRow;
+            return {
+                ...row,
+                okr_pedidos28d: l.pedidos28d,
+                okr_delta: l.delta,
+                okr_faltam: l.faltam,
+            } as EnrichedPerformanceRow;
+        }), [lojas, trilha, porId]);
+
+    const ordenadas = useMemo(() => {
+        if (!ordem) return linhas;
+        const { key, direction } = ordem;
+        const sinal = direction === 'asc' ? 1 : -1;
+        return [...linhas].sort((a, b) => {
+            const va = (a as unknown as Record<string, unknown>)[key];
+            const vb = (b as unknown as Record<string, unknown>)[key];
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sinal;
+            return String(va ?? '').localeCompare(String(vb ?? ''), 'pt-BR') * sinal;
+        });
+    }, [linhas, ordem]);
+
+    const pedirOrdem = (key: string) => setOrdem(atual =>
+        atual && atual.key === key && atual.direction === 'asc'
+            ? { key, direction: 'desc' }
+            : { key, direction: 'asc' });
+
     const def = TRILHAS.find(t => t.id === trilha)!;
+    const semCarteira = linhas.filter(l => !porId.has(String(l.estab_id))).length;
 
     return (
         <div>
@@ -415,7 +465,7 @@ function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar, onAbrirParceiro }: {
                 {TRILHAS.map(t => (
                     <button
                         key={t.id}
-                        onClick={() => setTrilha(t.id)}
+                        onClick={() => irPara(t.id)}
                         className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 ${
                             trilha === t.id
                                 ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
@@ -438,83 +488,27 @@ function PainelEngajadas({ lojas, kr2, p, anoRef, onTirar, onAbrirParceiro }: {
                 )}
             </p>
 
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-800/50">
-                <div className="max-h-[52vh] overflow-y-auto">
-                    <table className="w-full text-sm">
-                        <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
-                            <tr className="text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                                <th className="px-3 py-2 text-left font-semibold">Loja</th>
-                                <th className="px-3 py-2 text-right font-semibold">Pedidos 28d</th>
-                                <th className="px-3 py-2 text-right font-semibold">
-                                    {trilha === 'defender' ? 'Folga' : 'Faltam'}
-                                </th>
-                                <th className="px-3 py-2 text-right font-semibold">Recorde</th>
-                                <th className="px-3 py-2 text-right font-semibold">Último pedido</th>
-                                <th className="px-3 py-2" />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                            {daTrilha.length === 0 ? (
-                                <tr><td colSpan={6}><Vazio texto="Nenhuma loja nesta trilha." /></td></tr>
-                            ) : daTrilha.map(l => {
-                                const folga = l.pedidos28d - p.pedidosEngajada;
-                                return (
-                                    <tr
-                                        key={l.id}
-                                        onClick={() => onAbrirParceiro?.(l)}
-                                        className={`${onAbrirParceiro ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60' : ''} ${l.fragil ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}`}
-                                    >
-                                        <td className="px-3 py-2">
-                                            <p className="font-medium text-slate-800 dark:text-slate-100 truncate max-w-[20rem]">
-                                                {l.nome} <span className="text-[11px] text-slate-300 dark:text-slate-600 tabular-nums">#{l.id}</span>
-                                            </p>
-                                            <p className="text-xs text-slate-400 truncate">{cidadeCurta(l.cidade)}</p>
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                                            <span className="font-bold text-slate-700 dark:text-slate-200">{l.pedidos28d}</span>
-                                            {' '}<Delta valor={l.delta} />
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums">
-                                            {trilha === 'defender' ? (
-                                                <span className={folga <= 3 ? 'font-bold text-amber-600 dark:text-amber-400' : 'text-slate-400'}>
-                                                    +{folga}
-                                                </span>
-                                            ) : (
-                                                <span className={`font-bold ${l.faltam <= 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                                                    {l.faltam}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                            {l.recordeMes > 0 ? (
-                                                <>
-                                                    {l.recordeMes}
-                                                    {l.recordeEm && <span className="text-[11px] text-slate-400"> em {mesCurto(l.recordeEm)}</span>}
-                                                </>
-                                            ) : '—'}
-                                        </td>
-                                        <td className="px-3 py-2 text-right text-xs text-slate-400 whitespace-nowrap">
-                                            {l.ultimoPedido === null
-                                                ? 'nunca vendeu'
-                                                : l.diasSemPedido === 0
-                                                    ? 'hoje'
-                                                    : `${dataCurta(l.ultimoPedido, anoRef)} · ${l.diasSemPedido}d`}
-                                        </td>
-                                        <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
-                                            <BotaoTirar onClick={() => onTirar(l)} />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <PerformanceTable
+                    data={ordenadas}
+                    sortConfig={ordem}
+                    requestSort={pedirOrdem}
+                    onRowClick={row => onAbrirParceiro?.({
+                        id: Number(row.estab_id),
+                        nome: row.estabelecimento,
+                        cidade: row.cidade,
+                    })}
+                    variant="okr"
+                    fillHeight={false}
+                    pedidosMesHeader="Faturamento"
+                    vazio={{ titulo: 'Nenhuma loja nesta trilha', descricao: 'Troque de trilha acima para ver as outras.' }}
+                />
             </div>
 
             <p className="text-[11px] text-slate-400 mt-2">
-                A seta compara com a janela anterior ({diaMes(p.desdeAnterior)} a {diaMes(p.ateAnterior)}). Recorde é o
-                melhor mês nos últimos {p.janelaRecorde} dias. Linha em âmbar conta no KR com folga de 3 pedidos ou
-                menos{onAbrirParceiro ? ' — clique na loja para abrir a ficha e ver por que caiu' : ''}.
+                A seta compara com a janela anterior ({diaMes(p.desdeAnterior)} a {diaMes(p.ateAnterior)}).
+                Clique na loja para abrir a ficha e ver por que caiu.
+                {semCarteira > 0 && ` ${semCarteira} ${semCarteira === 1 ? 'loja ainda não está' : 'lojas ainda não estão'} na carteira (INDICADOR), então as colunas de contexto saem em branco.`}
             </p>
         </div>
     );
@@ -799,9 +793,13 @@ const OBJETIVOS: { titulo: string; escopo: string; krs: KrId[] }[] = [
     },
 ];
 
-export default function OkrView({ onAbrirParceiro }: {
+export default function OkrView({ onAbrirParceiro, carteira = [] }: {
     /** Abre a ficha do parceiro a partir da lista — é lá que mora "por que caiu?". */
     onAbrirParceiro?: (loja: { id: number; nome: string; cidade: string }) => void;
+    /** Linhas da carteira (INDICADOR) — dão à lista do KR 2 o mesmo contexto
+     *  de "Todos os Parceiros". Sem elas a tabela ainda funciona, só sem as
+     *  colunas de relevância, evolução, promoções e risco. */
+    carteira?: EnrichedPerformanceRow[];
 } = {}) {
     const [trimestre, setTrimestre] = useState(trimestreAtual);
     const [kr, setKr] = useState<KrId>('kr2');
@@ -963,8 +961,7 @@ export default function OkrView({ onAbrirParceiro }: {
                                     lojas={figuras.engajamento}
                                     kr2={figuras.kr2}
                                     p={dados.parametros}
-                                    anoRef={dados.trimestre.inicio.slice(0, 4)}
-                                    onTirar={setAlvo}
+                                    carteira={carteira}
                                     onAbrirParceiro={onAbrirParceiro}
                                 />
                             )}
