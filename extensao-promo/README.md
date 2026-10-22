@@ -33,23 +33,62 @@ Do service worker, com o host em `host_permissions`, o Chrome dispensa CORS.
    desenvolvedor** → **Carregar sem compactação** → escolhe esta pasta
    (`extensao-promo/`).
 
-3. **Liberar o ID no Netlify.** Abre as opções da extensão (botão **Detalhes**
-   → *Opções de extensão*), copia o ID que aparece lá em cima e põe na variável
-   de ambiente do site:
+3. **Liberar o ID no Netlify.** O `manifest.json` fixa o ID da extensão (ver
+   *Passar pra outra pessoa*), então é um valor só, uma vez:
 
    ```
-   ALLOWED_EXTENSION_IDS = <id-da-extensao>
+   ALLOWED_EXTENSION_IDS = dmjoddbhaikhkocbcanjofpnejbiofde
    ```
 
    Depois **redeploy** — env nova só vale pro próximo build. Sem isso toda
    chamada volta 403: as functions só respondem a origem conhecida.
 
-   > Esse ID muda se você remover e carregar a pasta de novo. Se começar a dar
-   > 403 do nada, confere se ainda é o mesmo.
+   > Confira o ID real em `chrome://extensions` (ou nas opções da extensão)
+   > antes de salvar. É ele que vale.
 
 4. **Escolher o quadro padrão.** Ainda nas opções: o quadro que já vem
    selecionado no painel e, se quiser, a lista que vem junto. É só o padrão —
    o painel deixa trocar de quadro na hora.
+
+## Passar pra outra pessoa
+
+O Chrome deriva o ID de uma extensão descompactada do **caminho da pasta**, e
+é o ID que as functions conferem (`ALLOWED_EXTENSION_IDS`). Sem cuidado, cada
+pessoa que instala ganha um ID diferente e leva 403 — e você teria que somar um
+ID novo na variável, com redeploy, a cada pessoa.
+
+Por isso o `manifest.json` traz uma `key`: ela **fixa o ID** em
+`dmjoddbhaikhkocbcanjofpnejbiofde` pra todo mundo, de qualquer pasta. É a chave
+pública, pode ficar no repositório. Então a variável leva **um valor só**,
+pra sempre.
+
+### Para quem vai instalar
+
+1. Pegar a pasta `extensao-promo/` — `git pull` se a pessoa tem o repositório,
+   ou um zip dela se não tem.
+2. `chrome://extensions` → **Modo do desenvolvedor** → **Carregar sem
+   compactação** → escolher a pasta.
+3. Pronto. Não precisa mexer em opções nem no Netlify: o ID é o mesmo, e o
+   quadro padrão é escolha de cada um.
+
+Para atualizar depois: `git pull` (ou zip novo) e o ⟳ no cartão da extensão.
+Não há atualização automática por esse caminho.
+
+> O Chrome mostra um balão "Desative as extensões de desenvolvedor" a cada
+> abertura. É chato, mas é só fechar — não desinstala nada.
+
+### Quando valer a pena ir pra Web Store
+
+O caminho acima não escala bem: cada atualização é manual, e o balão de
+desenvolvedor incomoda. Se passar de um punhado de pessoas, ou se forem pessoas
+que não vão lidar com pasta e modo do desenvolvedor, vale publicar como
+**não listada** na Chrome Web Store (só quem tem o link instala): conta de
+desenvolvedor custa US$ 5 uma vez, a revisão leva alguns dias, e aí vem
+atualização automática e instalação em um clique. O ID muda ao publicar — seria
+preciso trocar o valor em `ALLOWED_EXTENSION_IDS` mais uma vez.
+
+> Distribuir `.crx` solto não funciona: o Chrome bloqueia instalação de fora da
+> loja desde 2018, a não ser por política de empresa (MDM) nas máquinas.
 
 ## Usar
 
