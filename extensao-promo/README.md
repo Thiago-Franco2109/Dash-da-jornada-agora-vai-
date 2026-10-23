@@ -114,6 +114,14 @@ de **uma** aba — o print do CMS vem de outra, e trocar de aba mata o painel
 junto com a página. No storage, dá pra capturar no WhatsApp, pular pro CMS e
 continuar a mesma coleta.
 
+Daí também o `unlimitedStorage` no manifest: a gaveta guarda os prints em
+base64 até a publicação, e o teto padrão de 10 MB do `storage.local` estoura
+com poucos recortes de tela Retina.
+
+> O manifest não leva comentário explicando nada disso: JSON não tem comentário,
+> e chave `_comment_*` faz o Chrome mostrar "Avisos" de chave desconhecida no
+> cartão da extensão. O lugar da explicação é aqui.
+
 Com a gaveta cheia, o botão **Gaveta (N)** aparece na barra do recorte: serve
 pra ir direto ao painel (juntar o áudio, publicar) sem ter que tirar um print
 que você não quer.
