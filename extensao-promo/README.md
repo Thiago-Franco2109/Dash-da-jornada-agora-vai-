@@ -96,7 +96,9 @@ preciso trocar o valor em `ALLOWED_EXTENSION_IDS` mais uma vez.
   `Esc` cancela.
 - O print cai na **gaveta**. Repete o ＋ pra somar quantos quiser — inclusive
   de outra aba.
-- **+ arquivo** junta áudio, PDF, o que for. **✕** tira um item da gaveta.
+- **⌘V / Ctrl+V** cola imagem da área de transferência direto na gaveta.
+  Arrastar arquivo pra cima do painel também vale, e **+ arquivo** abre o
+  seletor (áudio, PDF, o que for). **✕** tira um item da gaveta.
 - No painel: **Card novo** (modelo, nome, lista, descrição) ou **Card
   existente** (busca por nome — ignora acento e maiúscula, então `acai` acha
   `Açaí`).
@@ -113,6 +115,16 @@ somam: o service worker é morto depois de ~30s parado, e o painel vive dentro
 de **uma** aba — o print do CMS vem de outra, e trocar de aba mata o painel
 junto com a página. No storage, dá pra capturar no WhatsApp, pular pro CMS e
 continuar a mesma coleta.
+
+Imagem entra pelos três caminhos com prévia na gaveta — colada, arrastada ou
+escolhida no seletor. O que não é imagem (áudio, PDF) aparece como caixinha com
+o nome do arquivo.
+
+O listener do **colar** fica no painel, não no `document`: capturar no document
+roubaria o paste da página, e colar imagem numa conversa do WhatsApp Web tem que
+continuar funcionando. Por isso o painel recebe foco ao abrir — assim o ⌘V cai
+nele sem precisar clicar antes. Colar **texto** no campo de comentário segue o
+caminho normal; só imagem é interceptada.
 
 Daí também o `unlimitedStorage` no manifest: a gaveta guarda os prints em
 base64 até a publicação, e o teto padrão de 10 MB do `storage.local` estoura

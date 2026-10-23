@@ -441,7 +441,7 @@
     function desenharPainel() {
         desenhar(`
             <div class="ancora">
-                <div class="painel">
+                <div class="painel" tabindex="-1">
                     <header>
                         <span class="titulo">Print pro Trello</span>
                         <button class="icone" id="btn-mais" title="Capturar mais um print">＋</button>
@@ -452,6 +452,7 @@
                         <div class="gaveta-barra">
                             <span class="meta" id="gaveta-resumo"></span>
                             <button class="elo" id="btn-arquivo">+ arquivo</button>
+                            <span class="meta" style="flex:0" title="Cole uma imagem da área de transferência, ou arraste um arquivo pra cá">ou cole / arraste</span>
                             <button class="elo" id="btn-limpar">limpar</button>
                         </div>
                         <input type="file" id="seletor-arquivo" multiple hidden>
@@ -541,6 +542,9 @@
         $('#btn-fechar').addEventListener('click', destruir);
         $('#btn-mais').addEventListener('click', iniciarSelecao);
         $('#btn-arquivo').addEventListener('click', () => $('#seletor-arquivo').click());
+        $('.painel').addEventListener('paste', aoColar);
+        $('.painel').addEventListener('dragover', (e) => { e.preventDefault(); });
+        $('.painel').addEventListener('drop', aoSoltar);
         $('#seletor-arquivo').addEventListener('change', aoEscolherArquivos);
         $('#btn-limpar').addEventListener('click', async () => {
             const resposta = await pedir('limparGaveta');
@@ -577,6 +581,11 @@
         definirGerado($('#nome'), nomeSugerido());
         montarDescricao();
         $('#btn-anexar').addEventListener('click', anexarEmCard);
+
+        // Foco no painel pra que ⌘V caia nele sem precisar clicar antes.
+        // `preventScroll` porque o painel é fixo: sem isso a página rolaria
+        // atrás dele à toa.
+        $('.painel').focus({ preventScroll: true });
     }
 
     /**
@@ -644,9 +653,48 @@
         $('#btn-criar').disabled = !gaveta.length || !dadosBoard?.listas?.length;
     }
 
+    /**
+     * Colar imagem da área de transferência (⌘V / Ctrl+V).
+     *
+     * O listener fica no PAINEL, não no document: colar é evento de quem tem o
+     * foco, e capturar no document roubaria o paste da página — ele costuma
+     * estar no WhatsApp Web, onde colar imagem na conversa tem que continuar
+     * funcionando. Por isso o painel também recebe foco ao abrir.
+     *
+     * Só intercepta quando há imagem: colar TEXTO no campo de comentário segue
+     * o caminho normal.
+     */
+    async function aoColar(evento) {
+        const imagens = [...(evento.clipboardData?.items ?? [])]
+            .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+            .map((i) => i.getAsFile())
+            .filter(Boolean);
+        if (!imagens.length) return;
+
+        evento.preventDefault();
+        // Imagem colada não traz nome de arquivo útil ("image.png"): vira
+        // "print", igual ao recorte — que é o que ela é.
+        await adicionarArquivos(imagens.map((a) => new File([a], 'print', { type: a.type })));
+    }
+
+    async function aoSoltar(evento) {
+        const arquivos = [...(evento.dataTransfer?.files ?? [])];
+        if (!arquivos.length) return;
+        evento.preventDefault();
+        await adicionarArquivos(arquivos);
+    }
+
     async function aoEscolherArquivos(evento) {
         const arquivos = [...evento.target.files];
         evento.target.value = ''; // permite reescolher o mesmo arquivo depois
+        await adicionarArquivos(arquivos);
+    }
+
+    /**
+     * Caminho único de entrada pros três jeitos de trazer arquivo: o seletor,
+     * o ⌘V e o arrastar-e-soltar.
+     */
+    async function adicionarArquivos(arquivos) {
         if (!arquivos.length) return;
 
         for (const arquivo of arquivos) {

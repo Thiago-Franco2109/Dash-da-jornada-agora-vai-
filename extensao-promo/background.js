@@ -366,19 +366,38 @@ const acoes = {
         return { gaveta: resumo(itens) };
     },
 
-    /** Áudio da conversa, PDF, o que for — vai como anexo e o comentário leva o link. */
+    /**
+     * Entrada de qualquer arquivo que não veio do recorte: colado da área de
+     * transferência, arrastado pro painel, ou escolhido no "+ arquivo".
+     * Áudio e PDF viram anexo com link no comentário; imagem entra igual a um
+     * print.
+     */
     async adicionarArquivo({ nome, mimeType, base64, bytes }) {
         if (bytes > LIMITE_ANEXO_BYTES) {
             throw new Error(`"${nome}" tem ${(bytes / 1024 / 1024).toFixed(1)} MB. O limite por arquivo é 3,5 MB.`);
         }
-        const extensao = (nome.match(/\.([^.]+)$/)?.[1] || 'bin').toLowerCase();
-        return {
-            gaveta: await empilhar({
-                nome, base64, mimeType, extensao, bytes,
-                thumb: null,
-                ehImagem: mimeType.startsWith('image/'),
-            }),
-        };
+
+        // Extensão pelo nome quando tem; senão pelo mime — imagem colada chega
+        // sem nome de arquivo, só com o tipo.
+        const ehImagem = mimeType.startsWith('image/');
+        const extensao = (nome.match(/\.([^.]+)$/)?.[1] || mimeType.split('/')[1] || 'bin').toLowerCase();
+
+        // Miniatura também pra imagem que veio de fora: sem isto, print colado
+        // apareceria na gaveta como uma caixinha de texto, sem prévia.
+        let thumb = null;
+        if (ehImagem) {
+            try {
+                const blob = await (await fetch(`data:${mimeType};base64,${base64}`)).blob();
+                const bitmap = await createImageBitmap(blob);
+                thumb = await miniatura(bitmap);
+                bitmap.close();
+            } catch {
+                // Formato que o navegador não decodifica (heic, por exemplo):
+                // segue sem prévia, o anexo em si não depende disso.
+            }
+        }
+
+        return { gaveta: await empilhar({ nome, base64, mimeType, extensao, bytes, thumb, ehImagem }) };
     },
 
     async removerItem({ id }) {
