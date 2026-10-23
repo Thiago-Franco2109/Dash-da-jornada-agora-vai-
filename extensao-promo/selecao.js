@@ -30,7 +30,7 @@
 
     let hospedeiro = null;
     let raiz = null;
-    let print = null;
+    let gaveta = [];
     let dadosBoard = null;
     let cardEscolhido = null;
     let parceiros = [];
@@ -200,6 +200,34 @@
     }
     button.icone:hover { background: #1e293b; color: #f1f5f9; }
 
+    .gaveta { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 6px; }
+    .item {
+        position: relative; aspect-ratio: 1;
+        border: 1px solid var(--borda); border-radius: 7px;
+        background: #1e293b; overflow: hidden;
+    }
+    .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .item .arquivo {
+        display: flex; align-items: center; justify-content: center;
+        height: 100%; padding: 4px;
+        color: #94a3b8; font-size: 10px; text-align: center;
+        overflow: hidden; word-break: break-all;
+    }
+    .item button {
+        position: absolute; top: 2px; right: 2px;
+        width: 18px; height: 18px;
+        border: 0; border-radius: 5px;
+        background: rgba(15, 23, 42, .85); color: #e2e8f0;
+        font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+    }
+    .gaveta-barra { display: flex; align-items: center; gap: 10px; }
+    .gaveta-barra .meta { flex: 1; text-align: left; }
+    button.elo {
+        padding: 0; border: 0; background: transparent; color: #94a3b8;
+        font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer;
+    }
+    button.elo:hover { color: #f1f5f9; }
+
     .resultados { max-height: 180px; overflow-y: auto; display: grid; gap: 2px; }
     .resultado {
         display: grid; gap: 1px;
@@ -234,8 +262,9 @@
         hospedeiro?.remove();
         hospedeiro = null;
         raiz = null;
-        print = null;
         cardEscolhido = null;
+        // A gaveta NÃO é zerada aqui: ela vive no storage justamente pra
+        // sobreviver a fechar o painel e trocar de aba.
     }
 
     function montar() {
@@ -267,7 +296,6 @@
 
     function iniciarSelecao() {
         if (!hospedeiro) montar();
-        print = null;
         cardEscolhido = null;
 
         desenhar(`
@@ -280,6 +308,7 @@
                 <span class="sep"></span>
                 <button class="icone" id="btn-tela-toda" style="width:auto;padding:0 8px">Tela toda</button>
                 <span class="sep"></span>
+                <button class="icone" id="btn-gaveta" hidden style="width:auto;padding:0 8px"></button>
                 <span><kbd>Esc</kbd> cancela</span>
             </div>
         `);
@@ -345,24 +374,51 @@
         $('#btn-tela-toda').addEventListener('click', () => {
             capturar({ x: 0, y: 0, largura: window.innerWidth, altura: window.innerHeight });
         });
+
+        // Com a gaveta cheia ele pode querer ir direto publicar (ou juntar o
+        // áudio) sem capturar mais nada — sem isto, o único jeito de chegar no
+        // painel seria tirando um print que ele não quer.
+        pedir('gaveta').then((resposta) => {
+            if (!raiz || !resposta.ok || !resposta.gaveta.length) return;
+            const botao = $('#btn-gaveta');
+            if (!botao) return;
+            gaveta = resposta.gaveta;
+            botao.textContent = `Gaveta (${gaveta.length})`;
+            botao.hidden = false;
+            botao.addEventListener('click', abrirPainel);
+        });
     }
 
     async function capturar(rect) {
         // O overlay está por cima da página: se não sumir antes do
         // captureVisibleTab, o print sai com o escurecido e a moldura dentro.
         // Dois rAF seguidos garantem que o navegador já pintou sem ele.
+        //
+        // O timeout não é zelo: rAF NÃO dispara em aba de fundo. Trocar de aba
+        // no instante em que solta o mouse deixaria a captura pendurada pra
+        // sempre, com o painel nunca abrindo (reproduzido com document.hidden).
         hospedeiro.style.visibility = 'hidden';
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await new Promise((resolve) => {
+            const relogio = setTimeout(resolve, 120);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                clearTimeout(relogio);
+                resolve();
+            }));
+        });
 
         const resposta = await pedir('capturar', { rect, dpr: window.devicePixelRatio || 1 });
         hospedeiro.style.visibility = '';
 
         if (!resposta.ok) {
-            desenharPainel();
+            abrirPainel();
             avisar('erro', resposta.error);
             return;
         }
-        print = resposta.print;
+        gaveta = resposta.gaveta;
+        abrirPainel();
+    }
+
+    function abrirPainel() {
         desenharPainel();
         // Em paralelo: um não depende do outro, e juntos somem do caminho
         // antes de ele terminar de escolher o destino.
@@ -383,14 +439,21 @@
                 <div class="painel">
                     <header>
                         <span class="titulo">Print pro Trello</span>
-                        <button class="icone" id="btn-refazer" title="Refazer o recorte">⟳</button>
+                        <button class="icone" id="btn-mais" title="Capturar mais um print">＋</button>
                         <button class="icone" id="btn-fechar" title="Fechar (Esc)">✕</button>
                     </header>
                     <div class="corpo">
-                        ${print ? `
-                            <img class="previa" id="previa" alt="Prévia do recorte">
-                            <p class="meta">${print.largura} × ${print.altura} · ${formatarTamanho(print.bytes)}</p>
-                        ` : ''}
+                        <div class="gaveta" id="gaveta"></div>
+                        <div class="gaveta-barra">
+                            <span class="meta" id="gaveta-resumo"></span>
+                            <button class="elo" id="btn-arquivo">+ arquivo</button>
+                            <button class="elo" id="btn-limpar">limpar</button>
+                        </div>
+                        <input type="file" id="seletor-arquivo" multiple hidden>
+
+                        <label>Comentário (vai junto com os prints)
+                            <textarea id="comentario" placeholder="Ex.: parceiro aceitou a promo de 20%"></textarea>
+                        </label>
 
                         <label>Quadro
                             <select id="board"><option value="">Carregando…</option></select>
@@ -435,7 +498,7 @@
                             <label>Descrição (opcional)
                                 <textarea id="descricao" placeholder="Detalhes da promoção"></textarea>
                             </label>
-                            <button class="acao" id="btn-criar" disabled>Criar card com o print</button>
+                            <button class="acao" id="btn-criar" disabled>Criar card</button>
                         </div>
 
                         <div data-painel="existente" hidden style="display:grid;gap:10px">
@@ -455,10 +518,7 @@
                                     </div>
                                     <button class="icone" id="btn-trocar" title="Escolher outro card">✕</button>
                                 </div>
-                                <label>Comentário (opcional)
-                                    <textarea id="comentario" placeholder="Some um recado junto do print"></textarea>
-                                </label>
-                                <button class="acao" id="btn-anexar">Anexar o print</button>
+                                <button class="acao" id="btn-anexar">Comentar no card</button>
                             </div>
                         </div>
 
@@ -468,12 +528,17 @@
             </div>
         `);
 
-        // src por propriedade, não no HTML: o data: URL do print é grande e
-        // não precisa passar por serialização de atributo.
-        if (print) $('#previa').src = print.dataUrl;
-
         $('#btn-fechar').addEventListener('click', destruir);
-        $('#btn-refazer').addEventListener('click', iniciarSelecao);
+        $('#btn-mais').addEventListener('click', iniciarSelecao);
+        $('#btn-arquivo').addEventListener('click', () => $('#seletor-arquivo').click());
+        $('#seletor-arquivo').addEventListener('change', aoEscolherArquivos);
+        $('#btn-limpar').addEventListener('click', async () => {
+            const resposta = await pedir('limparGaveta');
+            if (!raiz || !resposta.ok) return;
+            gaveta = resposta.gaveta;
+            renderizarGaveta();
+        });
+        renderizarGaveta();
 
         raiz.querySelectorAll('.aba').forEach((aba) => {
             aba.addEventListener('click', () => {
@@ -530,6 +595,77 @@
         ].filter(Boolean);
         if (!parceiroEscolhido) partes.push(location.href);
         definirGerado($('#descricao'), partes.join('\n'));
+    }
+
+    // ─── Gaveta ─────────────────────────────────────────────────────────
+
+    function renderizarGaveta() {
+        const caixa = $('#gaveta');
+        if (!caixa) return;
+
+        caixa.innerHTML = gaveta.length
+            ? gaveta.map((i) => `
+                <div class="item" title="${esc(i.nome)}">
+                    ${i.thumb
+                        ? `<img src="${i.thumb}" alt="">`
+                        : `<div class="arquivo">${esc(i.nome)}</div>`}
+                    <button data-id="${esc(i.id)}" title="Tirar da gaveta">✕</button>
+                </div>`).join('')
+            : '<p class="vazio">Gaveta vazia — use o ＋ pra capturar.</p>';
+
+        caixa.querySelectorAll('.item button').forEach((botao) => {
+            botao.addEventListener('click', async () => {
+                const resposta = await pedir('removerItem', { id: botao.dataset.id });
+                if (!raiz || !resposta.ok) return;
+                gaveta = resposta.gaveta;
+                renderizarGaveta();
+            });
+        });
+
+        const total = gaveta.reduce((soma, i) => soma + i.bytes, 0);
+        const plural = gaveta.length === 1 ? 'item' : 'itens';
+        $('#gaveta-resumo').textContent = gaveta.length
+            ? `${gaveta.length} ${plural} · ${formatarTamanho(total)}`
+            : '';
+        $('#btn-limpar').hidden = !gaveta.length;
+
+        $('#btn-criar').textContent = gaveta.length ? `Criar card com ${gaveta.length} ${plural}` : 'Criar card';
+        $('#btn-anexar').textContent = gaveta.length ? `Comentar no card (${gaveta.length})` : 'Comentar no card';
+        $('#btn-criar').disabled = !gaveta.length || !dadosBoard?.listas?.length;
+    }
+
+    async function aoEscolherArquivos(evento) {
+        const arquivos = [...evento.target.files];
+        evento.target.value = ''; // permite reescolher o mesmo arquivo depois
+        if (!arquivos.length) return;
+
+        for (const arquivo of arquivos) {
+            let base64;
+            try {
+                base64 = await new Promise((resolve, reject) => {
+                    const leitor = new FileReader();
+                    // readAsDataURL devolve "data:<tipo>;base64,<dados>" — só o
+                    // que vem depois da vírgula interessa pro upload.
+                    leitor.onload = () => resolve(String(leitor.result).split(',')[1]);
+                    leitor.onerror = () => reject(new Error(`Não consegui ler "${arquivo.name}".`));
+                    leitor.readAsDataURL(arquivo);
+                });
+            } catch (err) {
+                avisar('erro', err.message);
+                continue;
+            }
+
+            const resposta = await pedir('adicionarArquivo', {
+                nome: arquivo.name,
+                mimeType: arquivo.type || 'application/octet-stream',
+                bytes: arquivo.size,
+                base64,
+            });
+            if (!raiz) return;
+            if (!resposta.ok) { avisar('erro', resposta.error); continue; }
+            gaveta = resposta.gaveta;
+        }
+        renderizarGaveta();
     }
 
     // ─── Parceiro ───────────────────────────────────────────────────────
@@ -754,7 +890,7 @@
         // labels ainda não existiam — refaz o select agora que existem.
         if (parceiroEscolhido) montarLabels(parceiroEscolhido.cidade);
 
-        $('#btn-criar').disabled = !dadosBoard.listas.length || !print;
+        renderizarGaveta();
         renderizarResultados($('#busca').value);
     }
 
@@ -828,7 +964,7 @@
         const listaId = $('#lista').value;
         if (!nome) { avisar('erro', 'Dá um nome pro card.'); $('#nome').focus(); return; }
         if (!listaId) { avisar('erro', 'Escolhe a lista de destino.'); return; }
-        if (!print) { avisar('erro', 'Sem print — refaz o recorte no ⟳.'); return; }
+        if (!gaveta.length) { avisar('erro', 'Gaveta vazia — capture um print no ＋.'); return; }
 
         await comBotaoOcupado($('#btn-criar'), 'Criando…', async () => {
             const resposta = await pedir('criarCard', {
@@ -836,32 +972,40 @@
                 descricao: $('#descricao').value.trim(),
                 modeloId: $('#modelo')?.value || '',
                 labelIds: $('#label')?.value ? [$('#label').value] : [],
-                print,
+                comentario: $('#comentario').value,
             });
             if (!resposta.ok) {
                 avisar('erro', resposta.error, resposta.card
                     ? ` <a href="${esc(resposta.card.shortUrl)}" target="_blank" rel="noopener">abrir card ↗</a>` : '');
                 return;
             }
-            sucesso(resposta.card, 'Card criado com o print.');
+            gaveta = [];
+            const n = resposta.quantidade;
+            sucesso(resposta.card, `Card criado com ${n} ${n === 1 ? 'item' : 'itens'}.`);
         });
+        // Fora do comBotaoOcupado de propósito: o `finally` dele devolve o
+        // rótulo que o botão tinha ANTES ("Criar card com 5 itens"), que passa
+        // a mentir assim que a gaveta esvazia. Recalcular depois corrige.
+        if (raiz) renderizarGaveta();
     }
 
     async function anexarEmCard() {
         if (!cardEscolhido) { avisar('erro', 'Escolhe um card primeiro.'); return; }
-        if (!print) { avisar('erro', 'Sem print — refaz o recorte no ⟳.'); return; }
+        if (!gaveta.length) { avisar('erro', 'Gaveta vazia — capture um print no ＋.'); return; }
 
-        await comBotaoOcupado($('#btn-anexar'), 'Anexando…', async () => {
+        await comBotaoOcupado($('#btn-anexar'), 'Publicando…', async () => {
             const resposta = await pedir('anexarEmCard', {
                 cardId: cardEscolhido.id,
                 cardNome: cardEscolhido.nome,
                 shortUrl: cardEscolhido.shortUrl,
                 comentario: $('#comentario').value,
-                print,
             });
             if (!resposta.ok) { avisar('erro', resposta.error); return; }
-            sucesso(resposta.card, 'Print anexado.');
+            gaveta = [];
+            const n = resposta.quantidade;
+            sucesso(resposta.card, `Comentário com ${n} ${n === 1 ? 'item' : 'itens'} publicado.`);
         });
+        if (raiz) renderizarGaveta();
     }
 
     // ─── Entrada ────────────────────────────────────────────────────────

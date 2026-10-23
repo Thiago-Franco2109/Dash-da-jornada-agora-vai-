@@ -94,10 +94,49 @@ preciso trocar o valor em `ALLOWED_EXTENSION_IDS` mais uma vez.
 
 - Clica no ícone → **arrasta** pra recortar. `Tela toda` pega a janela inteira,
   `Esc` cancela.
+- O print cai na **gaveta**. Repete o ＋ pra somar quantos quiser — inclusive
+  de outra aba.
+- **+ arquivo** junta áudio, PDF, o que for. **✕** tira um item da gaveta.
 - No painel: **Card novo** (modelo, nome, lista, descrição) ou **Card
   existente** (busca por nome — ignora acento e maiúscula, então `acai` acha
   `Açaí`).
-- `⟳` refaz o recorte sem perder o painel. `Esc` fecha.
+- `Esc` fecha o painel — a gaveta fica guardada.
+
+### Gaveta
+
+A coleta não termina num print só: a conversa costuma precisar de dois ou três,
+mais o áudio, mais a tela do CMS confirmando a ativação. Então o print não vai
+direto pro card — ele entra numa **gaveta**, e você publica tudo de uma vez.
+
+Ela mora em `chrome.storage.local`, não na memória, por dois motivos que se
+somam: o service worker é morto depois de ~30s parado, e o painel vive dentro
+de **uma** aba — o print do CMS vem de outra, e trocar de aba mata o painel
+junto com a página. No storage, dá pra capturar no WhatsApp, pular pro CMS e
+continuar a mesma coleta.
+
+Com a gaveta cheia, o botão **Gaveta (N)** aparece na barra do recorte: serve
+pra ir direto ao painel (juntar o áudio, publicar) sem ter que tirar um print
+que você não quer.
+
+Tudo vira **um comentário só**, nesta ordem: o texto que você escreveu, depois
+as imagens, depois os links dos arquivos. Imagem em comentário no Trello é, por
+dentro, anexo do card + markdown apontando pro preview — é o que o app oficial
+faz, e o motivo de `trello-card-anexar` já devolver `previewUrl` pronto. Áudio
+não tem preview: entra como anexo e o comentário leva o link.
+
+```
+Parceiro aceitou a promo de 20% e já ativei no CMS
+
+![print](…)
+![print](…)
+[📎 Audio-parceiro.ogg](…)
+```
+
+Os uploads vão em série, não em paralelo: a ordem dos prints é a ordem da
+conversa, e upload concorrente embaralharia.
+
+Gaveta esquecida expira em 24h, pra não ressurgir no meio de outro trabalho no
+dia seguinte. O checklist do template **não** é marcado — isso continua manual.
 
 O nome do card já vem preenchido com o título da aba e a descrição com o link
 da página — é o que você digitaria mesmo, dá pra só ajustar.

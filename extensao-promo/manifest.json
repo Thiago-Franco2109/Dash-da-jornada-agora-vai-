@@ -5,7 +5,8 @@
   "description": "Recorta um print da tela e joga num card do Trello: cria um novo ou abastece um existente.",
   "_comment_key": "Fixa o ID da extensão. Sem isto o Chrome deriva o ID do CAMINHO da pasta, então cada pessoa que carrega ganha um ID diferente e leva 403 das functions (que conferem ALLOWED_EXTENSION_IDS). Com a chave aqui, todo mundo instala como dmjoddbhaikhkocbcanjofpnejbiofde. É a chave PÚBLICA — pode ficar no repositório.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu8N+FokHReBc51r4tWzoYtygAzRrqiO+qItlVA3Z2C3yFpVGyAWXqk5lmwOGrXFWDcubYIPuvw0TV87uR3o5K4S8SzFU36ICkmatsEQ9fmesQN8rvYXMwfU0JRKKALSkQedruiNlIkAeNEkAXTXyzSB85KVMZsijSjxQ6PEHCyI1FFMiTeR9gfkO0hA78clMeAorPmHoV5nltDLKVtvlNZgRZcCMgy2lwN79Y7+W/efqrKHHetqqhm6Xp6mWd+6mLzDw5LOTArNeEI+0xxz/yB5dIIrSQZhmfX6k2cBd/UUifr9raOuhw6KgVucAWJth1iXf3zWXBzE4dzOzCuzdiwIDAQAB",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "_comment_storage": "unlimitedStorage porque a gaveta guarda os prints em base64 até a publicação; o teto padrão de 10 MB do storage.local estoura com poucos recortes de tela Retina.",
+  "permissions": ["activeTab", "scripting", "storage", "unlimitedStorage"],
   "host_permissions": [
     "https://central-cs-bigou.netlify.app/*",
     "http://localhost:8888/*"

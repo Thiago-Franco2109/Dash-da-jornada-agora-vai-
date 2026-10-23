@@ -33,6 +33,24 @@ const LIMITE_ANEXO_BYTES = Math.round(3.5 * 1024 * 1024);
  */
 const CACHE_PARCEIROS_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * A "gaveta" é a pilha de prints/arquivos ainda não publicados.
+ *
+ * Mora em chrome.storage.local, e não na memória do service worker, por dois
+ * motivos que se somam: o worker é morto depois de ~30s parado (perderia
+ * tudo), e o painel vive dentro de UMA aba — o print do CMS vem de outra, e
+ * ao trocar de aba o painel antigo morre junto com a página. A gaveta no
+ * storage é o que permite capturar no WhatsApp, pular pro CMS e continuar a
+ * mesma coleta.
+ */
+const CHAVE_GAVETA = 'gaveta';
+
+/** Gaveta esquecida não deve ressurgir no meio de outro trabalho no dia seguinte. */
+const GAVETA_VALIDADE_MS = 24 * 60 * 60 * 1000;
+
+/** Miniatura pro painel: mandar o print inteiro por mensagem a cada render é desperdício. */
+const LARGURA_MINIATURA = 220;
+
 /** Páginas onde o Chrome proíbe injetar script — nada a fazer além de avisar. */
 function paginaBloqueada(url) {
     if (!url) return true;
@@ -96,6 +114,17 @@ async function comprimirSePreciso(canvas) {
  * pelo devicePixelRatio, o recorte sai no canto errado e pela metade em
  * qualquer tela Retina.
  */
+async function miniatura(bitmap) {
+    const escala = Math.min(1, LARGURA_MINIATURA / bitmap.width);
+    const canvas = new OffscreenCanvas(
+        Math.max(1, Math.round(bitmap.width * escala)),
+        Math.max(1, Math.round(bitmap.height * escala)),
+    );
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 });
+    return `data:image/jpeg;base64,${await blobParaBase64(blob)}`;
+}
+
 async function capturarRecorte(windowId, rect, dpr) {
     const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
     const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
@@ -110,19 +139,92 @@ async function capturarRecorte(windowId, rect, dpr) {
     bitmap.close();
 
     const { blob, tipo, extensao } = await comprimirSePreciso(canvas);
-    const base64 = await blobParaBase64(blob);
+    const recorteBitmap = await createImageBitmap(blob);
+    const thumb = await miniatura(recorteBitmap);
+    recorteBitmap.close();
+
     return {
-        base64,
-        // O painel mostra a prévia a partir daqui mesmo: o content script não
-        // pode receber Blob por mensagem (só JSON), e reencodar lá seria o
-        // mesmo trabalho de novo.
-        dataUrl: `data:${tipo};base64,${base64}`,
+        base64: await blobParaBase64(blob),
+        thumb,
         mimeType: tipo,
         extensao,
         largura,
         altura,
         bytes: blob.size,
+        ehImagem: true,
     };
+}
+
+// ─── Gaveta ─────────────────────────────────────────────────────────────
+
+async function lerGaveta() {
+    const guardado = (await chrome.storage.local.get(CHAVE_GAVETA))[CHAVE_GAVETA];
+    if (!guardado) return { itens: [] };
+    if (Date.now() - guardado.quando > GAVETA_VALIDADE_MS) {
+        await chrome.storage.local.remove(CHAVE_GAVETA);
+        return { itens: [] };
+    }
+    return guardado;
+}
+
+async function salvarGaveta(itens) {
+    if (!itens.length) {
+        await chrome.storage.local.remove(CHAVE_GAVETA);
+        return [];
+    }
+    await chrome.storage.local.set({ [CHAVE_GAVETA]: { quando: Date.now(), itens } });
+    return itens;
+}
+
+/** O que o painel recebe: sem o base64 cheio, que é o grosso de cada item. */
+function resumo(itens) {
+    return itens.map(({ id, nome, thumb, bytes, largura, altura, ehImagem }) => (
+        { id, nome, thumb, bytes, largura, altura, ehImagem }
+    ));
+}
+
+async function empilhar(item) {
+    const { itens } = await lerGaveta();
+    const novos = [...itens, { id: crypto.randomUUID(), ...item }];
+    await salvarGaveta(novos);
+    return resumo(novos);
+}
+
+/**
+ * Sobe tudo que está na gaveta pro card e publica UM comentário com o lote.
+ *
+ * Imagem em comentário no Trello é, por dentro, anexo do card + markdown
+ * apontando pro preview — é o que o app oficial faz, e o motivo de
+ * trello-card-anexar já devolver `previewUrl` pronto. O que não é imagem
+ * (áudio) não tem preview: entra como anexo e o comentário leva o link.
+ *
+ * Em série, não em paralelo: a ordem dos prints é a ordem da conversa, e
+ * upload concorrente embaralharia.
+ */
+async function publicarGaveta(cardId, texto) {
+    const { itens } = await lerGaveta();
+    const linhas = [];
+
+    for (const item of itens) {
+        // `nomeDoArquivo` limpa pontuação, então o nome entra sem a extensão
+        // (o `anexar` recoloca a partir de `item.extensao`).
+        const prefixo = item.ehImagem ? 'print' : item.nome.replace(/\.[^.]+$/, '');
+        const { anexo } = await anexar(cardId, item, nomeDoArquivo(prefixo));
+        linhas.push(item.ehImagem
+            ? `![${item.nome}](${anexo.previewUrl})`
+            : `[📎 ${item.nome}](${anexo.url})`);
+    }
+
+    const corpo = [texto?.trim(), linhas.join('\n')].filter(Boolean).join('\n\n');
+    if (corpo) {
+        await chamarFuncao('trello-card-comentar', {
+            metodo: 'POST',
+            corpo: { cardId, texto: corpo, acao: 'criar' },
+        });
+    }
+
+    await salvarGaveta([]);
+    return itens.length;
 }
 
 // ─── Chamadas às functions ──────────────────────────────────────────────
@@ -230,7 +332,38 @@ const acoes = {
     },
 
     async capturar({ rect, dpr }, remetente) {
-        return { print: await capturarRecorte(remetente.tab.windowId, rect, dpr) };
+        const print = await capturarRecorte(remetente.tab.windowId, rect, dpr);
+        return { gaveta: await empilhar({ ...print, nome: 'print' }) };
+    },
+
+    async gaveta() {
+        const { itens } = await lerGaveta();
+        return { gaveta: resumo(itens) };
+    },
+
+    /** Áudio da conversa, PDF, o que for — vai como anexo e o comentário leva o link. */
+    async adicionarArquivo({ nome, mimeType, base64, bytes }) {
+        if (bytes > LIMITE_ANEXO_BYTES) {
+            throw new Error(`"${nome}" tem ${(bytes / 1024 / 1024).toFixed(1)} MB. O limite por arquivo é 3,5 MB.`);
+        }
+        const extensao = (nome.match(/\.([^.]+)$/)?.[1] || 'bin').toLowerCase();
+        return {
+            gaveta: await empilhar({
+                nome, base64, mimeType, extensao, bytes,
+                thumb: null,
+                ehImagem: mimeType.startsWith('image/'),
+            }),
+        };
+    },
+
+    async removerItem({ id }) {
+        const { itens } = await lerGaveta();
+        return { gaveta: resumo(await salvarGaveta(itens.filter((i) => i.id !== id))) };
+    },
+
+    async limparGaveta() {
+        await salvarGaveta([]);
+        return { gaveta: [] };
     },
 
     /**
@@ -257,30 +390,25 @@ const acoes = {
         return chamarFuncao('trello-label-criar', { metodo: 'POST', corpo: { boardId: alvo, nome } });
     },
 
-    async criarCard({ listaId, nome, descricao, modeloId, labelIds, print }) {
+    async criarCard({ listaId, nome, descricao, modeloId, labelIds, comentario }) {
         const { card } = await chamarFuncao('trello-card-criar', {
             metodo: 'POST',
             corpo: { listaId, nome, descricao, modeloId, labelIds },
         });
-        // Card já existe neste ponto: se o anexo falhar, o erro sobe mas o
-        // link do card vai junto, pra ele não ficar sem saber o que foi criado.
+        // Card já existe neste ponto: se a publicação falhar, o erro sobe mas
+        // o link vai junto, pra ele não ficar sem saber o que foi criado — e a
+        // gaveta NÃO é limpa, então dá pra tentar de novo no card existente.
         try {
-            await anexar(card.id, print, nomeDoArquivo(nome));
+            const quantidade = await publicarGaveta(card.id, comentario);
+            return { card, quantidade };
         } catch (err) {
-            throw Object.assign(new Error(`Card criado, mas o print não subiu: ${err.message}`), { card });
+            throw Object.assign(new Error(`Card criado, mas o comentário não subiu: ${err.message}`), { card });
         }
-        return { card };
     },
 
-    async anexarEmCard({ cardId, cardNome, shortUrl, comentario, print }) {
-        await anexar(cardId, print, nomeDoArquivo(cardNome));
-        if (comentario?.trim()) {
-            await chamarFuncao('trello-card-comentar', {
-                metodo: 'POST',
-                corpo: { cardId, texto: comentario.trim(), acao: 'criar' },
-            });
-        }
-        return { card: { id: cardId, nome: cardNome, shortUrl } };
+    async anexarEmCard({ cardId, cardNome, shortUrl, comentario }) {
+        const quantidade = await publicarGaveta(cardId, comentario);
+        return { card: { id: cardId, nome: cardNome, shortUrl }, quantidade };
     },
 };
 
