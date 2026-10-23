@@ -201,7 +201,30 @@ async function empilhar(item) {
  * Em série, não em paralelo: a ordem dos prints é a ordem da conversa, e
  * upload concorrente embaralharia.
  */
-async function publicarGaveta(cardId, texto) {
+/**
+ * Fecho da captação: tirar a capa, pôr a data do dia e marcar como concluído
+ * — a mesma tripla que era feita à mão em todo card.
+ *
+ * A capa sai SEMPRE (o Trello promove imagem anexada a capa sozinho, e ela
+ * nunca é desejada aqui). Data e conclusão só quando ele pede: card de
+ * parceiro que ainda não respondeu fica em aberto de propósito.
+ *
+ * `due` é o momento da publicação, não um prazo futuro: nos 600 cards com
+ * data, ela é o dia em que o card nasceu, com a hora do fecho. É registro de
+ * quando foi captado.
+ */
+function fecharCard(cardId, concluir) {
+    return chamarFuncao('trello-card-editar', {
+        metodo: 'POST',
+        corpo: {
+            cardId,
+            limparCapa: true,
+            ...(concluir ? { due: new Date().toISOString(), dueComplete: true } : {}),
+        },
+    });
+}
+
+async function publicarGaveta(cardId, texto, concluir) {
     const { itens } = await lerGaveta();
     const linhas = [];
 
@@ -222,6 +245,8 @@ async function publicarGaveta(cardId, texto) {
             corpo: { cardId, texto: corpo, acao: 'criar' },
         });
     }
+
+    await fecharCard(cardId, concluir);
 
     await salvarGaveta([]);
     return itens.length;
@@ -390,7 +415,7 @@ const acoes = {
         return chamarFuncao('trello-label-criar', { metodo: 'POST', corpo: { boardId: alvo, nome } });
     },
 
-    async criarCard({ listaId, nome, descricao, modeloId, labelIds, comentario }) {
+    async criarCard({ listaId, nome, descricao, modeloId, labelIds, comentario, concluir }) {
         const { card } = await chamarFuncao('trello-card-criar', {
             metodo: 'POST',
             corpo: { listaId, nome, descricao, modeloId, labelIds },
@@ -399,15 +424,15 @@ const acoes = {
         // o link vai junto, pra ele não ficar sem saber o que foi criado — e a
         // gaveta NÃO é limpa, então dá pra tentar de novo no card existente.
         try {
-            const quantidade = await publicarGaveta(card.id, comentario);
+            const quantidade = await publicarGaveta(card.id, comentario, concluir);
             return { card, quantidade };
         } catch (err) {
             throw Object.assign(new Error(`Card criado, mas o comentário não subiu: ${err.message}`), { card });
         }
     },
 
-    async anexarEmCard({ cardId, cardNome, shortUrl, comentario }) {
-        const quantidade = await publicarGaveta(cardId, comentario);
+    async anexarEmCard({ cardId, cardNome, shortUrl, comentario, concluir }) {
+        const quantidade = await publicarGaveta(cardId, comentario, concluir);
         return { card: { id: cardId, nome: cardNome, shortUrl }, quantidade };
     },
 };

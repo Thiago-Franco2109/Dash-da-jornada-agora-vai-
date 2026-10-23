@@ -138,6 +138,26 @@ conversa, e upload concorrente embaralharia.
 Gaveta esquecida expira em 24h, pra não ressurgir no meio de outro trabalho no
 dia seguinte. O checklist do template **não** é marcado — isso continua manual.
 
+### Fecho do card
+
+Depois de publicar, três coisas que eram feitas à mão em todo card saem juntas:
+
+| | |
+| --- | --- |
+| **Capa** | sai sempre. O Trello promove imagem anexada a capa do card sozinho, e aqui ela nunca é desejada. Vai por dois caminhos: `setCover=false` no upload e `idAttachmentCover: ''` no fecho |
+| **Data** | `due` = o momento da publicação |
+| **Concluído** | `dueComplete = true` |
+
+Data e conclusão dependem do **Concluir** (marcado por padrão) — card de
+parceiro que ainda não respondeu fica em aberto de propósito. A capa sai nos
+dois casos.
+
+> O `due` é registro, não prazo: nos 600 cards com data, ela é o dia em que o
+> card nasceu, com a hora do fecho. Por isso é "agora", e não uma data futura.
+
+**Arquivar não entra.** Os cards concluídos recentes estão fora do arquivo —
+isso é feito em lote, depois, e não por card.
+
 O nome do card já vem preenchido com o título da aba e a descrição com o link
 da página — é o que você digitaria mesmo, dá pra só ajustar.
 

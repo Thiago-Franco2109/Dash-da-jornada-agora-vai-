@@ -111,7 +111,11 @@ export const handler: Handler = async (event) => {
             key!,
             token!,
             { bytes, nome, mimeType },
-            { name: nome, mimeType, fields: 'all' },
+            // setCover=false porque o Trello promove a primeira imagem anexada
+            // a capa do card sozinho, e tirar a capa era passo manual em toda
+            // captação. A capa também é limpa no fecho (trello-card-editar),
+            // caso algum anexo escape por outro caminho.
+            { name: nome, mimeType, fields: 'all', setCover: 'false' },
         );
 
         const preview = escolherPreview(criado.previews);

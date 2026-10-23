@@ -175,6 +175,11 @@
     .aba.ativa { background: var(--fundo); color: #f1f5f9; }
 
     label { display: grid; gap: 4px; font-size: 11px; color: #94a3b8; }
+    label.inline {
+        display: flex; align-items: center; gap: 7px;
+        color: #e2e8f0; font-size: 12px; cursor: pointer;
+    }
+    label.inline input { width: auto; margin: 0; accent-color: var(--azul); }
     input, textarea, select {
         width: 100%; padding: 7px 9px;
         border: 1px solid var(--borda); border-radius: 7px;
@@ -453,6 +458,11 @@
 
                         <label>Comentário (vai junto com os prints)
                             <textarea id="comentario" placeholder="Ex.: parceiro aceitou a promo de 20%"></textarea>
+                        </label>
+
+                        <label class="inline">
+                            <input type="checkbox" id="concluir" checked>
+                            <span>Concluir: data de hoje e marcar como feito</span>
                         </label>
 
                         <label>Quadro
@@ -973,6 +983,7 @@
                 modeloId: $('#modelo')?.value || '',
                 labelIds: $('#label')?.value ? [$('#label').value] : [],
                 comentario: $('#comentario').value,
+                concluir: $('#concluir').checked,
             });
             if (!resposta.ok) {
                 avisar('erro', resposta.error, resposta.card
@@ -999,6 +1010,7 @@
                 cardNome: cardEscolhido.nome,
                 shortUrl: cardEscolhido.shortUrl,
                 comentario: $('#comentario').value,
+                concluir: $('#concluir').checked,
             });
             if (!resposta.ok) { avisar('erro', resposta.error); return; }
             gaveta = [];
