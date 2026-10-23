@@ -236,8 +236,13 @@ ou qualquer outra no lugar.
 ### Modelo
 
 Card novo pode nascer de um **card template do Trello** (aquele com o ícone de
-fôrma). Ele vem com o checklist e as labels do template; o anexo e os
-comentários não são copiados, porque esses vêm do uso real.
+fôrma). Ele vem com o checklist do template; anexo e comentários não são
+copiados, porque esses vêm do uso real.
+
+> As labels do template também **não** são copiadas, e isso é de propósito: com
+> `labels` no `keepFromSource`, a cópia sobrescreve o `idLabels` mandado junto e
+> o card sai sem a tag de cidade. O template não tem label nenhuma, então não há
+> o que perder.
 
 O select de modelo só aparece se o quadro tiver algum template, e quando houver
 **exatamente um** ele já entra escolhido — é o modelo da casa. A descrição do

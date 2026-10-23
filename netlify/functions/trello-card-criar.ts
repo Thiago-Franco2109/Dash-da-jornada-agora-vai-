@@ -16,9 +16,16 @@ import { trelloFetch } from './_shared/trello';
  * da lista, onde ele vai procurar.
  *
  * Com `modeloId`, o card nasce de um card template do quadro
- * (`idCardSource`). `keepFromSource` fica em checklists/labels/customFields e
- * NÃO inclui attachments nem comments: o template de captação existe pra
- * trazer o checklist — anexo e comentário vêm do uso real, não da fôrma.
+ * (`idCardSource`). `keepFromSource` fica em checklists/customFields e NÃO
+ * inclui attachments nem comments: o template de captação existe pra trazer o
+ * checklist — anexo e comentário vêm do uso real, não da fôrma.
+ *
+ * `labels` TAMBÉM ficou de fora, e não por gosto: com `labels` no
+ * keepFromSource, a cópia das labels do template SOBRESCREVE o `idLabels`
+ * mandado junto. Como o template não tem label nenhuma, o card saía sem a tag
+ * de cidade (testado contra a API: mesmo request com e sem `labels` no
+ * keepFromSource dá NENHUMA vs ['Muriaé']). O template não tem label pra
+ * perder, então a troca não custa nada.
  * `desc` continua sendo mandado explicitamente e sobrepõe o do template, que
  * é o que o painel já mostrou (e deixou editar) na hora de escolher.
  *
@@ -98,7 +105,7 @@ export const handler: Handler = async (event) => {
                 name: nome,
                 desc: descricao,
                 pos: 'top',
-                ...(modeloId ? { idCardSource: modeloId, keepFromSource: 'checklists,labels,customFields' } : {}),
+                ...(modeloId ? { idCardSource: modeloId, keepFromSource: 'checklists,customFields' } : {}),
                 ...(labelIds.length ? { idLabels: labelIds.join(',') } : {}),
             },
             'POST',
