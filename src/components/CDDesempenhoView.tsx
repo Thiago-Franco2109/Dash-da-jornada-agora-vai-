@@ -4,6 +4,7 @@ import { ptBR } from 'date-fns/locale/pt-BR';
 import { calcularMRRMetrics, formatarMoedaBRL } from '../config/cdContracts';
 import FilterToolbar from './FilterToolbar';
 import EstabelecimentoStatusPanel from './EstabelecimentoStatusPanel';
+import AderenciaHorarioPanel from './AderenciaHorarioPanel';
 import PerformanceTable, { type CampaignStatusChangeHandler, type SortConfig } from './PerformanceTable';
 import type { StatusOverrideField, PromoStatus } from '../hooks/useStatusOverride';
 import type { EnrichedPerformanceRow } from '../utils/calculations';
@@ -357,6 +358,14 @@ export default function CDDesempenhoView({
                 )}
 
                 {isChurnPreset && <EstabelecimentoStatusPanel />}
+
+                {/* Loja que fecha cedo todo dia continua "ativa" em qualquer
+                    métrica de pedido — some do app meses antes de virar churn. */}
+                {isChurnPreset && (
+                    <div className="mt-6">
+                        <AderenciaHorarioPanel rows={filteredData} onRowClick={onRowClick} />
+                    </div>
+                )}
             </div>
 
             <div className="shrink-0">
