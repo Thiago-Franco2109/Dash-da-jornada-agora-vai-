@@ -97,8 +97,6 @@ export function crmPartnerToEnrichedRow(
         priority_stars: risco,
         risco_churn: risco,
         isFinished: state.isFinished,
-        contacts: state.contacts,
-        contactDetails: state.contactDetails,
         notes: state.notes,
     };
 }

@@ -27,6 +27,11 @@ export interface ParceiroAcesso {
     computador: number;
     pctCelular: number;
     predominante: 'celular' | 'computador' | null;
+    /**
+     * Dispositivo do acesso mais recente. Diverge do `predominante` quando o lojista mudou de
+     * hábito: o histórico de logins ainda pesa pro aparelho antigo.
+     */
+    ultimoDispositivo: 'celular' | 'computador' | null;
     porApp: Record<string, { celular: number; computador: number }>;
     ultimoAcesso: string | null;
     diasSemAcesso: number | null;

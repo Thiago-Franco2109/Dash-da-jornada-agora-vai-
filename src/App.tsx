@@ -12,7 +12,6 @@ import ReportsView from './components/ReportsView';
 import AboutView from './components/AboutView';
 import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
-import ContactsView from './components/ContactsView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
 import CsKpisView from './components/CsKpisView';
@@ -960,7 +959,6 @@ function App() {
                 viewContext={undefined}
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}
-                onStatusChange={handleStatusChange}
                 onCampaignStatusChange={handleCampaignStatusChange}
               />
             </div>
@@ -1023,10 +1021,6 @@ function App() {
           </div>
         ) : currentView === 'profile' ? (
           <ProfileView />
-        ) : currentView === 'contacts' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <ContactsView data={enrichedData} onRowClick={handleRowClick} managerFilter={managerFilter} />
-          </div>
         ) : currentView === 'reports' ? (
           <ReportsView
             data={enrichedData}
@@ -1146,13 +1140,7 @@ function App() {
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
               topCities={topCitiesByGmv}
-              onStatusChange={handleStatusChange}
               onCampaignStatusChange={handleCampaignStatusChange}
-              onNavigateToCrm={() => {
-                setCityFilter(currentSelectedRow.cidade);
-                setSelectedRow(null);
-                setCurrentView('crm');
-              }}
             />
             </div>
           ) : (
@@ -1192,13 +1180,7 @@ function App() {
               viewContext={isCD ? 'desempenho' : undefined}
               crmPartner={!isCD ? crmPartnerForSelected : null}
               topCities={!isCD ? topCitiesByGmv : undefined}
-              onStatusChange={handleStatusChange}
               onCampaignStatusChange={handleCampaignStatusChange}
-              onNavigateToCrm={!isCD ? () => {
-                setCityFilter(currentSelectedRow.cidade);
-                setSelectedRow(null);
-                setCurrentView('crm');
-              } : undefined}
             />
             </div>
           ) : (
@@ -1280,13 +1262,7 @@ function App() {
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}
-                onStatusChange={handleStatusChange}
                 onCampaignStatusChange={handleCampaignStatusChange}
-                onNavigateToCrm={() => {
-                  setCityFilter(currentSelectedRow.cidade);
-                  setSelectedRow(null);
-                  setCurrentView('crm');
-                }}
               />
               </div>
             ) : (

@@ -34,7 +34,6 @@ export interface CampanhaCard {
     cmsLabel?: string;
     acaoLabel?: string;
     onGerarArte?: () => void;
-    onOpenCrm?: () => void;
 }
 
 interface Props {
@@ -84,6 +83,24 @@ function Capa({ card, altura }: { card: CampanhaCard; altura: number }) {
     );
 }
 
+/**
+ * A arte não é privilégio de campanha pendente: campanha no ar é justamente a
+ * que o parceiro vai querer divulgar, então o botão acompanha o card em todas
+ * as zonas que têm `onGerarArte`.
+ */
+function BotaoGerarArte({ onClick, className = '' }: { onClick: () => void; className?: string }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`inline-flex items-center gap-1 text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline ${className}`}
+        >
+            <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+            Gerar arte
+        </button>
+    );
+}
+
 function CardAgir({ card }: { card: CampanhaCard }) {
     const { rail } = TONE_STYLES[card.tone];
     return (
@@ -124,29 +141,7 @@ function CardAgir({ card }: { card: CampanhaCard }) {
                     {card.acaoLabel ?? card.cmsLabel ?? 'Abrir no CMS'}
                     <span className="material-symbols-outlined text-[14px]">arrow_outward</span>
                 </a>
-                {(card.onGerarArte || card.onOpenCrm) && (
-                    <div className="mt-1.5 flex items-center justify-between gap-2">
-                        {card.onGerarArte ? (
-                            <button
-                                type="button"
-                                onClick={card.onGerarArte}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline"
-                            >
-                                <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
-                                Gerar arte
-                            </button>
-                        ) : <span />}
-                        {card.onOpenCrm && (
-                            <button
-                                type="button"
-                                onClick={card.onOpenCrm}
-                                className="text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline"
-                            >
-                                Anotar
-                            </button>
-                        )}
-                    </div>
-                )}
+                {card.onGerarArte && <BotaoGerarArte onClick={card.onGerarArte} className="mt-1.5" />}
             </div>
         </div>
     );
@@ -182,6 +177,7 @@ function CardAguardando({ card }: { card: CampanhaCard }) {
                 >
                     Abrir no CMS
                 </a>
+                {card.onGerarArte && <BotaoGerarArte onClick={card.onGerarArte} className="mt-1" />}
             </div>
         </div>
     );
@@ -229,14 +225,17 @@ function CardNoAr({ card }: { card: CampanhaCard }) {
                     {card.itemCount} {card.itemCount === 1 ? 'item' : 'itens'} {card.itemCountLabel}
                 </p>
             )}
-            <a
-                href={card.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-auto pt-2 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline"
-            >
-                Ver no CMS
-            </a>
+            <div className="mt-auto pt-2 flex flex-col items-start gap-1">
+                <a
+                    href={card.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                    Ver no CMS
+                </a>
+                {card.onGerarArte && <BotaoGerarArte onClick={card.onGerarArte} />}
+            </div>
         </div>
     );
 }

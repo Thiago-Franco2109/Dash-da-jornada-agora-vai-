@@ -25,7 +25,6 @@ function mockRow(partial: Partial<EnrichedPerformanceRow> & { estabelecimento: s
         indice_desempenho: 1,
         city_weight: 1,
         priority_stars: 3,
-        contacts: { w1: true, w2: true, w3: false, w4: false },
         campaign_statuses: { cupons_destaque: partial.cupomStatus, super_promos: 'aguardando' },
         cupom_status: partial.cupomStatus,
         promo_status: 'aguardando',
@@ -39,6 +38,23 @@ const INITIAL_ROWS: EnrichedPerformanceRow[] = [
     mockRow({ estabelecimento: 'Dôce', estab_id: '3', cupomStatus: 'confirmado' }),
     mockRow({ estabelecimento: 'Fest Food', estab_id: '4', cupomStatus: 'negado' }),
     mockRow({ estabelecimento: 'Império das Massas', estab_id: '5', cupomStatus: 'ativo' }),
+    // Pré-lançamento: o CS marca promo e cupom ANTES da abertura, então a linha
+    // clica e o dropdown abre igual às outras. Só a origem 'trello' é o caso em
+    // que a loja ainda não está na réplica — o estab_id já é o do banco.
+    mockRow({
+        estabelecimento: 'O Porão', estab_id: '28509', cupomStatus: 'aguardando',
+        cidade: 'Natividade', status: 'pendente', lancamento: '',
+        dias_desde_lancamento: 0, total_pedidos: 0, pedidos_esperados: 0,
+        indice_desempenho: 0, priority_stars: 0,
+        pre_lancamento: { origem: 'banco', dias: 7, etapa: '[SC] Envio de senha', diasNaEtapa: 2, cardUrl: 'https://trello.com/c/exemplo' },
+    } as never),
+    mockRow({
+        estabelecimento: 'Mordida Magica', estab_id: '28777', cupomStatus: 'aguardando',
+        cidade: '', status: 'pendente', lancamento: '',
+        dias_desde_lancamento: 0, total_pedidos: 0, pedidos_esperados: 0,
+        indice_desempenho: 0, priority_stars: 0,
+        pre_lancamento: { origem: 'trello', dias: null, etapa: 'Cadastro', diasNaEtapa: 0 },
+    } as never),
 ];
 
 export function PreviewPerformanceTable() {
@@ -65,7 +81,7 @@ export function PreviewPerformanceTable() {
                 data={rows}
                 sortConfig={null}
                 requestSort={() => {}}
-                onRowClick={() => {}}
+                onRowClick={row => console.log('onRowClick', row.estab_id, row.estabelecimento)}
                 onCampaignStatusChange={onCampaignStatusChange}
             />
         </div>

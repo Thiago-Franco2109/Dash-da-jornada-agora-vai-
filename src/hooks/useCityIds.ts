@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { encodeSheetTabForGateway } from '../utils/dataSync';
 import { useParceirosAtivos } from './useParceirosAtivos';
+import { normalize } from '../config/cidadesOkr';
 
 // ─── Configuração do mesmo Gateway usado pelo restante do app ──────────────
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? 'https://sheets-api-production-0097.up.railway.app')
@@ -27,15 +28,14 @@ function getFetchOptions(): RequestInit {
 // ─── Mapa normalizado: nome_da_cidade_em_minúsculas → id ──────────────────
 export type CityIdMap = Record<string, number>;
 
-/** Normaliza o nome da cidade para comparação robusta */
-export function normalize(name: string): string {
-    return name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')  // remove acentos
-        .replace(/\s+/g, ' ')             // colapsa espaços múltiplos
-        .trim();
-}
+/**
+ * Normaliza o nome da cidade para comparação robusta.
+ *
+ * A definição mudou para `config/cidadesOkr.ts` — aquele arquivo precisa ficar
+ * sem imports para rodar fora do navegador (ver o comentário lá). Continua
+ * exportada daqui porque metade do app importa deste caminho.
+ */
+export { normalize };
 
 let _cache: CityIdMap | null = null;
 let _fetchPromise: Promise<CityIdMap> | null = null;

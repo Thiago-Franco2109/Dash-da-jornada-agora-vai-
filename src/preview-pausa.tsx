@@ -71,7 +71,6 @@ const base = {
     city_weight: 5,
     priority_stars: 5,
     isFinished: false,
-    contacts: { w1: false, w2: false, w3: false, w4: false },
 } as unknown as EnrichedPerformanceRow;
 
 function Preview() {

@@ -764,9 +764,6 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                             Avaliação {renderSortIcon('total_avaliacoes')}
                                         </th>
                                         <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                            Contatos
-                                        </th>
-                                        <th scope="col" className="px-3 py-3.5 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                             Jornada
                                         </th>
                                     </>
@@ -784,30 +781,17 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                 );
                                 const partnerId = row.estab_id || row.estabelecimento;
 
-                                const renderContactDots = () => {
-                                    return (
-                                        <div className="flex justify-center gap-1">
-                                            {(['w1', 'w2', 'w3', 'w4'] as const).map((w) => (
-                                                <div
-                                                    key={w}
-                                                    className={`size-2 rounded-full border ${row.contacts[w] ? 'bg-emerald-500 border-emerald-600' : 'bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}
-                                                    title={row.contacts[w] ? 'Contato Realizado' : 'Pendente'}
-                                                />
-                                            ))}
-                                        </div>
-                                    );
-                                };
-
                                 return (
                                     <tr
                                         key={row.estab_id ? `id:${row.estab_id}` : `${row.estabelecimento}-${row.cidade}-${index}`}
                                         className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group ${
-                                            row.pre_lancamento ? 'bg-sky-50/40 dark:bg-sky-900/10' : isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10 cursor-pointer' : 'cursor-pointer'
+                                            row.pre_lancamento ? 'bg-sky-50/40 dark:bg-sky-900/10 cursor-pointer' : isTopPriority ? 'bg-red-50/30 dark:bg-red-900/10 cursor-pointer' : 'cursor-pointer'
                                         }`}
-                                        // A ficha do parceiro mostra dias de jornada, pedidos esperados e
-                                        // índice — sem lançamento, nada disso existe.
-                                        title={row.pre_lancamento ? 'Parceiro ainda não lançou — sem ficha de jornada' : undefined}
-                                        onClick={() => { if (!row.pre_lancamento) handleRowClick(row); }}
+                                        // Pré-lançamento também abre a ficha: o estab_id é sempre real
+                                        // (no card do Trello ele vem do próprio título, "{id} - {nome}"),
+                                        // e o que falta é só a réplica, que alcança no dia seguinte. A
+                                        // ficha trata o estado — ver `preLanc` em PartnerDetailsView.
+                                        onClick={() => handleRowClick(row)}
                                     >
                                         {isDesempenho ? (
                                             <td className="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6 relative">
@@ -841,7 +825,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                         <span className="text-sm italic font-normal text-slate-300 dark:text-slate-600">sem cidade</span>
                                                     )}
                                                 </td>
-                                                <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 transition-colors ${row.pre_lancamento ? '' : 'group-hover:text-primary'}`}>
+                                                <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium text-slate-900 dark:text-slate-200 transition-colors group-hover:text-primary`}>
                                                     <div className="flex items-center gap-3">
                                                         {row.logo_url ? (
                                                             <img src={row.logo_url} alt={row.estabelecimento} className="size-10 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm object-cover" />
@@ -1042,9 +1026,11 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 );
                                             }
                                             const status = getRowCampaignStatus(row, campaign.id);
-                                            // Card só do Trello ainda não tem estab_id no banco: o partnerId
-                                            // cairia no nome e a marcação nasceria órfã. Some o handler → inerte.
-                                            const semIdReal = row.pre_lancamento?.origem === 'trello';
+                                            // Pré-lançamento marca promo e cupom como qualquer outro: o CS
+                                            // apresenta as ações ANTES da abertura, pra loja já nascer com
+                                            // campanha no ar. O override vai pro Supabase pelo estab_id, que
+                                            // é real mesmo no card só do Trello (vem do título "{id} - {nome}"),
+                                            // então a marcação de hoje encontra a loja quando a réplica chegar.
                                             return (
                                                 <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={(e) => e.stopPropagation()}>
                                                     <StatusDropdown
@@ -1055,8 +1041,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                         currentStatus={status}
                                                         activeDropdown={activeDropdown}
                                                         setActiveDropdown={setActiveDropdown}
-                                                        onCampaignStatusChange={semIdReal ? undefined : onCampaignStatusChange}
-                                                        onStatusChange={semIdReal ? undefined : onStatusChange}
+                                                        onCampaignStatusChange={onCampaignStatusChange}
+                                                        onStatusChange={onStatusChange}
                                                     >
                                                         {renderIndicadorBadge(status)}
                                                     </StatusDropdown>
@@ -1066,13 +1052,6 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
 
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {row.pre_lancamento ? <Traco /> : renderAvaliacaoBadge(row.total_avaliacoes, row.dias_desde_lancamento)}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
-                                            {/* O estado de contato é chaveado pelo lançamento no localStorage
-                                                e reseta quando ele muda — marcar aqui sumiria na abertura. */}
-                                            {row.pre_lancamento
-                                                ? <span title="A régua de contatos começa no lançamento"><Traco /></span>
-                                                : renderContactDots()}
                                         </td>
                                         <td className="whitespace-nowrap px-3 py-4 text-sm text-center">
                                             {row.pre_lancamento ? (

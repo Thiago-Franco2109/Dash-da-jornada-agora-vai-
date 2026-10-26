@@ -45,14 +45,25 @@ const BOARDS = [
 /**
  * Listas onde um card significa contrato vigente.
  *
- * Medido contra as cobranças de CD de out/2026: "Treinado: Acompanhar
- * Pagamento" tem 39 cobranças em 64 cards (61%), e nenhuma outra lista passa
- * de 17% — "Conculído: Cancelados" tem 1/21, "Demanda Concluída" 1/31,
- * "Treinado: Teste Grátis" 0/13. "Enviado ao SC" entra porque é contrato
- * assinado que só não vendeu: a mensalidade corre do mesmo jeito.
+ * Medido contra as mensalidades realmente FATURADAS em set/2026 — mês
+ * fechado, `taxa_fatura.fatura_id IS NOT NULL`, descartando as parcelas de
+ * "Parcelamento da dívida", que não são mensalidade. São 40 lojas.
  *
- * Fora ficam também "Conferir Saldo em Aberto" e "Em Recesso / Aguardando",
- * por decisão de contar inadimplente/suspenso como cancelado.
+ * "Treinado: Acompanhar Pagamento" tem 39 dessas em 62 cards (63%), e
+ * nenhuma outra lista com volume passa de 25%: "Conculído: Cancelados" 1/21,
+ * "Demanda Concluída" 1/30, "Treinado: Teste Grátis" 0/13, "Conferir Saldo
+ * em Aberto" 0/6. "Enviado ao SC" entra apesar de 1/4 porque é contrato
+ * assinado que só não vendeu — a mensalidade corre do mesmo jeito, e
+ * Donana'Salgados está lá faturando 89,90.
+ *
+ * Fora ficam "Conferir Saldo em Aberto" e "Em Recesso / Aguardando", por
+ * decisão de contar inadimplente/suspenso como cancelado.
+ *
+ * CUIDADO ao refazer essa medição: linha em `taxa_fatura` é parcela
+ * AGENDADA, não cobrança. As parcelas nascem todas de uma vez na assinatura
+ * (há `data_referencia` até 2031), e só viram cobrança quando ganham
+ * `fatura_id`. Medir pelo mês corrente conta contrato em teste grátis como
+ * se estivesse pagando.
  */
 const LISTAS_ATIVAS = new Set([
     'Treinado: Acompanhar Pagamento',

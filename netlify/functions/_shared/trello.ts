@@ -1,4 +1,18 @@
 /**
+ * A mensagem de erro COM o corpo da resposta.
+ *
+ * O Trello manda a causa real no body ("invalid value for idLabels"), e só o
+ * status deixava `Trello API 400: Bad Request` — indepurável, ainda mais em
+ * escrita de lote, onde não dá pra repetir a chamada à mão pra descobrir qual
+ * dos campos ele não engoliu. 300 caracteres cobrem o recado e não despejam
+ * uma página de HTML no log quando o erro vem do proxy, não da API.
+ */
+async function mensagemDeErro(res: Response): Promise<string> {
+    const corpo = (await res.text().catch(() => '')).trim();
+    return `Trello API ${res.status}: ${res.statusText}${corpo ? ` — ${corpo.slice(0, 300)}` : ''}`;
+}
+
+/**
  * Helper compartilhado pra chamar a API do Trello a partir de Netlify
  * Functions server-side. Key/token sempre vêm do caller (env vars
  * TRELLO_API_KEY/TRELLO_TOKEN) — nunca hardcoded aqui, e nunca com prefixo
@@ -14,7 +28,7 @@ export async function trelloFetch<T>(
     const query = new URLSearchParams({ key, token, ...params }).toString();
     const res = await fetch(`https://api.trello.com/1${path}?${query}`, { method });
     if (!res.ok) {
-        throw new Error(`Trello API ${res.status}: ${res.statusText}`);
+        throw new Error(await mensagemDeErro(res));
     }
     return res.json();
 }
@@ -35,7 +49,7 @@ export async function trelloUpload<T>(
     form.append('file', new Blob([arquivo.bytes], { type: arquivo.mimeType }), arquivo.nome);
     const res = await fetch(`https://api.trello.com/1${path}?${query}`, { method: 'POST', body: form });
     if (!res.ok) {
-        throw new Error(`Trello API ${res.status}: ${res.statusText}`);
+        throw new Error(await mensagemDeErro(res));
     }
     return res.json();
 }

@@ -20,5 +20,4 @@ export type AppView =
     | 'about'
     | 'managers'
     | 'profile'
-    | 'contacts'
     | 'reports';

@@ -177,16 +177,6 @@ export default function AnalystHome({ rows, onPartnerClick, onNavigate }: Analys
                         </span>
                         Foco de hoje
                     </h2>
-                    {focus.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => onNavigate('contacts')}
-                            className="flex items-center gap-1 text-sm font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
-                        >
-                            Ver contatos do dia
-                            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                        </button>
-                    )}
                 </div>
 
                 {focus.length === 0 ? (

@@ -118,7 +118,7 @@ export const handler: Handler = async (event) => {
                 headers: jsonHeaders,
                 body: JSON.stringify({
                     ok: true, estabId, janelaDias: dias, totalSessoes: 0, celular: 0, computador: 0,
-                    pctCelular: 0, predominante: null, porApp: {}, ultimoAcesso: null,
+                    pctCelular: 0, predominante: null, ultimoDispositivo: null, porApp: {}, ultimoAcesso: null,
                     diasSemAcesso: null, sumido: false, nuncaAcessou: true,
                     tookMs: Date.now() - started,
                 }),
@@ -150,6 +150,10 @@ export const handler: Handler = async (event) => {
         let recentes = 0;
         let diasSemAcesso: number | null = null;
         let ultimoAcesso: string | null = null;
+        // Dispositivo do acesso MAIS RECENTE — diferente do predominante: quem migrou pro
+        // celular continua com o histórico cheio de logins no computador.
+        let ultimoDispositivo: 'celular' | 'computador' | null = null;
+        let ultimoTs = -Infinity;
         const porApp: Record<string, { celular: number; computador: number }> = {};
 
         for (const r of rows) {
@@ -161,11 +165,15 @@ export const handler: Handler = async (event) => {
             else { computador += n; porApp[app].computador += n; }
             recentes += Number(r.sessoesRecentes ?? 0);
 
-            // O acesso mais recente é o MENOR "dias atrás" entre os grupos (data_atualizacao).
-            const d = r.diasAtras == null ? null : Number(r.diasAtras);
-            if (d != null && (diasSemAcesso == null || d < diasSemAcesso)) {
-                diasSemAcesso = d;
+            // O acesso mais recente é o MAIOR `ultima` entre os grupos (data_atualizacao).
+            // Comparar pelo timestamp, e não por `diasAtras`, desempata grupos do mesmo dia —
+            // o que importa pra dizer em qual dispositivo o lojista entrou por último.
+            const ts = r.ultima == null ? NaN : new Date(r.ultima).getTime();
+            if (Number.isFinite(ts) && ts > ultimoTs) {
+                ultimoTs = ts;
+                diasSemAcesso = r.diasAtras == null ? null : Number(r.diasAtras);
                 ultimoAcesso = r.ultima ?? null;
+                ultimoDispositivo = movel ? 'celular' : 'computador';
             }
         }
 
@@ -186,6 +194,8 @@ export const handler: Handler = async (event) => {
                 computador,
                 pctCelular: totalSessoes > 0 ? Math.round((100 * celular) / totalSessoes) : 0,
                 predominante: totalSessoes === 0 ? null : (celular > computador ? 'celular' : 'computador'),
+                /** Dispositivo do último login — pode divergir do predominante. */
+                ultimoDispositivo,
                 porApp,
                 ultimoAcesso,
                 diasSemAcesso,

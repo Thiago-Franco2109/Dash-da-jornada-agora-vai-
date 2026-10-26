@@ -1,4 +1,3 @@
-import { normalize } from '../hooks/useCityIds';
 
 /**
  * Cidades da OKR — o recorte que o painel inteiro sabe aplicar.
@@ -19,6 +18,25 @@ import { normalize } from '../hooks/useCityIds';
  * "identidade de loja é o ID": aqui o nome é da CIDADE, não da loja — cidade
  * homônima entre estados não existe nessa base.
  */
+
+/**
+ * Normaliza o nome da cidade para comparação: minúsculas, sem acento, sem
+ * espaço duplo.
+ *
+ * Mora AQUI, e não em `hooks/useCityIds`, para este arquivo não ter nenhum
+ * import: é o que permite que ele seja lido fora do navegador — o script
+ * `scripts/okr-quadro-sync.ts` precisa dos mesmos prefixos que a tela usa, e
+ * repetir a lista lá seria uma segunda verdade no recorte que define a base
+ * inteira do KR. `useCityIds` reexporta para quem já importava de lá.
+ */
+export function normalize(name: string): string {
+    return name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')  // remove acentos
+        .replace(/\s+/g, ' ')             // colapsa espaços múltiplos
+        .trim();
+}
 
 export interface CidadeOkr {
     /** Como a cidade aparece na OKR — é o rótulo que a interface mostra. */

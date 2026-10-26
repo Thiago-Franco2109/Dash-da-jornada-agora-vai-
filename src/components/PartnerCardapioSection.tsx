@@ -168,6 +168,8 @@ function BlocoAcesso({ acesso }: { acesso: ParceiroAcesso }) {
                     {acesso.diasSemAcesso === 0
                         ? 'Usou o painel hoje'
                         : `Última atividade no painel há ${acesso.diasSemAcesso} dia${acesso.diasSemAcesso === 1 ? '' : 's'}`}
+                    {/* O último acesso pode ser em outro aparelho que o predominante. */}
+                    {acesso.ultimoDispositivo && `, pelo ${acesso.ultimoDispositivo}`}
                     {acesso.sumido && ' — parceiro sumido do painel'}
                 </span>
             </div>

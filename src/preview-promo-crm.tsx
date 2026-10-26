@@ -88,7 +88,6 @@ export function PreviewPromoCrm() {
                 ofertasDaCasaUrl="https://admin.bigou.com.br/campanha/promocao/cadastro/31?localidade_id=1"
                 cupomUrl="https://admin.bigou.com.br/estabelecimento/cadastro/28136/cupons"
                 localidadeId="1"
-                onStatusChange={(id, field, status) => console.log('onStatusChange', id, field, status)}
                 onCampaignStatusChange={(id, campaign, status) => console.log('onCampaignStatusChange', id, campaign, status)}
             />
         </div>
