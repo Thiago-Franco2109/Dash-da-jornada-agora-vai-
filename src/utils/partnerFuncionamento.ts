@@ -287,14 +287,6 @@ export function hasActiveRecesso(recessos: RecessoRecord[]): RecessoRecord | nul
 /** Minutos desde a meia-noite local do dia em questão. */
 export type Intervalo = { inicio: number; fim: number };
 
-export type DiaStatus =
-    | 'operou'       // operou o horário programado normalmente
-    | 'fechou_cedo'  // fechou um pouco antes (normal — pouco movimento)
-    | 'parcial'      // fechou uma parte significativa do horário
-    | 'nao_operou'   // não abriu ou fechou logo após abrir (crítico)
-    | 'recesso'      // pausa planejada (recesso de vários dias)
-    | 'fechado';     // dia sem horário na grade
-
 export type AderenciaStatus =
     | 'cumpriu'             // abriu e ficou aberta a janela inteira
     | 'fechou_cedo'         // único buraco encostado no fim da janela
@@ -306,12 +298,6 @@ export type AderenciaStatus =
     | 'recesso_programado'  // pausa longa (férias/reforma) cobrindo o dia
     | 'fechado_grade';      // a grade não prevê funcionamento nesse dia
 
-/** Minutos que consideramos "fechar um pouco antes" como comportamento normal */
-const LIMIAR_FECHOU_CEDO_MIN = 30;
-/** Abaixo disto de operação efetiva no dia = praticamente não operou (crítico) */
-const LIMIAR_NAO_OPEROU_MIN = 20;
-/** % mínima do horário programado para não ser considerado crítico */
-const LIMIAR_NAO_OPEROU_PCT = 0.15;
 /** Até aqui depois da abertura, fechar é "abriu e desistiu" e não "abriu tarde" */
 const LIMIAR_DESISTIU_MIN = 15;
 /** Encostar nessa distância da borda da janela conta como tocar a borda */
@@ -336,34 +322,6 @@ const MIN_PAUSA_MIN = 2;
  * chega a 36h, férias passam disso com folga.
  */
 const SPAN_RECESSO_PROGRAMADO_MIN = 36 * 60;
-
-export interface DiaResumo {
-    date: Date;
-    diaSemana: number;
-    status: DiaStatus;
-    /** Minutos programados na grade para o dia */
-    programadoMin: number;
-    /** Minutos efetivamente aberto (programado - fechado por recesso) */
-    operouMin: number;
-    /** Minutos fechados dentro do horário programado por recesso do mesmo dia */
-    fechadoMin: number;
-    /** Recesso relevante (planejado que cobre o dia, ou operacional do dia) */
-    recesso: RecessoRecord | null;
-}
-
-export interface ResumoFuncionamento {
-    dias: DiaResumo[];
-    diasOperou: number;
-    diasFechouCedo: number;
-    diasParcial: number;
-    diasNaoOperou: number;
-    diasRecesso: number;
-    diasFechado: number;
-    /** Maior sequência de dias críticos consecutivos (não operou) */
-    maiorSequenciaCritica: number;
-    temHorario: boolean;
-    totalDias: number;
-}
 
 export interface AderenciaDia {
     date: Date;
@@ -767,105 +725,4 @@ function comPisoDeTom(tom: PadraoTom, pct: number): PadraoTom {
     if (pct < 0.6) return 'risco';
     if (pct < 0.9 && tom === 'ok') return 'atencao';
     return tom;
-}
-
-/** Tradução da aderência para os status que a aba Funcionamento já desenha. */
-function paraDiaStatus(dia: AderenciaDia): DiaStatus {
-    switch (dia.status) {
-        case 'fechado_grade': return 'fechado';
-        case 'recesso_programado': return 'recesso';
-        case 'cumpriu': return 'operou';
-        case 'desistiu':
-        case 'nao_abriu': return 'nao_operou';
-        default: {
-            if (dia.abertoMin <= LIMIAR_NAO_OPEROU_MIN || dia.pct <= LIMIAR_NAO_OPEROU_PCT) return 'nao_operou';
-            if (dia.status === 'fechou_cedo' && dia.fechadoMin <= LIMIAR_FECHOU_CEDO_MIN) return 'fechou_cedo';
-            return 'parcial';
-        }
-    }
-}
-
-/**
- * Resumo dos últimos N dias no formato que a aba Funcionamento consome.
- * É a mesma conta de `buildAderencia`, só com os status agrupados.
- */
-export function buildResumoFuncionamento(
-    horarios: HorarioDia[],
-    recessos: RecessoRecord[],
-    days = 14,
-    now: Date = new Date(),
-): ResumoFuncionamento {
-    const aderencia = buildAderencia(horarios, recessos, days, now);
-
-    const dias: DiaResumo[] = [];
-    let diasOperou = 0;
-    let diasFechouCedo = 0;
-    let diasParcial = 0;
-    let diasNaoOperou = 0;
-    let diasRecesso = 0;
-    let diasFechado = 0;
-    let maiorSequenciaCritica = 0;
-    let sequenciaAtual = 0;
-
-    for (const dia of aderencia.dias) {
-        const status = paraDiaStatus(dia);
-        if (status === 'operou') diasOperou++;
-        else if (status === 'fechou_cedo') diasFechouCedo++;
-        else if (status === 'parcial') diasParcial++;
-        else if (status === 'nao_operou') diasNaoOperou++;
-        else if (status === 'recesso') diasRecesso++;
-        else diasFechado++;
-
-        if (status === 'nao_operou') {
-            sequenciaAtual++;
-            maiorSequenciaCritica = Math.max(maiorSequenciaCritica, sequenciaAtual);
-        } else {
-            sequenciaAtual = 0;
-        }
-
-        dias.push({
-            date: dia.date,
-            diaSemana: dia.diaSemana,
-            status,
-            programadoMin: dia.programadoMin,
-            operouMin: dia.abertoMin,
-            fechadoMin: dia.fechadoMin,
-            recesso: dia.recesso,
-        });
-    }
-
-    return {
-        dias,
-        diasOperou,
-        diasFechouCedo,
-        diasParcial,
-        diasNaoOperou,
-        diasRecesso,
-        diasFechado,
-        maiorSequenciaCritica,
-        temHorario: aderencia.temHorario,
-        totalDias: days,
-    };
-}
-
-/** "Fechou 45 min antes", "Operou 20 min de 8h", etc. */
-export function descreverDia(dia: DiaResumo): string {
-    switch (dia.status) {
-        case 'operou':
-            return 'Operou o horário normalmente';
-        case 'fechou_cedo':
-            return `Fechou ${Math.round(dia.fechadoMin)} min antes do previsto`;
-        case 'parcial':
-            return `Ficou fechado ${formatDuracaoMin(dia.fechadoMin)} do horário previsto`;
-        case 'nao_operou':
-            return dia.operouMin <= 1
-                ? 'Não operou no horário previsto'
-                : `Abriu e fechou logo (só ${Math.round(dia.operouMin)} min de ${formatDuracaoMin(dia.programadoMin)})`;
-        case 'recesso':
-            return dia.recesso?.descricao ? `Recesso: ${dia.recesso.descricao}` : 'Recesso planejado';
-        case 'fechado':
-            return 'Sem horário na grade';
-        default:
-            return '';
-    }
 }
