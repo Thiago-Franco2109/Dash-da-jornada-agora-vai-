@@ -12,6 +12,42 @@ import type { EnrichedPerformanceRow } from './utils/calculations';
 import type { PromoStatus } from './hooks/useStatusOverride';
 import './index.css';
 
+/** Resumo de promoções de mentirinha, só pra a coluna Promoções não ficar em
+ *  estado de carregamento nesta tela (aqui não há Function respondendo). */
+function mockPromoResumo(i: number): EnrichedPerformanceRow['promo_resumo'] {
+    const campanhas = ['MÊS DO BIGOU: 12 ANOS', 'Ofertas da Casa', 'Promo do Dia!', 'Super Promos!'];
+    const estados = [
+        ['sem item', 'sem item', 'sem item', 'sem item'],
+        ['sem item', 'pendente', 'sem item', 'pendente'],
+        ['aprovado', 'sem item', 'sem item', 'pendente'],
+        ['caiu', 'sem item', 'sem item', 'rascunho'],
+        ['aprovado', 'aprovado', 'sem item', 'aprovado'],
+    ][i] as ('sem item' | 'pendente' | 'aprovado' | 'rascunho' | 'caiu')[];
+    const detalhe = campanhas.map((campanha, j) => ({
+        campanha,
+        status: estados[j],
+        dias: estados[j] === 'pendente' ? 3 + i * 5 : null,
+        itens: {
+            rascunho: estados[j] === 'rascunho' ? 1 : 0,
+            pendente: estados[j] === 'pendente' ? 1 : 0,
+            aprovado: estados[j] === 'aprovado' ? 1 : 0,
+            morto: estados[j] === 'caiu' ? 2 : 0,
+        },
+    }));
+    return {
+        pendente: detalhe.filter(d => d.status === 'pendente').length,
+        aprovado: detalhe.filter(d => d.status === 'aprovado').length,
+        rascunho: detalhe.filter(d => d.status === 'rascunho').length,
+        semItem: detalhe.filter(d => d.status === 'sem item').length,
+        caiu: detalhe.filter(d => d.status === 'caiu').length,
+        noAr: detalhe.filter(d => d.status === 'aprovado').length,
+        campanhasCidade: campanhas.length,
+        cidadeConhecida: true,
+        pendenteDiasMax: Math.max(0, ...detalhe.map(d => d.dias ?? 0)) || null,
+        detalhe,
+    };
+}
+
 function mockRow(partial: Partial<EnrichedPerformanceRow> & { estabelecimento: string; estab_id: string; cupomStatus: PromoStatus }): EnrichedPerformanceRow {
     return {
         cidade: 'São Paulo',
@@ -28,6 +64,8 @@ function mockRow(partial: Partial<EnrichedPerformanceRow> & { estabelecimento: s
         campaign_statuses: { cupons_destaque: partial.cupomStatus, super_promos: 'aguardando' },
         cupom_status: partial.cupomStatus,
         promo_status: 'aguardando',
+        promo_resumo: mockPromoResumo((Number(partial.estab_id) || 0) % 5),
+        localidade_id: '14',
         ...partial,
     } as unknown as EnrichedPerformanceRow;
 }

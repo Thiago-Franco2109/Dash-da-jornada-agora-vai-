@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { formatarMoedaBRL } from '../config/cdContracts';
 import { getStarColor, getTendenciaColor, getTendenciaLabel, type EnrichedPerformanceRow } from '../utils/calculations';
 import {
@@ -11,7 +11,8 @@ import {
 } from '../config/campaignTypes';
 import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
-import type { PromoResumo } from '../hooks/usePromoStatus';
+import { usePromoStatus, type PromoResumo } from '../hooks/usePromoStatus';
+import PromoColuna from './promo/PromoColuna';
 import { urgenciaOnboarding } from '../utils/preLancamento';
 import { formatarDataBR, motivoPausaChip, motivoPausaLabel } from '../config/pausaOnboarding';
 
@@ -62,6 +63,8 @@ export type PerformanceRow = {
     promo_campanhas?: string[];
     /** Resumo de status dos itens promocionais (coluna Promoções). */
     promo_resumo?: PromoResumo;
+    /** `localidade_id` do parceiro — monta o link do CMS no modal de Promoções. */
+    localidade_id?: string;
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -92,20 +95,6 @@ export type PerformanceRow = {
     okr_delta?: number;
     okr_faltam?: number;
 };
-
-/**
- * Coluna Promoções — slots em ordem e largura FIXAS.
- * Cada estado tem sempre a mesma posição horizontal, então a coluna pode ser
- * varrida verticalmente: "a 1ª posição tem número" = tem item pendente.
- * Pílulas que embrulham quebram esse alinhamento, por isso ícone + número.
- * Semântica travada pelo briefing — não alterar os significados.
- */
-const PROMO_SLOTS = [
-    { key: 'pendente', icon: 'pending', tone: 'text-orange-600 dark:text-orange-400', hint: 'pendente(s) — disponível no painel do parceiro pra ativar' },
-    { key: 'aprovado', icon: 'check_circle', tone: 'text-emerald-600 dark:text-emerald-400', hint: 'aprovada(s) — ativa no painel' },
-    { key: 'rascunho', icon: 'edit_note', tone: 'text-slate-500 dark:text-slate-400', hint: 'em rascunho' },
-    { key: 'semItem', icon: 'block', tone: 'text-red-500 dark:text-red-400', hint: 'na cidade, sem item pro parceiro' },
-] as const satisfies readonly { key: keyof Omit<PromoResumo, 'detalhe' | 'pendenteDiasMax'>; icon: string; tone: string; hint: string }[];
 
 type PreLancamento = NonNullable<PerformanceRow['pre_lancamento']>;
 
@@ -488,6 +477,11 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     const isIndicador = variant === 'indicador' || isOkr;
     const pedidosColLabel = pedidosMesHeader || data.find(r => r.pedidos_mes_label)?.pedidos_mes_label || 'Pedidos/mês';
     const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
+    // Ordem global das campanhas vigentes: é ela que faz o mesmo slot da trilha
+    // significar a mesma campanha em todas as linhas. O hook tem cache de módulo
+    // (e dedupe de request), então chamar aqui não gera fetch novo.
+    const { promoData } = usePromoStatus();
+    const ordemCampanhas = useMemo(() => promoData.campanhas.map(c => c.nome), [promoData.campanhas]);
 
     // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
     // super_promos) + Cupons. Ofertas fica embutida em Promoções (escondida).
@@ -565,35 +559,6 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                 <span className="material-symbols-outlined text-[13px]">remove</span>
                 —
             </span>
-        );
-    };
-
-    // Coluna Promoções: resumo dos itens promocionais (pendente/aprovado/sem item)
-    const promoResumoTitle = (r?: PromoResumo) =>
-        r?.detalhe?.length ? r.detalhe.map(d => `${d.campanha}: ${d.status}`).join(' · ') : undefined;
-
-    const renderPromoResumo = (r?: PromoResumo) => {
-        if (!r || (r.pendente === 0 && r.aprovado === 0 && r.rascunho === 0 && r.semItem === 0)) {
-            return <span className="text-[13px] text-slate-300 dark:text-slate-600">—</span>;
-        }
-        return (
-            <div className="inline-flex items-center">
-                {PROMO_SLOTS.map(slot => {
-                    const n = r[slot.key];
-                    // Slot vazio ocupa o espaço mesmo assim: mantém o alinhamento da coluna.
-                    if (!n) return <span key={slot.key} className="w-7" aria-hidden="true" />;
-                    return (
-                        <span
-                            key={slot.key}
-                            className={`w-7 inline-flex items-center justify-center gap-0.5 ${slot.tone}`}
-                            title={`${n} ${slot.hint}`}
-                        >
-                            <span className="material-symbols-outlined text-[14px] leading-none">{slot.icon}</span>
-                            <span className="text-[11px] font-bold tabular-nums leading-none">{n}</span>
-                        </span>
-                    );
-                })}
-            </div>
         );
     };
 
@@ -917,8 +882,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                 {displayCampaigns.map(campaign => {
                                                     if (campaign.id === 'super_promos') {
                                                         return (
-                                                            <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" title={promoResumoTitle(row.promo_resumo)}>
-                                                                {renderPromoResumo(row.promo_resumo)}
+                                                            <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={e => e.stopPropagation()}>
+                                                                <PromoColuna
+                                                                    resumo={row.promo_resumo}
+                                                                    ordemCampanhas={ordemCampanhas}
+                                                                    localidadeId={row.localidade_id}
+                                                                    rowIndex={index}
+                                                                    totalRows={data.length}
+                                                                />
                                                             </td>
                                                         );
                                                     }
@@ -1020,8 +991,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                         {displayCampaigns.map(campaign => {
                                             if (campaign.id === 'super_promos') {
                                                 return (
-                                                    <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" title={promoResumoTitle(row.promo_resumo)}>
-                                                        {renderPromoResumo(row.promo_resumo)}
+                                                    <td key={campaign.id} className="whitespace-nowrap px-2 py-4 text-sm text-center" onClick={e => e.stopPropagation()}>
+                                                        <PromoColuna
+                                                            resumo={row.promo_resumo}
+                                                            ordemCampanhas={ordemCampanhas}
+                                                            localidadeId={row.localidade_id}
+                                                            rowIndex={index}
+                                                            totalRows={data.length}
+                                                        />
                                                     </td>
                                                 );
                                             }

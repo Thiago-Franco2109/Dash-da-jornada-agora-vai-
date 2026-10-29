@@ -57,8 +57,9 @@ export function overlayCampanhas(
     const campanhas = db?.campanhas ?? [];
     const ov = overridesMap?.[id];
     // resumo de status dos itens promocionais (coluna Promoções)
+    const localidade_id = estabIdToLoc?.get(id);
     const promo_resumo = promoData
-        ? computePromoResumo(id, estabIdToLoc?.get(id), promoData)
+        ? computePromoResumo(id, localidade_id, promoData)
         : undefined;
 
     // Fonte da verdade = BANCO. A planilha (campaign_statuses) é IGNORADA aqui —
@@ -84,5 +85,8 @@ export function overlayCampanhas(
         cupom_status: cs.cupons_destaque,
         promo_campanhas: campanhas,
         promo_resumo,
+        // Usado pelo modal da coluna Promoções pra montar o link do CMS da
+        // campanha já filtrado na cidade certa.
+        localidade_id,
     };
 }

@@ -60,11 +60,12 @@ const mockPartner = {
     // cidade sem item do parceiro = "sem item"; fora da cidade nem aparece aqui
     // (a linha cai em "Não ofertada na cidade").
     promo_resumo: {
-        pendente: 0, aprovado: 2, rascunho: 0, semItem: 2,
+        pendente: 0, aprovado: 2, rascunho: 0, semItem: 2, caiu: 0, noAr: 1,
+        campanhasCidade: 3, cidadeConhecida: true, pendenteDiasMax: null,
         detalhe: [
-            { campanha: 'Super Promos!', status: 'aprovado' },
-            { campanha: 'Tudo por R$9,99', status: 'sem item' },
-            { campanha: 'Semana do Cliente', status: 'sem item' },
+            { campanha: 'Super Promos!', status: 'aprovado', itens: { rascunho: 0, pendente: 0, aprovado: 2, morto: 0 } },
+            { campanha: 'Tudo por R$9,99', status: 'sem item', itens: { rascunho: 0, pendente: 0, aprovado: 0, morto: 0 } },
+            { campanha: 'Semana do Cliente', status: 'sem item', itens: { rascunho: 0, pendente: 0, aprovado: 0, morto: 0 } },
         ],
     },
 } as unknown as EnrichedPerformanceRow;

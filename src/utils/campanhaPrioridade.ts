@@ -10,6 +10,7 @@
  *  - rascunho = item criado e não publicado → travado no CS, é ação dele
  *  - pendente = oferta pronta esperando o ok do dono → bola com o parceiro
  *  - aprovado = no ar
+ *  - caiu = só restou item arquivado/inativo: já esteve no ar e saiu
  *  - sem item = a campanha roda na cidade e o parceiro não entrou nela
  */
 
@@ -24,6 +25,8 @@ export interface EntradaPrioridade {
     noAr?: boolean;
     /** Item existe mas não foi publicado — travado do lado do CS. */
     rascunho?: boolean;
+    /** Tinha item e ele saiu do ar (arquivado/inativo). Nada aparece pro cliente hoje. */
+    caiu?: boolean;
     /** Oferta pronta, esperando resposta do parceiro. */
     aguardandoParceiro?: boolean;
     /** Há quantos dias espera resposta. null quando o banco não tem a data. */
@@ -49,6 +52,9 @@ export function classificarCampanha(e: EntradaPrioridade): Prioridade {
     if (e.recusado) return { zona: 'parado', score: 5 };
     if (e.noAr) return { zona: 'no_ar', score: 20 };
     if (e.rascunho) return { zona: 'agir', score: 90 };
+    // Entre o rascunho (travado no CS) e a nunca ofertada: o parceiro já
+    // aceitou uma vez, então reativar costuma ser a conversa mais barata.
+    if (e.caiu) return { zona: 'agir', score: 80 };
     if (e.aguardandoParceiro) {
         const dias = Math.max(0, Math.min(e.diasEsperando ?? 0, MAX_BONUS_ESPERA));
         return { zona: 'aguardando', score: 50 + dias };
@@ -67,6 +73,7 @@ export function motivoDaPrioridade(e: EntradaPrioridade): string {
     if (e.recusado) return 'Parceiro recusou.';
     if (e.noAr) return 'No ar.';
     if (e.rascunho) return 'Item em rascunho, nunca publicado.';
+    if (e.caiu) return 'O item saiu do ar — arquivado ou desativado.';
     if (e.aguardandoParceiro) {
         const d = e.diasEsperando;
         return d != null && d > 0

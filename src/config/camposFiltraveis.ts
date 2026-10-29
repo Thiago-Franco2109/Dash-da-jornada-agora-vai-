@@ -136,9 +136,19 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
     // ── Promoções (itens do painel) — as 4 leituras de "0 promoções" ──────
     if (!opts.isCD) {
         campos.push(campoContagemPromo(
-            'promo_aprovados', 'Promoções aprovadas',
-            'Itens já aprovados — ativos no painel do cliente. "nenhuma" = não tem promoção no ar.',
+            'promo_aprovados', 'Promoções no ar',
+            'Itens aprovados, ativos e não arquivados — o que o cliente vê no app. "nenhuma" = não tem promoção no ar.',
             r => r.aprovado, 'f',
+        ));
+        campos.push(campoContagemPromo(
+            'promo_campanhas_no_ar', 'Campanhas no ar',
+            'Em quantas campanhas o parceiro tem ao menos um item no ar.',
+            r => r.noAr, 'f',
+        ));
+        campos.push(campoContagemPromo(
+            'promo_campanhas_caiu', 'Campanhas que saíram do ar',
+            'Tinha item e ele foi arquivado ou desativado — o parceiro já aceitou uma vez.',
+            r => r.caiu, 'f',
         ));
         campos.push(campoContagemPromo(
             'promo_pendentes', 'Itens pendentes',
@@ -147,12 +157,12 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
         ));
         campos.push(campoContagemPromo(
             'promo_rascunhos', 'Rascunhos no CMS',
-            'Item começado e não publicado — trabalho do CS pra terminar.',
+            'Item começado, não publicado e ainda não arquivado — trabalho do CS pra terminar.',
             r => r.rascunho,
         ));
         campos.push(campoContagemPromo(
             'promo_itens_criados', 'Itens criados (qualquer status)',
-            'Pendente + aprovado + rascunho. "nenhum" = ninguém montou oferta pra ele.',
+            'Pendente + no ar + rascunho, só item vivo. "nenhum" = ninguém montou oferta pra ele.',
             r => r.pendente + r.aprovado + r.rascunho,
         ));
         campos.push({

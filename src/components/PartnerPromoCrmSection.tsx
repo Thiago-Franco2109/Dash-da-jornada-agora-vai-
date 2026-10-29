@@ -40,8 +40,10 @@ function lerViewMode(): PromoViewMode {
  */
 const PROMO_STATUS_TONE: Record<PromoCampanhaStatus, { tone: CardTone; label: string }> = {
     pendente: { tone: 'pending', label: 'Pendente' },
-    aprovado: { tone: 'active', label: 'Aprovada' },
+    aprovado: { tone: 'active', label: 'No ar' },
     rascunho: { tone: 'idle', label: 'Rascunho' },
+    // Teve item e ele foi arquivado/desativado: hoje o cliente não vê nada.
+    caiu: { tone: 'denied', label: 'Saiu do ar' },
     'sem item': { tone: 'denied', label: 'Sem item' },
 };
 
@@ -97,6 +99,7 @@ function prioridadeDoResumo(
         case 'aprovado': return { noAr: true };
         case 'rascunho': return { rascunho: true };
         case 'pendente': return { aguardandoParceiro: true, diasEsperando: entrada.dias ?? null };
+        case 'caiu': return { caiu: true };
         case 'sem item': return { cidadeTop };
     }
 }

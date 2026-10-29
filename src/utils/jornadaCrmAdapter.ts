@@ -28,6 +28,8 @@ function estadoDoItem(row: EnrichedPerformanceRow, campaignId: CampaignTypeId): 
     if (entry.status === 'aprovado') return { itemState: 'aprovado', pendenteDias: null };
     if (entry.status === 'pendente') return { itemState: 'pendente', pendenteDias: entry.dias ?? null };
     if (entry.status === 'rascunho') return { itemState: 'rascunho', pendenteDias: null };
+    // 'caiu' (item arquivado/inativo) cai aqui junto com 'sem item': dos dois
+    // jeitos não há nada no ar pro cliente, que é o que o kanban mede.
     return { itemState: 'sem_item', pendenteDias: null };
 }
 
