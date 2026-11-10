@@ -93,6 +93,7 @@ export const ORDEM_ESTADOS: PromoCampanhaStatus[] = ['aprovado', 'pendente', 'ra
 
 export type VezDaPromo =
     | 'no_ar'         // tem promoção no ar: nada a fazer
+    | 'aguardando_banco' // o CS marcou "já criei" e a réplica ainda não viu
     | 'parceiro'      // oferta pronta, esperando ele aceitar
     | 'cs_publicar'   // rascunho começado e nunca publicado
     | 'cs_reativar'   // já esteve no ar e caiu — ele já aceitou uma vez
@@ -101,7 +102,7 @@ export type VezDaPromo =
     | 'desconhecido'; // sem localidade mapeada — "não sei", nunca "não tem"
 
 /** Os três `cs_*` colapsados: é o que o filtro oferece como "minha vez". */
-export type GrupoVez = 'cs' | 'parceiro' | 'no_ar' | 'sem_campanha';
+export type GrupoVez = 'cs' | 'parceiro' | 'no_ar' | 'sem_campanha' | 'aguardando_banco';
 
 export interface VezMeta {
     /** Verbo curto pra célula. Os estados com contagem própria montam o texto na hora. */
@@ -117,6 +118,12 @@ export const VEZ_META: Record<VezDaPromo, VezMeta> = {
         descricao: 'Tem promoção no ar — nada a fazer aqui hoje.',
         texto: ESTADO_META.aprovado.texto,
         grupo: 'no_ar',
+    },
+    aguardando_banco: {
+        label: 'criada · aguarda banco',
+        descricao: 'Você marcou que criou a oferta e a réplica das Functions ainda não enxerga. Some sozinho quando o banco alcançar — se lá não aparecer item nenhum, a cobrança volta.',
+        texto: 'text-sky-700 dark:text-sky-400',
+        grupo: 'aguardando_banco',
     },
     parceiro: {
         label: 'esperando',
@@ -162,14 +169,52 @@ export const VEZ_META: Record<VezDaPromo, VezMeta> = {
  * esperando não é trabalho pendente — o "+N" na célula dá o recado sem roubar
  * a leitura principal.
  */
-export function vezDaPromocao(r: PromoResumo): VezDaPromo {
+export function vezDaPromocao(r: PromoResumo, marca?: MarcaCs): VezDaPromo {
     if (r.noAr > 0) return 'no_ar';
     if (r.pendente > 0) return 'parceiro';
+
+    // A partir daqui a bola seria do CS. Se ele já marcou que fez, e a marca é
+    // mais nova que o dado, a coluna cala a boca em vez de cobrar de novo.
+    if (marcaValida(marca)) return 'aguardando_banco';
+
     if (r.rascunho > 0) return 'cs_publicar';
     if (r.caiu > 0) return 'cs_reativar';
     if (r.campanhasCidade > 0) return 'cs_criar';
     if (r.cidadeConhecida) return 'sem_campanha';
     return 'desconhecido';
+}
+
+/**
+ * A marcação do CS e até quando o dado da réplica enxerga.
+ *
+ * `dadoAte = null` significa "não sei a idade do dado" — e aí a marca NÃO
+ * expira. É o lado seguro: mandar criar de novo uma oferta que já existe
+ * custa mais caro do que deixar um "aguardando banco" sobrando.
+ */
+export interface MarcaCs {
+    /** Quando o CS marcou "já criei" (ISO). */
+    marcadoEm?: string | null;
+    /** Instante até onde o dado da réplica enxerga (ver `dadoAteDe`). */
+    dadoAte?: Date | null;
+}
+
+/** "23h atrás" / "2 dias atrás" — a idade do dado, pro rodapé do puxadinho. */
+export function textoIdadeDado(atrasoMinutos: number | null): string | null {
+    if (atrasoMinutos == null) return null;
+    if (atrasoMinutos < 90) return `${Math.max(atrasoMinutos, 0)} min atrás`;
+    const horas = Math.round(atrasoMinutos / 60);
+    if (horas < 36) return `${horas}h atrás`;
+    const dias = Math.round(horas / 24);
+    return `${dias} ${dias === 1 ? 'dia' : 'dias'} atrás`;
+}
+
+/** A marca vale enquanto o banco ainda não alcançou o momento em que foi feita. */
+export function marcaValida(marca?: MarcaCs): boolean {
+    if (!marca?.marcadoEm) return false;
+    const t = Date.parse(marca.marcadoEm);
+    if (Number.isNaN(t)) return false;
+    if (!marca.dadoAte) return true;
+    return t > marca.dadoAte.getTime();
 }
 
 /**

@@ -33,6 +33,8 @@ export interface ContextoAvaliacao {
     crmPronto: boolean;
     notaPorParceiro: Record<string, CrmPartnerNote>;
     localidadePorEstab: Map<string, string>;
+    /** Até onde o dado da réplica de promoções enxerga — expira a marcação do CS. */
+    promoDadoAte?: Date | null;
 }
 
 export interface ResultadoFiltro {

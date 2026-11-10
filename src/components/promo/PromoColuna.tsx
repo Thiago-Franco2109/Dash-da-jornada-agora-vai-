@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PromoCampanhaDetalhe, PromoResumo } from '../../hooks/usePromoStatus';
-import { ESTADO_META, VEZ_META, textoEspera, textoEsperaCurto, vezDaPromocao } from './promoEstado';
+import { ESTADO_META, VEZ_META, marcaValida, textoEspera, textoEsperaCurto, textoIdadeDado, vezDaPromocao } from './promoEstado';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../../utils/campanhaPrioridade';
 
 /**
@@ -35,6 +35,14 @@ interface PromoColunaProps {
     erro?: string | null;
     /** Tentar de novo — vale pra tabela inteira (o dado é um fetch só). */
     onRetry?: () => void;
+    /** Quando o CS marcou "já criei a oferta" (ISO). */
+    marcadoEm?: string | null;
+    /** Até onde o dado da réplica enxerga — define quando a marcação expira. */
+    dadoAte?: Date | null;
+    /** Idade do dado em minutos, só pra escrever "23h atrás" no rodapé. */
+    atrasoMinutos?: number | null;
+    /** Marca/desmarca "já criei a oferta". Ausente = célula só leitura. */
+    onMarcarCriado?: (criado: boolean) => void;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -73,7 +81,7 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcadoEm, dadoAte, atrasoMinutos, onMarcarCriado }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
 
@@ -133,7 +141,7 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
     // não, a segunda é "de quem é a vez?" (ver vezDaPromocao). Quando a bola é
     // do CS o veredito é um VERBO, não um placar — "0 de 4" dizia o tamanho do
     // buraco e não dizia o que fazer com ele.
-    const vez = vezDaPromocao(resumo);
+    const vez = vezDaPromocao(resumo, { marcadoEm, dadoAte });
     const vezMeta = VEZ_META[vez];
 
     if (vez === 'desconhecido') {
@@ -148,6 +156,7 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         vez === 'no_ar' ? `${resumo.noAr}/${totalCampanhas} no ar`
         : vez === 'parceiro' ? `${resumo.pendente} esperando`
         : vez === 'cs_publicar' ? (resumo.rascunho > 1 ? `publicar ${resumo.rascunho}` : 'publicar')
+        : vez === 'aguardando_banco' ? 'criada · aguarda'
         : vezMeta.label;
     const veredito = { texto: textoVeredito, classe: vezMeta.texto };
 
@@ -157,6 +166,8 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         .sort((a, b) => b.score - a.score || a.d.campanha.localeCompare(b.d.campanha, 'pt-BR'));
 
     const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
+    const marcado = marcaValida({ marcadoEm, dadoAte });
+    const idadeDado = textoIdadeDado(atrasoMinutos ?? null);
 
     return (
         <div ref={wrapperRef} className="relative inline-block text-left">
@@ -243,6 +254,44 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                             <div key={d.campanha} title={title} className={classe}>{conteudo}</div>
                         );
                     })}
+
+                    {/* Rodapé: idade do dado + a marcação.
+                        O dado da réplica atrasa ~1 dia (medido: 23h em 10/11/2026),
+                        então sem isto a coluna cobra oferta que o CS criou hoje de
+                        manhã e segue cobrando até amanhã. A marca NÃO finge que o
+                        item existe: ela diz "marquei", e morre sozinha quando o
+                        banco alcança — se lá não tiver item, a cobrança volta. */}
+                    <div className="mt-1 border-t border-slate-100 px-2 pb-1 pt-1.5 dark:border-slate-700">
+                        {idadeDado && (
+                            <p className="mb-1 text-[10px] leading-tight text-slate-400 dark:text-slate-500">
+                                Estado do banco: {idadeDado}.
+                            </p>
+                        )}
+                        {onMarcarCriado && (
+                            marcado ? (
+                                <button
+                                    type="button"
+                                    onClick={() => { onMarcarCriado(false); setOpen(false); }}
+                                    title="Tirar a marcação. A coluna volta a mostrar o que o banco diz."
+                                    className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-900/20"
+                                >
+                                    <span className="material-symbols-outlined text-[14px] leading-none">task_alt</span>
+                                    <span className="flex-1">Marcado como criado</span>
+                                    <span className="text-[10px] font-normal text-slate-400">desmarcar</span>
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => { onMarcarCriado(true); setOpen(false); }}
+                                    title="Some com a cobrança até o banco alcançar. Não inventa item nenhum — se o banco chegar sem oferta, a cobrança volta."
+                                    className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/60"
+                                >
+                                    <span className="material-symbols-outlined text-[14px] leading-none">check_circle</span>
+                                    Já criei a oferta no painel
+                                </button>
+                            )
+                        )}
+                    </div>
                 </div>
             )}
         </div>

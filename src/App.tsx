@@ -344,7 +344,7 @@ function App() {
   // Decisões de trabalho do CS (Supabase) — única fonte de override de campanha.
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Status dos itens promocionais por parceiro/campanha (banco).
-  const { promoData, pronto: promoPronto } = usePromoStatus();
+  const { promoData, pronto: promoPronto, dadoAte: promoDadoAte } = usePromoStatus();
   /**
    * `promoData` nasce como objeto vazio mas SEMPRE truthy, então sem este
    * portão o computePromoResumo roda com mapas vazios e escreve zeros
@@ -677,7 +677,8 @@ function App() {
     crmPronto: !crmNotasCarregando,
     notaPorParceiro: crmNotasMap,
     localidadePorEstab: estabIdToLoc,
-  }), [hojeDia, promoPronto, crmNotasCarregando, crmNotasMap, estabIdToLoc]);
+    promoDadoAte,
+  }), [hojeDia, promoPronto, crmNotasCarregando, crmNotasMap, estabIdToLoc, promoDadoAte]);
 
   /**
    * A busca do Header continua fora do construtor: é global (vale pro CRM,

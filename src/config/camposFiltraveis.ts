@@ -195,11 +195,14 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
             indisponivelMsg: 'Carregando o status de promoções…',
             // Sem localidade o resumo não conhece as campanhas da cidade:
             // responde "não sei" (undefined), nunca um balde qualquer.
-            valor: row => (row.promo_resumo ? VEZ_META[vezDaPromocao(row.promo_resumo)].grupo : undefined),
+            valor: (row, ctx) => (row.promo_resumo
+                ? VEZ_META[vezDaPromocao(row.promo_resumo, { marcadoEm: row.promo_marcado_em, dadoAte: ctx.promoDadoAte })].grupo
+                : undefined),
             opcoes: [
                 { valor: 'cs', rotulo: 'Minha vez — criar, publicar ou reativar' },
                 { valor: 'parceiro', rotulo: 'Vez do parceiro — oferta pronta, falta aceitar' },
                 { valor: 'no_ar', rotulo: 'Tem promoção no ar' },
+                { valor: 'aguardando_banco', rotulo: 'Marquei como criada — esperando o banco ver' },
                 { valor: 'sem_campanha', rotulo: 'Cidade sem campanha vigente' },
             ],
             valorPadrao: { tipo: 'texto', texto: 'cs' },

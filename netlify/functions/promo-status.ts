@@ -102,6 +102,11 @@ export const handler: Handler = async (event) => {
                     COUNT(*) AS n,
                     MIN(ic.data_modificacao_status) AS desde,
                     DATEDIFF(NOW(), MIN(ic.data_modificacao_status)) AS dias,
+                    -- Idade do item mais RECENTE deste grupo, em minutos e medida
+                    -- no banco. Vira o atrasoMinutos da resposta: é duração, não
+                    -- instante, então atravessa o fuso sem erro (ver comentário do
+                    -- DATEDIFF acima — a réplica responde em UTC).
+                    MIN(TIMESTAMPDIFF(MINUTE, ic.data_modificacao_status, NOW())) AS idade_min,
                     SUM(ic.data_modificacao_status IS NULL) AS n_sem_data
              FROM item_catalogo ic
              JOIN catalogo c ON c.id = ic.catalogo_id
@@ -136,6 +141,21 @@ export const handler: Handler = async (event) => {
         const faixas: Record<string, number> = { '0-2': 0, '3-6': 0, '7-13': 0, '14-29': 0, '30+': 0 };
         let itensPendentes = 0, pendentesSemData = 0, itensMortos = 0;
 
+        /**
+         * Até quando este dado enxerga, em minutos atrás — a idade do item
+         * promocional mais recente que a réplica conhece.
+         *
+         * Existe porque a réplica das Functions atrasa (medido em 09/11/2026:
+         * o item mais novo era de 22h antes do NOW() do próprio banco). Sem
+         * isto a coluna apresenta estado velho como presente e manda o CS
+         * criar oferta que ele já criou hoje de manhã.
+         *
+         * É teto, não lag exato: se ninguém mexeu em promoção por 10h, o
+         * número cresce sem a réplica estar atrasada. Erra pro lado seguro —
+         * confiar mais na marcação do CS do que num banco que pode estar velho.
+         */
+        let atrasoMinutos: number | null = null;
+
         // Separado por delivery pra provar que incluir onboarding é ADITIVO:
         // os números de `delivery = 1` têm que continuar idênticos aos de antes.
         const lancados = new Set<string>(), emOnboarding = new Set<string>();
@@ -150,6 +170,9 @@ export const handler: Handler = async (event) => {
             const vivo = Number(r.vivo) === 1;
             const n = Number(r.n);
             (ehLancado ? lancados : emOnboarding).add(estab);
+
+            const idade = r.idade_min == null ? null : Number(r.idade_min);
+            if (idade != null && (atrasoMinutos == null || idade < atrasoMinutos)) atrasoMinutos = idade;
 
             const p = (porParceiro[estab] ??= {});
             const cc = (p[campanha] ??= { rascunho: 0, pendente: 0, aprovado: 0, morto: 0 });
@@ -192,7 +215,9 @@ export const handler: Handler = async (event) => {
                 campanhas,
                 porParceiro,
                 campanhasPorLocalidade,
+                atrasoMinutos,
                 diagnostico: {
+                    atrasoMinutos,
                     itensPendentes,
                     pendentesSemData,
                     itensMortos,

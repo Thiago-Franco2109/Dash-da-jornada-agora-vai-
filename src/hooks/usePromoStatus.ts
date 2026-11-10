@@ -86,6 +86,15 @@ export interface PromoStatusData {
      * inclui campanha que ninguém da cidade começou ainda.
      */
     campanhasPorLocalidade: Record<string, string[]>;
+    /**
+     * Até quando este dado enxerga, em MINUTOS atrás (idade do item promocional
+     * mais recente que a réplica conhece). `null` = sem como saber.
+     *
+     * Vem como duração, não como instante, de propósito: a réplica responde em
+     * UTC e comparar relógios erraria 3h (ver banco-utc-vs-data-local). Com
+     * duração, `dadoAte` sai do relógio do próprio navegador.
+     */
+    atrasoMinutos: number | null;
 }
 
 /** Ordem global das campanhas, pra coluna alinhar o mesmo slot em toda linha. */
@@ -150,7 +159,7 @@ export function computePromoResumo(
     };
 }
 
-const VAZIO: PromoStatusData = { campanhas: [], porParceiro: {}, campanhasPorLocalidade: {} };
+const VAZIO: PromoStatusData = { campanhas: [], porParceiro: {}, campanhasPorLocalidade: {}, atrasoMinutos: null };
 
 /**
  * Store de módulo com assinantes.
@@ -203,7 +212,18 @@ async function fetchPromoStatus(): Promise<PromoStatusData> {
         campanhas: (json.campanhas ?? []) as CampanhaVigente[],
         porParceiro: json.porParceiro ?? {},
         campanhasPorLocalidade: json.campanhasPorLocalidade ?? {},
+        atrasoMinutos: typeof json.atrasoMinutos === 'number' ? json.atrasoMinutos : null,
     };
+}
+
+/**
+ * O instante até onde o dado da réplica enxerga, no relógio de QUEM OLHA.
+ * `null` quando não dá pra saber — e aí a marcação do CS nunca expira sozinha,
+ * que é o lado seguro: melhor manter "aguardando banco" do que mandar criar de
+ * novo uma oferta que já existe.
+ */
+export function dadoAteDe(atrasoMinutos: number | null): Date | null {
+    return atrasoMinutos == null ? null : new Date(Date.now() - atrasoMinutos * 60_000);
 }
 
 export function usePromoStatus() {
@@ -218,6 +238,8 @@ export function usePromoStatus() {
 
     return {
         promoData: estado.data,
+        /** Instante até onde o dado enxerga (relógio local). Ver `dadoAteDe`. */
+        dadoAte: dadoAteDe(estado.data.atrasoMinutos),
         /** Único portão seguro pra usar `promoData`: `!loading` ainda é `true`
          *  no primeiro render, com os mapas vazios, e escreveria zeros
          *  fabricados — indistinguíveis de zeros reais. */

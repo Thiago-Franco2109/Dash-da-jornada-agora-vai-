@@ -1126,19 +1126,35 @@ export function mergeRelevanceMapIntoRows(rows: PerformanceRow[], map: Record<st
 /**
  * Busca os status de promoção e cupom personalizados no Supabase.
  */
-export async function fetchStatusOverridesMap(): Promise<Record<string, {promo: string, cupom: string}>> {
+export async function fetchStatusOverridesMap(): Promise<Record<string, {promo: string, cupom: string, em: string | null}>> {
+    const COLUNAS_BASE = 'partner_id, promo_status_override, cupom_status_override';
     try {
-        const { data, error } = await supabase
+        // `updated_at` entra porque a marcação "já criei" precisa de idade: ela
+        // só vale enquanto for mais nova que o dado da réplica, que atrasa ~1
+        // dia. Sem o carimbo, a marca nunca expiraria e viraria mentira no dia
+        // em que o item fosse arquivado.
+        //
+        // Com fallback de propósito: `select` de coluna inexistente no PostgREST
+        // não devolve a coluna vazia, devolve ERRO — e o catch aqui embaixo
+        // transforma isso em mapa vazio, ou seja, TODO override do CS
+        // (ofertei/negado/confirmado) sumiria da tela de uma vez. Se o ambiente
+        // não tiver a coluna, perde-se só a marcação nova.
+        let { data, error } = await supabase
             .from('partner_status_overrides')
-            .select('partner_id, promo_status_override, cupom_status_override');
+            .select(`${COLUNAS_BASE}, updated_at`);
 
+        if (error) {
+            console.warn('[statusOverrides] sem `updated_at`; seguindo sem a marcação de data:', error.message);
+            ({ data, error } = await supabase.from('partner_status_overrides').select(COLUNAS_BASE));
+        }
         if (error) throw error;
 
-        const map: Record<string, {promo: string, cupom: string}> = {};
+        const map: Record<string, {promo: string, cupom: string, em: string | null}> = {};
         data?.forEach((item: any) => {
             map[item.partner_id] = {
                 promo: item.promo_status_override,
-                cupom: item.cupom_status_override
+                cupom: item.cupom_status_override,
+                em: item.updated_at ?? null
             };
         });
         return map;

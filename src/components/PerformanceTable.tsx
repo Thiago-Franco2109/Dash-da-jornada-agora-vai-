@@ -65,6 +65,9 @@ export type PerformanceRow = {
     promo_resumo?: PromoResumo;
     /** `localidade_id` do parceiro — monta o link do CMS no modal de Promoções. */
     localidade_id?: string;
+    /** Quando o CS marcou "já criei a oferta" (ISO). Vale só enquanto for mais
+     *  novo que o dado da réplica — ver `vezDaPromocao`. */
+    promo_marcado_em?: string | null;
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -480,7 +483,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // Ordem global das campanhas vigentes: é ela que faz o mesmo slot da trilha
     // significar a mesma campanha em todas as linhas. O hook tem cache de módulo
     // (e dedupe de request), então chamar aqui não gera fetch novo.
-    const { promoData, error: promoErro, refetch: recarregarPromo } = usePromoStatus();
+    const { promoData, dadoAte: promoDadoAte, error: promoErro, refetch: recarregarPromo } = usePromoStatus();
     const ordemCampanhas = useMemo(() => promoData.campanhas.map(c => c.nome), [promoData.campanhas]);
 
     // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
@@ -891,6 +894,12 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     totalRows={data.length}
                                                                     erro={promoErro}
                                                                     onRetry={recarregarPromo}
+                                                                    marcadoEm={row.promo_marcado_em}
+                                                                    dadoAte={promoDadoAte}
+                                                                    atrasoMinutos={promoData.atrasoMinutos}
+                                                                    onMarcarCriado={onCampaignStatusChange
+                                                                        ? criado => onCampaignStatusChange(partnerId, 'super_promos', criado ? 'confirmado' : 'aguardando')
+                                                                        : undefined}
                                                                 />
                                                             </td>
                                                         );
@@ -1002,6 +1011,12 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             totalRows={data.length}
                                                             erro={promoErro}
                                                             onRetry={recarregarPromo}
+                                                            marcadoEm={row.promo_marcado_em}
+                                                            dadoAte={promoDadoAte}
+                                                            atrasoMinutos={promoData.atrasoMinutos}
+                                                            onMarcarCriado={onCampaignStatusChange
+                                                                ? criado => onCampaignStatusChange(partnerId, 'super_promos', criado ? 'confirmado' : 'aguardando')
+                                                                : undefined}
                                                         />
                                                     </td>
                                                 );

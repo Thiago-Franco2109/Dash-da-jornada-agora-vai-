@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 // (ofertei/aguardando/negado). O estado real (ativo/não ofertado) vem do banco.
 // ─────────────────────────────────────────────────────────────────────────
 
-export type OverrideEntry = { promo: string; cupom: string };
+export type OverrideEntry = { promo: string; cupom: string; em: string | null };
 export type OverridesMap = Record<string, OverrideEntry>;
 export type OverrideField = 'promo_status_override' | 'cupom_status_override';
 
@@ -27,17 +27,20 @@ export function useStatusOverridesMap() {
     const setOverride = useCallback(async (partnerId: string | number, field: OverrideField, status: string): Promise<boolean> => {
         const id = String(partnerId);
         const key = field === 'promo_status_override' ? 'promo' : 'cupom';
+        // O mesmo carimbo vai pro estado otimista e pro banco: a marcação só
+        // vale enquanto for mais nova que o dado da réplica (ver fetchStatusOverridesMap).
+        const agora = new Date().toISOString();
         const prev = overridesMap[id];
         // otimista
         setOverridesMap(m => {
             const next = { ...m };
-            next[id] = { promo: prev?.promo ?? '', cupom: prev?.cupom ?? '', [key]: status };
+            next[id] = { promo: prev?.promo ?? '', cupom: prev?.cupom ?? '', em: agora, [key]: status };
             _cache = next;
             return next;
         });
         const { error } = await supabase
             .from('partner_status_overrides')
-            .upsert({ partner_id: id, [field]: status, updated_at: new Date().toISOString() }, { onConflict: 'partner_id' });
+            .upsert({ partner_id: id, [field]: status, updated_at: agora }, { onConflict: 'partner_id' });
         if (error) {
             console.error('[useStatusOverridesMap] falha ao salvar:', error);
             setOverridesMap(m => {
