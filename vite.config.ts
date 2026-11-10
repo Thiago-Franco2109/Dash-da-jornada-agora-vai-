@@ -133,6 +133,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'cs-kpis', 'parceiros-ativos', 'ativacoes-campanhas', 'ativacoes-mensal', 'ativacoes-diarias', 'campanhas',
     'funcionamento', 'parceiros-status', 'logos', 'crm-base', 'crm-cupons', 'crm-gmv', 'carteira', 'pedido-mensal', 'jornada', 'onboarding-pendentes',
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
+    'cidade-detalhe',
     'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar', 'trello-card-editar',
     'trello-card-anexar', 'trello-anexo',
     'cardapio-analise', 'parceiro-acesso', 'pedido-relatorio',

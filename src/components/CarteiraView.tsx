@@ -6,7 +6,7 @@ import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
-import { pctCellClass, CARTEIRA_COLUMNS as COLUMNS } from '../utils/carteiraColumns';
+import { pctCellContent, CARTEIRA_COLUMNS as COLUMNS } from '../utils/carteiraColumns';
 import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
 import CityFocusChip from './CityFocusChip';
 
@@ -192,9 +192,10 @@ export default function CarteiraView({
         }
 
         if (isPct && typeof value === 'number') {
+            const { texto, classe } = pctCellContent(value, row.ativos);
             return (
-                <td key={String(key)} className={`px-2 py-2 text-center text-sm ${pctCellClass(value)}`}>
-                    {value}%
+                <td key={String(key)} className={`px-2 py-2 text-center text-sm ${classe}`}>
+                    {texto}
                 </td>
             );
         }

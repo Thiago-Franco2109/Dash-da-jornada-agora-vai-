@@ -10,6 +10,16 @@ export function pctCellClass(pct: number): string {
     return 'bg-red-600 text-white font-bold';
 }
 
+/**
+ * Conteúdo da célula de %. Sem ativo não existe base: 0% ali é alarme falso —
+ * cidade só com suspenso/pendente sairia em vermelho forte, sem ninguém pra
+ * ativar. Nesse caso é traço neutro.
+ */
+export function pctCellContent(value: number, ativos: number): { texto: string; classe: string } {
+    if (ativos <= 0) return { texto: '—', classe: 'text-slate-300 dark:text-slate-600' };
+    return { texto: `${value}%`, classe: pctCellClass(value) };
+}
+
 export const CARTEIRA_COLUMNS: { key: keyof CarteiraRow; label: string; align: 'left' | 'center'; isPct?: boolean; metrica?: CarteiraMetrica }[] = [
     { key: 'divisao', label: 'Divisão', align: 'left' },
     { key: 'cidade', label: 'Cidade', align: 'left' },

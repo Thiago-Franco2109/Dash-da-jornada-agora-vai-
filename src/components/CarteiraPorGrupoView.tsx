@@ -6,9 +6,10 @@ import { cityBelongsToManager, type Manager } from '../config/managerMapping';
 import { getInitialGrupo } from '../config/carteiraGrupoMapping';
 import { useCarteiraClassificacao } from '../hooks/useCarteiraClassificacao';
 import { fetchCarteiraDrillDown } from '../hooks/useCarteiraData';
-import { pctCellClass, CARTEIRA_COLUMNS } from '../utils/carteiraColumns';
+import { pctCellContent, CARTEIRA_COLUMNS } from '../utils/carteiraColumns';
 import EstablishmentDrillDownModal from './EstablishmentDrillDownModal';
 import CityFocusChip from './CityFocusChip';
+import CidadeDetalheView from './CidadeDetalheView';
 
 interface CarteiraPorGrupoViewProps {
     rows: CarteiraRow[];
@@ -43,15 +44,31 @@ function renderCell(
     col: (typeof CARTEIRA_COLUMNS)[number],
     isLastCol: boolean,
     onDrillDown: (cidade: string, metrica: CarteiraMetrica, label: string) => void,
+    onAbrirCidade: (row: CarteiraRow) => void,
 ) {
     const { key, isPct, metrica, label } = col;
     const value = row[key];
     const borderClass = isLastCol ? '' : 'border-r border-slate-100 dark:border-slate-800';
 
-    if (isPct && typeof value === 'number') {
+    if (key === 'cidade') {
         return (
-            <td key={String(key)} className={`px-2 py-1.5 text-center text-xs ${borderClass} ${pctCellClass(value)}`}>
-                {value}%
+            <td key={String(key)} className={`px-2 py-1.5 text-left whitespace-nowrap ${borderClass}`}>
+                <button
+                    type="button"
+                    onClick={() => onAbrirCidade(row)}
+                    className="cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-primary hover:underline underline-offset-2 transition-colors"
+                >
+                    {String(value ?? '')}
+                </button>
+            </td>
+        );
+    }
+
+    if (isPct && typeof value === 'number') {
+        const { texto, classe } = pctCellContent(value, row.ativos);
+        return (
+            <td key={String(key)} className={`px-2 py-1.5 text-center text-xs ${borderClass} ${classe}`}>
+                {texto}
             </td>
         );
     }
@@ -63,7 +80,7 @@ function renderCell(
                     type="button"
                     onClick={() => onDrillDown(row.cidade, metrica, label)}
                     disabled={value === 0}
-                    className="text-xs font-semibold text-slate-700 dark:text-slate-300 tabular-nums px-1.5 py-0.5 rounded hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:cursor-default transition-colors"
+                    className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300 tabular-nums px-1.5 py-0.5 rounded hover:bg-primary/10 hover:text-primary disabled:hover:bg-transparent disabled:cursor-default transition-colors"
                 >
                     {value.toLocaleString('pt-BR')}
                 </button>
@@ -71,12 +88,12 @@ function renderCell(
         );
     }
 
+    // 'cidade' já saiu acima, como botão de drill-in: o que chega aqui é
+    // divisão/grupo, que são centralizados.
     return (
         <td
             key={String(key)}
-            className={`px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 ${borderClass} ${
-                key === 'cidade' ? 'text-left whitespace-nowrap' : 'text-center'
-            }`}
+            className={`px-2 py-1.5 text-xs text-center text-slate-700 dark:text-slate-300 ${borderClass}`}
         >
             {typeof value === 'number' ? value.toLocaleString('pt-BR') : value}
         </td>
@@ -97,6 +114,7 @@ export default function CarteiraPorGrupoView({
     const [sort, setSort] = useState<SortState>({ key: 'cidade', direction: 'asc' });
     const [drillDown, setDrillDown] = useState<{ cidade: string; metrica: CarteiraMetrica; label: string } | null>(null);
     const [cidadeFilter, setCidadeFilter] = useState('');
+    const [cidadeAberta, setCidadeAberta] = useState<CarteiraRow | null>(null);
 
     // Mesma classificação (Supabase) usada na Carteira — aqui é só leitura.
     const { mapa: classificacao } = useCarteiraClassificacao();
@@ -175,6 +193,21 @@ export default function CarteiraPorGrupoView({
             },
         );
     }, [filteredRows]);
+
+    // Drill-in da cidade. Fica aqui, e não como view no App, porque é a mesma
+    // tela por dentro: a volta precisa devolver a tabela com filtro, ordenação
+    // e grupo abertos do jeito que estavam.
+    if (cidadeAberta) {
+        return (
+            <CidadeDetalheView
+                cidade={cidadeAberta.cidade}
+                grupo={cidadeAberta.grupo}
+                divisao={cidadeAberta.divisao}
+                onVoltar={() => setCidadeAberta(null)}
+                onNavigateToPartner={onNavigateToPartner}
+            />
+        );
+    }
 
     return (
         <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-slate-900">
@@ -296,6 +329,7 @@ export default function CarteiraPorGrupoView({
                                                     col,
                                                     i === CARTEIRA_COLUMNS.length - 1,
                                                     (cidade, metrica, label) => setDrillDown({ cidade, metrica, label }),
+                                                    setCidadeAberta,
                                                 ))}
                                             </tr>
                                         ))}

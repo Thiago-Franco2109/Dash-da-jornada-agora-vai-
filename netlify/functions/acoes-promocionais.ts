@@ -2,6 +2,7 @@ import type { Handler } from '@netlify/functions';
 import type { RowDataPacket } from 'mysql2';
 import { getConnection } from './_shared/db';
 import { checkOrigin } from './_shared/auth';
+import { isOfertasDaCasa } from './_shared/campanhaSubsidio';
 
 /**
  * Ações Promocionais por Cidade — substitui a aba equivalente do CMS oficial.
@@ -36,17 +37,6 @@ import { checkOrigin } from './_shared/auth';
  */
 
 const jsonHeaders = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
-
-/** Campanhas cujo nome normalizado indica "Ofertas da Casa" — nunca subsidiada. */
-function isOfertasDaCasa(nomeCampanha: string): boolean {
-    const norm = nomeCampanha
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[!?.]+$/g, '')
-        .trim();
-    return norm.includes('ofertas da casa');
-}
 
 function pct(parte: number, base: number): number {
     if (base <= 0) return 0;

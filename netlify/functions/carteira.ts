@@ -11,6 +11,11 @@ import { checkOrigin } from './_shared/auth';
  * tela de cadastro. Aqui saem vazios e o front preenche.
  *
  * Regras assumidas (o job que montava a aba não está no repositório):
+ *  - só marketplace: `cardapio_digital = 0/NULL`. CD e marketplace são bases
+ *    disjuntas (ver `jornada.ts`) e promo/cupom aqui são construtos de
+ *    marketplace, então a loja de CD caía inteira em "sem promo"/"sem cupom" e
+ *    piorava a cidade onde ela está. IS NULL entra junto: a coluna é opcional
+ *    em cadastro antigo.
  *  - a carteira conta parceiro vivo: ativo (delivery 1), suspenso (4) e
  *    pendente (contrato lançado sem delivery resolvido). Cancelado e
  *    desistência ficam de fora, como na aba.
@@ -55,6 +60,7 @@ async function listarEstabelecimentos(
          FROM estabelecimento e
          LEFT JOIN localidade l ON l.id = e.localidade_id
          WHERE IFNULL(l.nome, '') = ?
+           AND (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)
            AND (e.delivery IN (1, 4)
                 OR (e.delivery = 0
                     AND e.id IN (SELECT estabelecimento_id FROM venda_estabelecimento)))`,
@@ -153,9 +159,10 @@ export const handler: Handler = async (event) => {
                     e.delivery         AS delivery
              FROM estabelecimento e
              LEFT JOIN localidade l ON l.id = e.localidade_id
-             WHERE e.delivery IN (1, 4)
-                OR (e.delivery = 0
-                    AND e.id IN (SELECT estabelecimento_id FROM venda_estabelecimento))`,
+             WHERE (e.cardapio_digital = 0 OR e.cardapio_digital IS NULL)
+               AND (e.delivery IN (1, 4)
+                    OR (e.delivery = 0
+                        AND e.id IN (SELECT estabelecimento_id FROM venda_estabelecimento)))`,
         );
 
         const [comPromo] = await connection.query<RowDataPacket[]>(
