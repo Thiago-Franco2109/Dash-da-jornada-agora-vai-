@@ -211,6 +211,16 @@ export default function CidadeDetalheView({ cidade, grupo, divisao, onVoltar, on
                         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Carteira</h2>
                         <div className="flex flex-wrap gap-2">
                             <Tile rotulo="Ativos" valor={data.carteira.ativos} detalhe={`de ${data.carteira.total} na carteira`} />
+                            {/* Vendendo mora aqui, e não na Atividade, porque a conta que
+                                importa é ativos x vendendo — separadas por uma seção, você
+                                tinha que fazer a subtração de cabeça. Leva a janela no
+                                rótulo: este bloco não está sob o título que a anuncia. */}
+                            <Tile
+                                rotulo="Vendendo"
+                                valor={data.atividade.comPedido}
+                                detalhe={`receberam pedido em ${data.dias}d`}
+                                tom="bom"
+                            />
                             <Tile rotulo="Suspensos" valor={data.carteira.suspenso} tom={data.carteira.suspenso > 0 ? 'alerta' : 'neutro'} />
                             <Tile rotulo="Pendentes" valor={data.carteira.pendente} detalhe="contrato sem lançamento" />
                         </div>
@@ -226,14 +236,8 @@ export default function CidadeDetalheView({ cidade, grupo, divisao, onVoltar, on
                                 valor={data.atividade.pedidos}
                                 detalhe={data.dias > 7 ? `${data.atividade.pedidos7.toLocaleString('pt-BR')} na última semana` : undefined}
                             />
-                            <Tile
-                                rotulo="Vendendo"
-                                valor={data.atividade.comPedido}
-                                detalhe={`de ${data.carteira.ativos} ativos`}
-                                tom="bom"
-                            />
                             {/* Sub-janela só entra quando é menor que a janela: com 7 dias
-                                selecionados, "em 7 dias" repetiria o bloco anterior. */}
+                                selecionados, "em 7 dias" repetiria o bloco de Vendendo. */}
                             {data.dias > 14 && (
                                 <Tile rotulo="Em 14 dias" valor={data.atividade.comPedido14} detalhe="receberam pedido" />
                             )}
