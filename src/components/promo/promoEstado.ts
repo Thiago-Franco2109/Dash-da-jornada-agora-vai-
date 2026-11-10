@@ -1,4 +1,4 @@
-import type { PromoCampanhaStatus } from '../../hooks/usePromoStatus';
+import type { PromoCampanhaStatus, PromoResumo } from '../../hooks/usePromoStatus';
 
 /**
  * Vocabulário único dos 5 estados de campanha por parceiro — a coluna
@@ -73,6 +73,104 @@ export const ESTADO_META: Record<PromoCampanhaStatus, EstadoMeta> = {
 
 /** Ordem em que os estados aparecem na legenda e no resumo do modal. */
 export const ORDEM_ESTADOS: PromoCampanhaStatus[] = ['aprovado', 'pendente', 'rascunho', 'caiu', 'sem item'];
+
+// ──────────────────────────────────────────────────────────────────────────
+// DE QUEM É A VEZ — o estado do parceiro inteiro, não de uma campanha.
+//
+// Os estados acima respondem "como está esta campanha?". Este responde
+// "preciso fazer alguma coisa por este parceiro?", que é outra pergunta e é a
+// que transforma a coluna em lista de trabalho.
+//
+// Por que NÃO é "campanha roda na cidade e ele não tem item": medido no banco
+// em 09/11/2026, isso é o estado NORMAL — 1.066 dos 1.294 parceiros ativos
+// (82%) e 34 de 34 da jornada 0-28d têm ao menos uma campanha sem item, num
+// total de 2.112 lacunas. Marcar isso pinta a tabela toda e não sobra sinal.
+// O corte que isola trabalho de verdade é mais estreito: NADA no ar E NADA
+// esperando o parceiro — ninguém pode ativar nada porque a oferta não existe.
+// Isso dá 134 parceiros na base (10%) e 6 na jornada (18%), que é lista que
+// cabe num dia.
+// ──────────────────────────────────────────────────────────────────────────
+
+export type VezDaPromo =
+    | 'no_ar'         // tem promoção no ar: nada a fazer
+    | 'parceiro'      // oferta pronta, esperando ele aceitar
+    | 'cs_publicar'   // rascunho começado e nunca publicado
+    | 'cs_reativar'   // já esteve no ar e caiu — ele já aceitou uma vez
+    | 'cs_criar'      // a cidade tem campanha e não existe oferta nenhuma
+    | 'sem_campanha'  // cidade conhecida e sem campanha vigente: não há o que ofertar
+    | 'desconhecido'; // sem localidade mapeada — "não sei", nunca "não tem"
+
+/** Os três `cs_*` colapsados: é o que o filtro oferece como "minha vez". */
+export type GrupoVez = 'cs' | 'parceiro' | 'no_ar' | 'sem_campanha';
+
+export interface VezMeta {
+    /** Verbo curto pra célula. Os estados com contagem própria montam o texto na hora. */
+    label: string;
+    descricao: string;
+    texto: string;
+    grupo: GrupoVez | null;
+}
+
+export const VEZ_META: Record<VezDaPromo, VezMeta> = {
+    no_ar: {
+        label: 'no ar',
+        descricao: 'Tem promoção no ar — nada a fazer aqui hoje.',
+        texto: ESTADO_META.aprovado.texto,
+        grupo: 'no_ar',
+    },
+    parceiro: {
+        label: 'esperando',
+        descricao: 'A oferta já está no painel do parceiro. A bola é dele: falta aceitar.',
+        texto: ESTADO_META.pendente.texto,
+        grupo: 'parceiro',
+    },
+    cs_publicar: {
+        label: 'publicar',
+        descricao: 'Item começado no CMS e nunca publicado — o parceiro nem viu. Sua vez: terminar e publicar.',
+        texto: ESTADO_META.rascunho.texto,
+        grupo: 'cs',
+    },
+    cs_reativar: {
+        label: 'reativar',
+        descricao: 'Tinha promoção e ela saiu do ar. Sua vez: reativar — ele já aceitou uma vez.',
+        texto: ESTADO_META.caiu.texto,
+        grupo: 'cs',
+    },
+    cs_criar: {
+        label: 'criar oferta',
+        descricao: 'A cidade tem campanha e não existe oferta nenhuma montada: o parceiro não tem o que ativar. Sua vez: gerar a oferta no painel.',
+        texto: 'text-rose-600 dark:text-rose-400',
+        grupo: 'cs',
+    },
+    sem_campanha: {
+        label: 'sem campanha',
+        descricao: 'Cidade conhecida e sem campanha vigente — não há promoção possível hoje.',
+        texto: 'text-slate-400 dark:text-slate-500',
+        grupo: 'sem_campanha',
+    },
+    desconhecido: {
+        label: '—',
+        descricao: 'Cidade do parceiro ainda não mapeada — sem como saber as campanhas dele.',
+        texto: 'text-slate-300 dark:text-slate-600',
+        grupo: null,
+    },
+};
+
+/**
+ * A ordem é a mesma do veredito da coluna, e é deliberada: "tem promoção no
+ * ar?" vem antes de tudo. Parceiro com promo rodando E uma segunda oferta
+ * esperando não é trabalho pendente — o "+N" na célula dá o recado sem roubar
+ * a leitura principal.
+ */
+export function vezDaPromocao(r: PromoResumo): VezDaPromo {
+    if (r.noAr > 0) return 'no_ar';
+    if (r.pendente > 0) return 'parceiro';
+    if (r.rascunho > 0) return 'cs_publicar';
+    if (r.caiu > 0) return 'cs_reativar';
+    if (r.campanhasCidade > 0) return 'cs_criar';
+    if (r.cidadeConhecida) return 'sem_campanha';
+    return 'desconhecido';
+}
 
 /**
  * A partir de quantos dias uma oferta pendente deixa de ser "esperando

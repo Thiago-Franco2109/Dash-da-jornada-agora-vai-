@@ -3,6 +3,7 @@ import type { ContextoAvaliacao } from '../utils/avaliarFiltro';
 import { getRowCampaignStatus } from '../components/PerformanceTable';
 import { CAMPAIGN_TYPES } from './campaignTypes';
 import { CAMPAIGN_STATUS_OPTIONS } from './promoCupomFilter';
+import { VEZ_META, vezDaPromocao } from '../components/promo/promoEstado';
 import {
     OPERADORES_POR_TIPO,
     novoId,
@@ -179,6 +180,31 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
                 return row.promo_resumo?.semItem;
             },
         });
+        // A pergunta que as contagens acima não respondem: "o que falta DE
+        // MIM?". Não é "campanha da cidade sem item" — isso é 82% da base e
+        // 100% da jornada (medido em 09/11/2026), pinta tudo e não sobra
+        // sinal. É o corte estreito: nada no ar e nada esperando o parceiro.
+        campos.push({
+            id: 'promo_de_quem_e_a_vez',
+            rotulo: 'De quem é a vez (promoção)',
+            grupo: GRUPO.promocoes,
+            tipo: 'selecao',
+            operadores: OPERADORES_POR_TIPO.selecao,
+            ajuda: '"Minha vez" = o parceiro não tem o que ativar porque a oferta ainda não existe (ou é rascunho, ou caiu). 6 dos 34 da jornada hoje.',
+            disponivel: ctx => ctx.promoPronto,
+            indisponivelMsg: 'Carregando o status de promoções…',
+            // Sem localidade o resumo não conhece as campanhas da cidade:
+            // responde "não sei" (undefined), nunca um balde qualquer.
+            valor: row => (row.promo_resumo ? VEZ_META[vezDaPromocao(row.promo_resumo)].grupo : undefined),
+            opcoes: [
+                { valor: 'cs', rotulo: 'Minha vez — criar, publicar ou reativar' },
+                { valor: 'parceiro', rotulo: 'Vez do parceiro — oferta pronta, falta aceitar' },
+                { valor: 'no_ar', rotulo: 'Tem promoção no ar' },
+                { valor: 'sem_campanha', rotulo: 'Cidade sem campanha vigente' },
+            ],
+            valorPadrao: { tipo: 'texto', texto: 'cs' },
+        });
+
         campos.push({
             id: 'promo_dias_espera',
             rotulo: 'Dias parado esperando',

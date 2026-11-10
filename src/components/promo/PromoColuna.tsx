@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PromoCampanhaDetalhe, PromoResumo } from '../../hooks/usePromoStatus';
-import { ESTADO_META, textoEspera, textoEsperaCurto } from './promoEstado';
+import { ESTADO_META, VEZ_META, textoEspera, textoEsperaCurto, vezDaPromocao } from './promoEstado';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../../utils/campanhaPrioridade';
 
 /**
@@ -12,8 +12,10 @@ import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from 
  *     ser varrida verticalmente: a 3ª casa é "Promo do Dia" em toda a tabela,
  *     tenha o parceiro item nela ou não. Campanha que não roda na cidade dele
  *     vira um risco fino — ausência de oportunidade, não ausência de trabalho.
- *  2. VEREDITO — uma frase curta que responde "tem promoção no ar?" e, quando
- *     não tem, há quanto tempo a oferta está parada.
+ *  2. VEREDITO — responde "tem promoção no ar?" e, quando não tem, "de quem é
+ *     a vez?" (ver `vezDaPromocao`). Com a bola do lado do CS o texto é um
+ *     VERBO — criar oferta / publicar / reativar — porque a coluna serve pra
+ *     achar trabalho, e placar ("0 de 4") não diz o que fazer.
  *
  * O detalhe abre num puxadinho ancorado na própria célula (mesmo padrão do
  * seletor de relevância): uma linha por campanha, na ordem da régua de
@@ -127,33 +129,27 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         ? ordemCampanhas
         : [...porCampanha.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-    // Veredito: a pergunta nº 1 é "tem promoção no ar?". Só quando a resposta é
-    // não é que a coluna conta o que travou.
-    let veredito: { texto: string; classe: string };
-    if (resumo.noAr > 0) {
-        veredito = {
-            texto: `${resumo.noAr}/${resumo.campanhasCidade || resumo.detalhe.length} no ar`,
-            classe: ESTADO_META.aprovado.texto,
-        };
-    } else if (resumo.pendente > 0) {
-        veredito = { texto: `${resumo.pendente} esperando`, classe: ESTADO_META.pendente.texto };
-    } else if (resumo.rascunho > 0) {
-        veredito = { texto: `${resumo.rascunho} rascunho`, classe: ESTADO_META.rascunho.texto };
-    } else if (resumo.caiu > 0) {
-        veredito = { texto: 'saiu do ar', classe: ESTADO_META.caiu.texto };
-    } else if (resumo.campanhasCidade > 0) {
-        veredito = { texto: `0 de ${resumo.campanhasCidade}`, classe: 'text-rose-600 dark:text-rose-400' };
-    } else if (resumo.cidadeConhecida) {
-        // Cidade conhecida e sem campanha vigente: não há promoção possível hoje.
-        veredito = { texto: 'sem campanha', classe: 'text-slate-400 dark:text-slate-500' };
-    } else {
+    // Veredito: a pergunta nº 1 é "tem promoção no ar?", e quando a resposta é
+    // não, a segunda é "de quem é a vez?" (ver vezDaPromocao). Quando a bola é
+    // do CS o veredito é um VERBO, não um placar — "0 de 4" dizia o tamanho do
+    // buraco e não dizia o que fazer com ele.
+    const vez = vezDaPromocao(resumo);
+    const vezMeta = VEZ_META[vez];
+
+    if (vez === 'desconhecido') {
         // Sem localidade mapeada (card do Trello): "0 campanhas" seria invenção.
         return (
-            <span className="text-[13px] text-slate-300 dark:text-slate-600" title="Cidade do parceiro ainda não mapeada — sem como saber as campanhas dele.">
-                —
-            </span>
+            <span className={`text-[13px] ${vezMeta.texto}`} title={vezMeta.descricao}>—</span>
         );
     }
+
+    const totalCampanhas = resumo.campanhasCidade || resumo.detalhe.length;
+    const textoVeredito =
+        vez === 'no_ar' ? `${resumo.noAr}/${totalCampanhas} no ar`
+        : vez === 'parceiro' ? `${resumo.pendente} esperando`
+        : vez === 'cs_publicar' ? (resumo.rascunho > 1 ? `publicar ${resumo.rascunho}` : 'publicar')
+        : vezMeta.label;
+    const veredito = { texto: textoVeredito, classe: vezMeta.texto };
 
     // Maior score primeiro: agir agora no topo, no ar no fim.
     const linhas = resumo.detalhe
@@ -167,8 +163,8 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
             <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
-                title="Ver as campanhas deste parceiro"
-                aria-label={`Promoções: ${veredito.texto}. Ver campanhas.`}
+                title={`${vezMeta.descricao}\n\n${totalCampanhas} campanha${totalCampanhas === 1 ? '' : 's'} na cidade · ${resumo.noAr} no ar · ${resumo.pendente} esperando o parceiro · ${resumo.semItem} sem item\n\nClique pra ver campanha a campanha.`}
+                aria-label={`Promoções: ${veredito.texto}. ${vezMeta.descricao} Ver campanhas.`}
                 aria-expanded={open}
                 className="flex w-[116px] flex-col items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:bg-slate-800"
             >
