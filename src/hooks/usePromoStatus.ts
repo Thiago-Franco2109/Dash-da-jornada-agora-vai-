@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Status dos itens promocionais por parceiro/campanha (Function promo-status).
@@ -150,10 +150,48 @@ export function computePromoResumo(
     };
 }
 
-let _cache: PromoStatusData | null = null;
-/** Request em voo, compartilhada: a tabela também chama o hook (pra ordem das
- *  campanhas) e sem isso dois componentes montando juntos fariam duas queries. */
-let _inflight: Promise<PromoStatusData> | null = null;
+const VAZIO: PromoStatusData = { campanhas: [], porParceiro: {}, campanhasPorLocalidade: {} };
+
+/**
+ * Store de módulo com assinantes.
+ *
+ * Antes cada chamada do hook guardava a própria cópia e só o instante que
+ * disparou o fetch aprendia o resultado: se a primeira tentativa falhasse, a
+ * cópia do App ficava em erro pro resto da sessão — e como é ela que carimba
+ * `promo_resumo` nas linhas, a coluna Promoções inteira ficava em traço mesmo
+ * depois de outro componente recarregar o dado com sucesso. Com assinantes,
+ * sucesso (ou retry) chega em todo mundo de uma vez.
+ */
+interface EstadoPromo {
+    data: PromoStatusData;
+    /** Já chegou resposta boa? É o portão pra NÃO calcular resumo com mapa vazio. */
+    carregado: boolean;
+    loading: boolean;
+    error: string | null;
+}
+
+let _estado: EstadoPromo = { data: VAZIO, carregado: false, loading: false, error: null };
+const _assinantes = new Set<() => void>();
+/** Request em voo: a tabela também chama o hook (pra ordem das campanhas) e sem
+ *  isso dois componentes montando juntos fariam duas queries. */
+let _inflight: Promise<void> | null = null;
+
+function publicar(parcial: Partial<EstadoPromo>) {
+    _estado = { ..._estado, ...parcial };
+    for (const fn of _assinantes) fn();
+}
+
+function carregarPromoStatus(): void {
+    if (_inflight) return;
+    publicar({ loading: true, error: null });
+    _inflight = fetchPromoStatus()
+        .then(d => { publicar({ data: d, carregado: true, loading: false, error: null }); })
+        .catch(err => {
+            console.warn('[usePromoStatus] falha:', err);
+            publicar({ loading: false, error: err.message });
+        })
+        .finally(() => { _inflight = null; });
+}
 
 async function fetchPromoStatus(): Promise<PromoStatusData> {
     const res = await fetch(FN_URL, { credentials: 'include' as RequestCredentials, cache: 'no-store' });
@@ -169,23 +207,23 @@ async function fetchPromoStatus(): Promise<PromoStatusData> {
 }
 
 export function usePromoStatus() {
-    const [promoData, setPromoData] = useState<PromoStatusData>(_cache ?? { campanhas: [], porParceiro: {}, campanhasPorLocalidade: {} });
-    const [loading, setLoading] = useState(!_cache);
-    const [error, setError] = useState<string | null>(null);
-
-    const load = useCallback(() => {
-        setLoading(true);
-        setError(null);
-        const req = (_inflight ??= fetchPromoStatus().finally(() => { _inflight = null; }));
-        req
-            .then(d => { _cache = d; setPromoData(d); setLoading(false); })
-            .catch(err => { console.warn('[usePromoStatus] falha:', err); setError(err.message); setLoading(false); });
-    }, []);
+    const estado = useSyncExternalStore(
+        cb => { _assinantes.add(cb); return () => { _assinantes.delete(cb); }; },
+        () => _estado,
+    );
 
     useEffect(() => {
-        if (_cache) return;
-        load();
-    }, [load]);
+        if (!_estado.carregado) carregarPromoStatus();
+    }, []);
 
-    return { promoData, loading, error, refetch: load };
+    return {
+        promoData: estado.data,
+        /** Único portão seguro pra usar `promoData`: `!loading` ainda é `true`
+         *  no primeiro render, com os mapas vazios, e escreveria zeros
+         *  fabricados — indistinguíveis de zeros reais. */
+        pronto: estado.carregado,
+        loading: estado.loading,
+        error: estado.error,
+        refetch: carregarPromoStatus,
+    };
 }

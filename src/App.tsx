@@ -343,14 +343,13 @@ function App() {
   // Decisões de trabalho do CS (Supabase) — única fonte de override de campanha.
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Status dos itens promocionais por parceiro/campanha (banco).
-  const { promoData, loading: promoCarregando, error: promoErro } = usePromoStatus();
+  const { promoData, pronto: promoPronto } = usePromoStatus();
   /**
    * `promoData` nasce como objeto vazio mas SEMPRE truthy, então sem este
    * portão o computePromoResumo roda com mapas vazios e escreve zeros
    * fabricados na linha — indistinguíveis de zeros reais. Com ele,
    * `promo_resumo === undefined` passa a significar "ainda não sei".
    */
-  const promoPronto = !promoCarregando && !promoErro;
   const promoDataOuIndefinido = promoPronto ? promoData : undefined;
   // Mapa estab_id → localidade_id (p/ saber as campanhas da cidade do parceiro).
   const estabIdToLoc = useMemo(() => {

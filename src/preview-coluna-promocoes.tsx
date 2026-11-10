@@ -54,7 +54,7 @@ function ColunaAntiga({ r }: { r: PromoResumo }) {
 }
 
 export function PreviewColunaPromocoes() {
-    const { promoData, loading, error } = usePromoStatus();
+    const { promoData, pronto, loading, error, refetch } = usePromoStatus();
     const ordem = promoData.campanhas.map(c => c.nome);
 
     return (
@@ -68,7 +68,7 @@ export function PreviewColunaPromocoes() {
                 {loading && <p className="mt-6 text-sm text-slate-500">Carregando promo-status…</p>}
                 {error && <p className="mt-6 text-sm text-red-600">{error}</p>}
 
-                {!loading && !error && (
+                {pronto && (
                     <>
                         <div className="mt-6 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                             {ORDEM_ESTADOS.map(e => (
@@ -80,6 +80,24 @@ export function PreviewColunaPromocoes() {
                             <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
                                 <span className="h-[3px] w-[9px] rounded-full bg-slate-200 dark:bg-slate-700" />
                                 não roda na cidade
+                            </span>
+                        </div>
+
+                        {/* Os três estados "sem dado": têm que ser distinguíveis entre si —
+                            o mesmo tracinho pros três já fez falha de carregamento passar
+                            por bug de dado (ver PromoColuna). */}
+                        <div className="mt-3 flex flex-wrap items-center gap-6 rounded-xl border border-slate-200 bg-white p-3 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                            <span className="inline-flex items-center gap-2">carregando
+                                <PromoColuna resumo={undefined} ordemCampanhas={ordem} rowIndex={0} totalRows={1} />
+                            </span>
+                            <span className="inline-flex items-center gap-2">falhou
+                                <PromoColuna resumo={undefined} erro="Erro 502 ao carregar status de promoções." onRetry={refetch} ordemCampanhas={ordem} rowIndex={0} totalRows={1} />
+                            </span>
+                            <span className="inline-flex items-center gap-2">cidade não mapeada
+                                <PromoColuna
+                                    resumo={{ pendente: 0, aprovado: 0, rascunho: 0, semItem: 0, caiu: 0, noAr: 0, campanhasCidade: 0, cidadeConhecida: false, pendenteDiasMax: null, detalhe: [] }}
+                                    ordemCampanhas={ordem} rowIndex={0} totalRows={1}
+                                />
                             </span>
                         </div>
 

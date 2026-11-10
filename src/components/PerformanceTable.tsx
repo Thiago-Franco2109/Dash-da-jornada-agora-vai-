@@ -480,7 +480,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // Ordem global das campanhas vigentes: é ela que faz o mesmo slot da trilha
     // significar a mesma campanha em todas as linhas. O hook tem cache de módulo
     // (e dedupe de request), então chamar aqui não gera fetch novo.
-    const { promoData } = usePromoStatus();
+    const { promoData, error: promoErro, refetch: recarregarPromo } = usePromoStatus();
     const ordemCampanhas = useMemo(() => promoData.campanhas.map(c => c.nome), [promoData.campanhas]);
 
     // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
@@ -889,6 +889,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     localidadeId={row.localidade_id}
                                                                     rowIndex={index}
                                                                     totalRows={data.length}
+                                                                    erro={promoErro}
+                                                                    onRetry={recarregarPromo}
                                                                 />
                                                             </td>
                                                         );
@@ -998,6 +1000,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             localidadeId={row.localidade_id}
                                                             rowIndex={index}
                                                             totalRows={data.length}
+                                                            erro={promoErro}
+                                                            onRetry={recarregarPromo}
                                                         />
                                                     </td>
                                                 );

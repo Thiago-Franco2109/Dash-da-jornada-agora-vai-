@@ -37,9 +37,6 @@ export function overlayCampanhas(
     promoData?: PromoStatusData,
     estabIdToLoc?: Map<string, string>,
 ): EnrichedPerformanceRow {
-    // enquanto o mapa não carregou, não mexe (evita "Não ofertado" falso)
-    if (!map || Object.keys(map).length === 0) return row;
-
     // Resolve o id do banco: 1) estab_id; 2) fallback por nome (dashboard "novos
     // formatado", onde a linha não traz estab_id).
     //
@@ -53,14 +50,26 @@ export function overlayCampanhas(
     if (!id && nomeToId) {
         id = nomeToId.get(normalizeNome(row.estabelecimento)) ?? '';
     }
-    const db = id ? map[id] : undefined;
-    const campanhas = db?.campanhas ?? [];
-    const ov = overridesMap?.[id];
-    // resumo de status dos itens promocionais (coluna Promoções)
+    // Resumo de status dos itens promocionais (coluna Promoções). NÃO sai do
+    // `map`: vem da Function `promo-status` (item a item) cruzada com a
+    // localidade do parceiro. Fica ANTES do portão do `map` de propósito —
+    // prender as duas fontes juntas fazia a coluna Promoções inteira virar
+    // traço enquanto a Function `campanhas` não respondia (8s+ no boot, quando
+    // ela disputa conexão com as outras) e ficar assim o resto da sessão
+    // sempre que ela falhava, mesmo com o `promo-status` tendo chegado inteiro.
     const localidade_id = estabIdToLoc?.get(id);
     const promo_resumo = promoData
         ? computePromoResumo(id, localidade_id, promoData)
         : undefined;
+    const comPromo: EnrichedPerformanceRow = { ...row, promo_resumo, localidade_id };
+
+    // Daqui pra baixo é estado de campanha vindo do `map`: enquanto ele não
+    // carregou, não mexe (evita "Não ofertado" falso).
+    if (!map || Object.keys(map).length === 0) return comPromo;
+
+    const db = id ? map[id] : undefined;
+    const campanhas = db?.campanhas ?? [];
+    const ov = overridesMap?.[id];
 
     // Fonte da verdade = BANCO. A planilha (campaign_statuses) é IGNORADA aqui —
     // ela é export estático e polui (ex: ofertas_da_casa hardcoded 'aguardando').
@@ -79,14 +88,10 @@ export function overlayCampanhas(
     cs.ofertas_da_casa = db?.ofertasDaCasa ? 'ativo' : 'aguardando';
 
     return {
-        ...row,
+        ...comPromo,
         campaign_statuses: cs,
         promo_status: cs.super_promos,
         cupom_status: cs.cupons_destaque,
         promo_campanhas: campanhas,
-        promo_resumo,
-        // Usado pelo modal da coluna Promoções pra montar o link do CMS da
-        // campanha já filtrado na cidade certa.
-        localidade_id,
     };
 }

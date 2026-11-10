@@ -29,6 +29,10 @@ interface PromoColunaProps {
     /** Posição na tabela: as últimas linhas abrem o puxadinho pra cima. */
     rowIndex: number;
     totalRows: number;
+    /** Falha ao carregar o `promo-status`. Sem isto a célula só sabe dizer "não sei". */
+    erro?: string | null;
+    /** Tentar de novo — vale pra tabela inteira (o dado é um fetch só). */
+    onRetry?: () => void;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -67,7 +71,7 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
 
@@ -85,8 +89,35 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         };
     }, [open]);
 
+    // Os três estados sem dado precisam ser DIFERENTES entre si. Antes os três
+    // saíam como o mesmo tracinho cinza, e "a coluna quebrou" ficava
+    // indistinguível de "essa loja não tem cidade mapeada" — foi o que fez uma
+    // falha de carregamento passar por bug de dado.
     if (!resumo) {
-        return <span className="text-[13px] text-slate-300 dark:text-slate-600" title="Carregando status de promoções…">…</span>;
+        if (erro) {
+            return (
+                <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onRetry?.(); }}
+                    disabled={!onRetry}
+                    title={`Não foi possível carregar o status de promoções.\n${erro}${onRetry ? '\n\nClique pra tentar de novo.' : ''}`}
+                    aria-label="Falha ao carregar promoções. Tentar de novo."
+                    className="inline-flex w-[116px] items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-default dark:text-rose-400 dark:hover:bg-rose-900/20"
+                >
+                    <span className="material-symbols-outlined text-[14px] leading-none">sync_problem</span>
+                    falhou
+                </button>
+            );
+        }
+        // Carregando: esqueleto da trilha, na largura final, pra ler como
+        // "ainda vem" e não como um valor.
+        return (
+            <span className="inline-flex w-[116px] animate-pulse justify-center gap-[3px] py-1" title="Carregando status de promoções…" aria-label="Carregando promoções">
+                {Array.from({ length: Math.max(ordemCampanhas.length, 4) }).map((_, i) => (
+                    <span key={i} className="h-[11px] w-[9px] rounded-[2px] bg-slate-200 dark:bg-slate-700" />
+                ))}
+            </span>
+        );
     }
 
     const porCampanha = new Map(resumo.detalhe.map(d => [d.campanha, d]));
