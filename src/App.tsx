@@ -76,6 +76,7 @@ import { useCityFocus } from './context/CityFocusContext';
 import LoginPage from './components/LoginPage';
 import { useDailyAccessSync } from './hooks/useDailyAccessSync';
 import { buildNoCityIndexMap } from './config/managerMapping';
+import JornadaKpiMetas from './components/JornadaKpiMetas';
 import { CACHE_KEYS } from './utils/dataSync';
 import { type PromoStatus, type StatusOverrideField } from './hooks/useStatusOverride';
 import { useCityIds } from './hooks/useCityIds';
@@ -1293,28 +1294,12 @@ function App() {
                         </div>
                       </div>
                     ) : !isCD && (
-                      <div className="flex items-center gap-4 md:gap-6 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shrink-0">
-                        <div className="text-center px-1">
-                          <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
-                            {((jornadaKpiPedidosCount / jornadaKpiTotal) * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Ativação de Pedidos</p>
-                        </div>
-                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
-                        <div className="text-center px-1">
-                          <p className="text-lg font-black text-violet-600 dark:text-violet-400 leading-none tabular-nums">
-                            {((jornadaKpiPromocaoCount / jornadaKpiTotal) * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Captação de Promoção</p>
-                        </div>
-                        <div className="w-px h-8 bg-slate-200 dark:bg-slate-700" />
-                        <div className="text-center px-1">
-                          <p className="text-lg font-black text-amber-600 dark:text-amber-400 leading-none tabular-nums">
-                            {((jornadaKpiCupomCount / jornadaKpiTotal) * 100).toFixed(1)}%
-                          </p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-1.5 whitespace-nowrap">Captação de Cupons</p>
-                        </div>
-                      </div>
+                      <JornadaKpiMetas
+                        total={jornadaKpiTotal}
+                        pedidosCount={jornadaKpiPedidosCount}
+                        promocaoCount={jornadaKpiPromocaoCount}
+                        cupomCount={jornadaKpiCupomCount}
+                      />
                     )}
 
                     <div className="flex flex-col items-end shrink-0">
