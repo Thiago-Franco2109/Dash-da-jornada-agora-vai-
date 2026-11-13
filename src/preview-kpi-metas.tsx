@@ -18,6 +18,9 @@ const CENARIOS = [
   { nome: 'Tudo na meta', total: 10, pedidos: 10, promocao: 9, cupom: 7 },
   { nome: 'Tudo no vermelho', total: 10, pedidos: 5, promocao: 3, cupom: 1 },
   { nome: 'Tela vazia', total: 0, pedidos: 0, promocao: 0, cupom: 0 },
+  // O "+N" da marcação do CS: o percentual NÃO sobe com ele de propósito —
+  // aquele número tem meta e é medido no banco (ver JornadaKpiMetas).
+  { nome: 'Com 2 marcadas como "Promo ativa" esperando o banco', total: 10, pedidos: 9, promocao: 5, cupom: 6, marcados: 2 },
 ];
 
 createRoot(document.getElementById('root')!).render(
@@ -27,7 +30,7 @@ createRoot(document.getElementById('root')!).render(
         <div key={c.nome} className="space-y-2">
           <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{c.nome}</p>
           <div className="flex">
-            <JornadaKpiMetas total={c.total} pedidosCount={c.pedidos} promocaoCount={c.promocao} cupomCount={c.cupom} />
+            <JornadaKpiMetas total={c.total} pedidosCount={c.pedidos} promocaoCount={c.promocao} cupomCount={c.cupom} promocaoMarcadoCount={(c as { marcados?: number }).marcados ?? 0} />
           </div>
         </div>
       ))}

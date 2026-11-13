@@ -69,6 +69,7 @@ import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
 import { useCampanhaStatusCs } from './hooks/useCampanhaStatusCs';
 import { campaignIdFromNome } from './config/campaignTypes';
+import { marcaCampanhaVale } from './components/promo/promoEstado';
 import { useCrmNotes } from './hooks/useCrmNotes';
 import { useTrelloTarefas } from './hooks/useTrelloTarefas';
 import { useAuth } from './context/AuthContext';
@@ -817,6 +818,22 @@ function App() {
   const jornadaKpiPedidosCount = jornadaKpiRows.filter(row => row.total_pedidos > 0).length;
   const jornadaKpiPromocaoCount = jornadaKpiRows.filter(row => (row.promo_resumo?.aprovado ?? 0) > 0).length;
   const jornadaKpiCupomCount = jornadaKpiRows.filter(row => getRowCampaignStatus(row, 'cupons_destaque') === 'ativo').length;
+  /**
+   * Parceiros sem promoção no ar pelo BANCO, mas que o CS já marcou como
+   * "Promo ativa". Fica fora do percentual de propósito — aquele número tem
+   * meta (80%) e é medido no banco; incluir marcação manual deixaria a meta
+   * ser batida no clique. Vira o "+N" ao lado: o trabalho do dia aparece, e o
+   * número oficial espera a réplica, que atrasa ~1 dia.
+   */
+  const jornadaKpiPromocaoMarcado = jornadaKpiRows.filter(row => {
+    if ((row.promo_resumo?.aprovado ?? 0) > 0) return false;
+    const pid = String(row.estab_id ?? '');
+    if (!pid) return false;
+    return (row.promo_resumo?.detalhe ?? []).some(d => {
+      const e = getMarcaCampanha(pid, campaignIdFromNome(d.campanha));
+      return marcaCampanhaVale(e ? { status: e.status, em: e.em } : undefined, promoDadoAte) && e?.status === 'ativo';
+    });
+  }).length;
 
   /** Contadores do cabeçalho quando a aba Pré-lançamento está ativa. */
   const preLancamentoNaTela = filteredTableData.filter(row => row.pre_lancamento);
@@ -1305,6 +1322,7 @@ function App() {
                         total={jornadaKpiTotal}
                         pedidosCount={jornadaKpiPedidosCount}
                         promocaoCount={jornadaKpiPromocaoCount}
+                        promocaoMarcadoCount={jornadaKpiPromocaoMarcado}
                         cupomCount={jornadaKpiCupomCount}
                       />
                     )}

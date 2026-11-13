@@ -6,6 +6,7 @@ import {
     type MarcaCampanha,
 } from './promoEstado';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
+import { comemorarPromoAtiva } from './celebracao';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../../utils/campanhaPrioridade';
 
 /**
@@ -307,7 +308,14 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                             <button
                                                 key={o.valor}
                                                 type="button"
-                                                onClick={() => { onMarcarCampanha(d.campanha, o.valor); setEditando(null); }}
+                                                onClick={e => {
+                                                    onMarcarCampanha(d.campanha, o.valor);
+                                                    setEditando(null);
+                                                    // Só "Promo ativa" comemora: é o estado que fecha a
+                                                    // tarefa. Comemorar "aguardando retorno" premiaria
+                                                    // o meio do caminho.
+                                                    if (o.valor === 'ativo') comemorarPromoAtiva(e.currentTarget, d.campanha);
+                                                }}
                                                 className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-medium transition hover:bg-white dark:hover:bg-slate-700 ${o.texto}`}
                                             >
                                                 <span className="material-symbols-outlined text-[13px] leading-none">{o.icone}</span>
