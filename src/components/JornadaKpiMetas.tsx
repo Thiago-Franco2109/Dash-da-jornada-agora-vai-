@@ -9,9 +9,11 @@ interface JornadaKpiMetasProps {
   cupomCount: number;
   /**
    * Parceiros que o CS marcou como "Promo ativa" e que o banco ainda não
-   * confirmou. NÃO entra no percentual: ele tem meta, e meta que se bate
-   * clicando deixa de ser meta. Aparece ao lado como "+N" — o trabalho fica
-   * visível no dia em que foi feito, e o número oficial espera o banco.
+   * confirmou. ENTRA no percentual — decisão do Thiago, consciente do
+   * trade-off: a réplica atrasa ~1 dia e sem isso o número do dia nunca
+   * refletia o trabalho do dia. O "+N" segue aparecendo ao lado pra dizer
+   * QUANTO do percentual ainda é marcação e não confirmação do banco; passando
+   * o mouse, o title mostra o número só-banco.
    */
   promocaoMarcadoCount?: number;
 }
@@ -29,17 +31,17 @@ export default function JornadaKpiMetas({ total, pedidosCount, promocaoCount, cu
   const vazio = total === 0;
   const base = total || 1;
   const kpis = [
-    { label: 'Ativação de Pedidos', valor: (pedidosCount / base) * 100, meta: METAS_JORNADA.pedidos, marcados: 0 },
-    { label: 'Captação de Promoção', valor: (promocaoCount / base) * 100, meta: METAS_JORNADA.promocao, marcados: promocaoMarcadoCount },
-    { label: 'Captação de Cupons', valor: (cupomCount / base) * 100, meta: METAS_JORNADA.cupons, marcados: 0 },
+    { label: 'Ativação de Pedidos', valor: (pedidosCount / base) * 100, meta: METAS_JORNADA.pedidos, marcados: 0, soBanco: undefined as number | undefined },
+    { label: 'Captação de Promoção', valor: ((promocaoCount + promocaoMarcadoCount) / base) * 100, meta: METAS_JORNADA.promocao, marcados: promocaoMarcadoCount, soBanco: (promocaoCount / base) * 100 },
+    { label: 'Captação de Cupons', valor: (cupomCount / base) * 100, meta: METAS_JORNADA.cupons, marcados: 0, soBanco: undefined as number | undefined },
   ];
 
   return (
     <div className="flex items-center gap-4 md:gap-6 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 shrink-0">
-      {kpis.map(({ label, valor, meta, marcados }, i) => (
+      {kpis.map(({ label, valor, meta, marcados, soBanco }, i) => (
         <Fragment key={label}>
           {i > 0 && <div className="w-px h-10 bg-slate-200 dark:bg-slate-700" />}
-          <div className="text-center px-1" title={vazio ? `Meta ${meta}% — nenhum parceiro na tela` : `Meta ${meta}% — hoje ${valor.toFixed(1)}% dos parceiros na tela${marcados > 0 ? `\n+${marcados} marcado(s) por você, aguardando o banco` : ''}`}>
+          <div className="text-center px-1" title={vazio ? `Meta ${meta}% — nenhum parceiro na tela` : `Meta ${meta}% — hoje ${valor.toFixed(1)}% dos parceiros na tela${marcados > 0 ? `\n${soBanco?.toFixed(1)}% confirmado pelo banco + ${marcados} marcado(s) por você` : ''}`}>
             <p className="flex items-baseline justify-center gap-1 leading-none">
               <span className={`text-lg font-black tabular-nums ${vazio ? 'text-slate-300 dark:text-slate-600' : CLASSE_STATUS_META[statusDaMeta(valor, meta)]}`}>
                 {vazio ? '—' : `${valor.toFixed(1)}%`}
@@ -48,7 +50,7 @@ export default function JornadaKpiMetas({ total, pedidosCount, promocaoCount, cu
                 <span
                   key={marcados}
                   className="animate-[pulse_1s_ease-in-out_2] text-[11px] font-black tabular-nums text-sky-600 dark:text-sky-400"
-                  title={`${marcados} ${marcados === 1 ? 'parceiro marcado' : 'parceiros marcados'} como "Promo ativa" por você, esperando o banco confirmar. Não entra no percentual até lá.`}
+                  title={`${marcados} ${marcados === 1 ? 'parceiro marcado' : 'parceiros marcados'} como "Promo ativa" por você, ainda sem confirmação do banco (a réplica atrasa ~1 dia).\nConfirmado pelo banco: ${soBanco?.toFixed(1)}%.`}
                 >
                   +{marcados}
                 </span>

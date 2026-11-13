@@ -486,7 +486,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // Status do CS por (parceiro, campanha) — tabela que já existe e já é
     // chaveada assim. É o que deixa marcar campanha a campanha em vez de
     // carimbar o parceiro inteiro de uma vez.
-    const { getEntrada, setCampanhaStatus } = useCampanhaStatusCs();
+    const { getEntrada, setCampanhaStatus, erro: erroMarcacao } = useCampanhaStatusCs();
 
     /** Marcações desta linha, indexadas pelo NOME da campanha (que é a chave
      *  que o `promo_resumo` usa). */
@@ -912,7 +912,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     dadoAte={promoDadoAte}
                                                                     atrasoMinutos={promoData.atrasoMinutos}
                                                                     onMarcarCampanha={(campanha, status) =>
-                                                                        setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status ?? 'aguardando')}
+                                                                        setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
+                                                                    erroMarcacao={erroMarcacao}
                                                                 />
                                                             </td>
                                                         );
@@ -1028,7 +1029,8 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             dadoAte={promoDadoAte}
                                                             atrasoMinutos={promoData.atrasoMinutos}
                                                             onMarcarCampanha={(campanha, status) =>
-                                                                setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status ?? 'aguardando')}
+                                                                setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
+                                                            erroMarcacao={erroMarcacao}
                                                         />
                                                     </td>
                                                 );

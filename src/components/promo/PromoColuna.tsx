@@ -50,6 +50,9 @@ interface PromoColunaProps {
     /** Grava o status do CS numa campanha. `null` volta pro vazio.
      *  Ausente = célula só leitura. */
     onMarcarCampanha?: (campanha: string, status: PromoStatus | null) => void;
+    /** Falha ao gravar a marcação (tabela ausente, RLS, offline). Sem isto a
+     *  reversão otimista é indistinguível de "o clique não funcionou". */
+    erroMarcacao?: string | null;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -88,7 +91,7 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha, erroMarcacao }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     /** Qual linha do puxadinho está com o seletor aberto. */
@@ -344,6 +347,15 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                     {idadeDado && (
                         <p className="mt-1 border-t border-slate-100 px-2 pb-0.5 pt-1.5 text-[10px] leading-tight text-slate-400 dark:border-slate-700 dark:text-slate-500">
                             Estado do banco: {idadeDado}.
+                        </p>
+                    )}
+                    {erroMarcacao && (
+                        <p
+                            className="mt-1 flex items-start gap-1 rounded-lg bg-rose-50 px-2 py-1.5 text-[10px] font-semibold leading-tight text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
+                            title={erroMarcacao}
+                        >
+                            <span className="material-symbols-outlined text-[13px] leading-none">error</span>
+                            <span>Não salvou a marcação — ela volta ao recarregar. {erroMarcacao}</span>
                         </p>
                     )}
                 </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabase';
 import type { PromoStatus } from './useStatusOverride';
 import type { MotivoLigacao } from '../config/desfechoLigacao';
@@ -29,8 +29,6 @@ export interface CampanhaEntrada {
 /** [partnerId][campanhaId] = entrada */
 export type CampanhaStatusMap = Record<string, Record<string, CampanhaEntrada>>;
 
-let _cache: CampanhaStatusMap | null = null;
-
 async function fetchCampanhaStatus(): Promise<CampanhaStatusMap> {
     const { data, error } = await supabase
         .from('campanha_status_cs')
@@ -50,19 +48,51 @@ async function fetchCampanhaStatus(): Promise<CampanhaStatusMap> {
     return map;
 }
 
+/**
+ * Store de módulo com assinantes.
+ *
+ * Antes cada chamada do hook guardava a própria cópia e o `_cache` nunca era
+ * republicado: quatro consumidores (tabela da jornada, CRM Jornada, tela do
+ * parceiro e o KPI do cabeçalho) e um só aprendia a escrita. Marcar o status na
+ * tabela não aparecia em lugar nenhum além dela — era o "não está
+ * sobrescrevendo o status". Com assinantes, uma escrita chega em todos.
+ */
+interface EstadoStatusCs {
+    data: CampanhaStatusMap;
+    carregado: boolean;
+    erro: string | null;
+}
+
+let _estado: EstadoStatusCs = { data: {}, carregado: false, erro: null };
+const _assinantes = new Set<() => void>();
+let _carregando: Promise<void> | null = null;
+
+function publicar(parcial: Partial<EstadoStatusCs>) {
+    _estado = { ..._estado, ...parcial };
+    for (const fn of _assinantes) fn();
+}
+
+function carregar(): void {
+    if (_carregando) return;
+    _carregando = fetchCampanhaStatus()
+        .then(m => { publicar({ data: m, carregado: true, erro: null }); })
+        .catch(err => {
+            // Tabela ausente ou offline: a tela segue funcionando, só sem status salvo.
+            console.warn('[useCampanhaStatusCs] falha ao carregar:', err);
+            publicar({ erro: err instanceof Error ? err.message : 'falha ao carregar' });
+        })
+        .finally(() => { _carregando = null; });
+}
+
 export function useCampanhaStatusCs() {
-    const [statusMap, setStatusMap] = useState<CampanhaStatusMap>(_cache ?? {});
-    const [erro, setErro] = useState<string | null>(null);
+    const estado = useSyncExternalStore(
+        cb => { _assinantes.add(cb); return () => { _assinantes.delete(cb); }; },
+        () => _estado,
+    );
+    const statusMap = estado.data;
 
     useEffect(() => {
-        if (_cache) return;
-        fetchCampanhaStatus()
-            .then(m => { _cache = m; setStatusMap(m); })
-            .catch(err => {
-                // Tabela ausente ou offline: a tela segue funcionando, só sem status salvo.
-                console.warn('[useCampanhaStatusCs] falha ao carregar:', err);
-                setErro(err instanceof Error ? err.message : 'falha ao carregar');
-            });
+        if (!_estado.carregado) carregar();
     }, []);
 
     const getEntrada = useCallback(
@@ -77,42 +107,45 @@ export function useCampanhaStatusCs() {
         [statusMap],
     );
 
+    /**
+     * Grava o status de uma campanha. `status = null` APAGA a linha — e isso
+     * importa: antes "limpar" mandava 'aguardando', que é um status como outro
+     * qualquer, então o slot continuava marcado em vez de voltar a vazio.
+     */
     const setCampanhaStatus = useCallback(async (
         partnerId: string,
         campanhaId: string,
-        status: PromoStatus,
+        status: PromoStatus | null,
         extras?: { motivo?: MotivoLigacao | null; motivoDetalhe?: string | null },
     ): Promise<boolean> => {
-        const anterior = statusMap[partnerId]?.[campanhaId];
-        const nova: CampanhaEntrada = {
+        const anterior = _estado.data[partnerId]?.[campanhaId];
+        const nova: CampanhaEntrada | undefined = status == null ? undefined : {
             status,
             motivo: extras?.motivo ?? null,
             motivoDetalhe: extras?.motivoDetalhe ?? null,
             em: new Date().toISOString(),
         };
 
-        const aplicar = (valor: CampanhaEntrada | undefined) => setStatusMap(prev => {
-            const doParceiro = { ...(prev[partnerId] ?? {}) };
+        const aplicar = (valor: CampanhaEntrada | undefined) => {
+            const doParceiro = { ...(_estado.data[partnerId] ?? {}) };
             if (valor) doParceiro[campanhaId] = valor;
             else delete doParceiro[campanhaId];
-            const next = { ...prev, [partnerId]: doParceiro };
-            _cache = next;
-            return next;
-        });
+            publicar({ data: { ..._estado.data, [partnerId]: doParceiro }, erro: null });
+        };
 
         aplicar(nova); // otimista
-        setErro(null);
 
-        const { error } = await supabase
-            .from('campanha_status_cs')
-            .upsert(
+        const { error } = status == null
+            ? await supabase.from('campanha_status_cs').delete()
+                .eq('partner_id', partnerId).eq('campanha_id', campanhaId)
+            : await supabase.from('campanha_status_cs').upsert(
                 {
                     partner_id: partnerId,
                     campanha_id: campanhaId,
                     status,
-                    motivo: nova.motivo,
-                    motivo_detalhe: nova.motivoDetalhe,
-                    atualizado_em: new Date().toISOString(),
+                    motivo: nova!.motivo,
+                    motivo_detalhe: nova!.motivoDetalhe,
+                    atualizado_em: nova!.em,
                 },
                 { onConflict: 'partner_id,campanha_id' },
             );
@@ -120,11 +153,13 @@ export function useCampanhaStatusCs() {
         if (error) {
             console.error('[useCampanhaStatusCs] falha ao salvar:', error);
             aplicar(anterior);
-            setErro(error.message);
+            // O erro TEM que chegar na tela: a reversão silenciosa é
+            // indistinguível de "o clique não funcionou".
+            publicar({ erro: error.message });
             return false;
         }
         return true;
-    }, [statusMap]);
+    }, []);
 
-    return { statusMap, getEntrada, getCampanhaStatus, setCampanhaStatus, erro };
+    return { statusMap, getEntrada, getCampanhaStatus, setCampanhaStatus, erro: estado.erro };
 }
