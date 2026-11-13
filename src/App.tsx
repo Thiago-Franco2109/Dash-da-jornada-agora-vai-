@@ -67,6 +67,8 @@ import { usePausaOnboarding } from './hooks/usePausaOnboarding';
 import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
+import { useCampanhaStatusCs } from './hooks/useCampanhaStatusCs';
+import { campaignIdFromNome } from './config/campaignTypes';
 import { useCrmNotes } from './hooks/useCrmNotes';
 import { useTrelloTarefas } from './hooks/useTrelloTarefas';
 import { useAuth } from './context/AuthContext';
@@ -345,6 +347,9 @@ function App() {
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Status dos itens promocionais por parceiro/campanha (banco).
   const { promoData, pronto: promoPronto, dadoAte: promoDadoAte } = usePromoStatus();
+  // Marcação do CS por campanha — o filtro precisa dela pra não recolocar na
+  // fila quem já foi marcado como criado.
+  const { getEntrada: getMarcaCampanha } = useCampanhaStatusCs();
   /**
    * `promoData` nasce como objeto vazio mas SEMPRE truthy, então sem este
    * portão o computePromoResumo roda com mapas vazios e escreve zeros
@@ -678,7 +683,8 @@ function App() {
     notaPorParceiro: crmNotasMap,
     localidadePorEstab: estabIdToLoc,
     promoDadoAte,
-  }), [hojeDia, promoPronto, crmNotasCarregando, crmNotasMap, estabIdToLoc, promoDadoAte]);
+    marcaCampanha: (estabId: string, campanhaNome: string) => getMarcaCampanha(estabId, campaignIdFromNome(campanhaNome)),
+  }), [hojeDia, promoPronto, crmNotasCarregando, crmNotasMap, estabIdToLoc, promoDadoAte, getMarcaCampanha]);
 
   /**
    * A busca do Header continua fora do construtor: é global (vale pro CRM,

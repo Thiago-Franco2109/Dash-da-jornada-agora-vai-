@@ -12,6 +12,8 @@ import {
 import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 import { usePromoStatus, type PromoResumo } from '../hooks/usePromoStatus';
+import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
+import { campaignIdFromNome } from '../config/campaignTypes';
 import PromoColuna from './promo/PromoColuna';
 import { urgenciaOnboarding } from '../utils/preLancamento';
 import { formatarDataBR, motivoPausaChip, motivoPausaLabel } from '../config/pausaOnboarding';
@@ -65,9 +67,6 @@ export type PerformanceRow = {
     promo_resumo?: PromoResumo;
     /** `localidade_id` do parceiro — monta o link do CMS no modal de Promoções. */
     localidade_id?: string;
-    /** Quando o CS marcou "já criei a oferta" (ISO). Vale só enquanto for mais
-     *  novo que o dado da réplica — ver `vezDaPromocao`. */
-    promo_marcado_em?: string | null;
     /** Valor bruto da célula de pedidos do mês */
     pedidos_mes_raw?: string;
     /** Histórico de GMV mês a mês, em ordem cronológica (mais antigo → mais recente) */
@@ -484,6 +483,21 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // significar a mesma campanha em todas as linhas. O hook tem cache de módulo
     // (e dedupe de request), então chamar aqui não gera fetch novo.
     const { promoData, dadoAte: promoDadoAte, error: promoErro, refetch: recarregarPromo } = usePromoStatus();
+    // Status do CS por (parceiro, campanha) — tabela que já existe e já é
+    // chaveada assim. É o que deixa marcar campanha a campanha em vez de
+    // carimbar o parceiro inteiro de uma vez.
+    const { getEntrada, setCampanhaStatus } = useCampanhaStatusCs();
+
+    /** Marcações desta linha, indexadas pelo NOME da campanha (que é a chave
+     *  que o `promo_resumo` usa). */
+    const marcasDoParceiro = useCallback((pid: string, resumo?: PromoResumo) => {
+        const out: Record<string, { status: PromoStatusValue; em?: string | null } | undefined> = {};
+        for (const d of resumo?.detalhe ?? []) {
+            const e = getEntrada(pid, campaignIdFromNome(d.campanha));
+            if (e) out[d.campanha] = { status: e.status, em: e.em };
+        }
+        return out;
+    }, [getEntrada]);
     const ordemCampanhas = useMemo(() => promoData.campanhas.map(c => c.nome), [promoData.campanhas]);
 
     // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
@@ -894,12 +908,11 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     totalRows={data.length}
                                                                     erro={promoErro}
                                                                     onRetry={recarregarPromo}
-                                                                    marcadoEm={row.promo_marcado_em}
+                                                                    marcas={marcasDoParceiro(partnerId, row.promo_resumo)}
                                                                     dadoAte={promoDadoAte}
                                                                     atrasoMinutos={promoData.atrasoMinutos}
-                                                                    onMarcarCriado={onCampaignStatusChange
-                                                                        ? criado => onCampaignStatusChange(partnerId, 'super_promos', criado ? 'confirmado' : 'aguardando')
-                                                                        : undefined}
+                                                                    onMarcarCampanha={(campanha, status) =>
+                                                                        setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status ?? 'aguardando')}
                                                                 />
                                                             </td>
                                                         );
@@ -1011,12 +1024,11 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             totalRows={data.length}
                                                             erro={promoErro}
                                                             onRetry={recarregarPromo}
-                                                            marcadoEm={row.promo_marcado_em}
+                                                            marcas={marcasDoParceiro(partnerId, row.promo_resumo)}
                                                             dadoAte={promoDadoAte}
                                                             atrasoMinutos={promoData.atrasoMinutos}
-                                                            onMarcarCriado={onCampaignStatusChange
-                                                                ? criado => onCampaignStatusChange(partnerId, 'super_promos', criado ? 'confirmado' : 'aguardando')
-                                                                : undefined}
+                                                            onMarcarCampanha={(campanha, status) =>
+                                                                setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status ?? 'aguardando')}
                                                         />
                                                     </td>
                                                 );

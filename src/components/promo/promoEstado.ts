@@ -1,4 +1,5 @@
-import type { PromoCampanhaStatus, PromoResumo } from '../../hooks/usePromoStatus';
+import type { PromoCampanhaDetalhe, PromoCampanhaStatus, PromoResumo } from '../../hooks/usePromoStatus';
+import type { PromoStatus } from '../../hooks/useStatusOverride';
 
 /**
  * Vocabulário único dos 5 estados de campanha por parceiro — a coluna
@@ -73,6 +74,74 @@ export const ESTADO_META: Record<PromoCampanhaStatus, EstadoMeta> = {
 
 /** Ordem em que os estados aparecem na legenda e no resumo do modal. */
 export const ORDEM_ESTADOS: PromoCampanhaStatus[] = ['aprovado', 'pendente', 'rascunho', 'caiu', 'sem item'];
+
+
+// ──────────────────────────────────────────────────────────────────────────
+// SLOT DA CAMPANHA — o que mostrar numa linha do puxadinho.
+//
+// Três fontes, nesta ordem:
+//   banco  → tem item vivo: o banco manda, ponto.
+//   cs     → banco vazio e o CS marcou. É marcação, não item.
+//   vazio  → ninguém sabe de nada. Fica EM BRANCO de propósito: slot vazio
+//            convida a preencher, e é assim que se enxerga o que falta criar.
+//
+// A réplica atrasa ~1 dia, então sem a camada `cs` a coluna cobra oferta que
+// foi criada hoje de manhã e segue cobrando até amanhã.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Os status que o CS escolhe por campanha. `null` = vazio (falta criar). */
+export const STATUS_CS_PROMO: { valor: PromoStatus; label: string; curto: string; icone: string; texto: string }[] = [
+    // `curto` é o que cabe na linha do puxadinho ao lado do nome da campanha;
+    // `label` é o do seletor, onde há espaço pra frase inteira.
+    { valor: 'ofertei', label: 'Aguardando retorno', curto: 'aguardando', icone: 'hourglass_top', texto: 'text-amber-700 dark:text-amber-400' },
+    { valor: 'ativo', label: 'Promo ativa', curto: 'ativa', icone: 'check_circle', texto: 'text-emerald-700 dark:text-emerald-400' },
+    { valor: 'negado', label: 'Negado', curto: 'negado', icone: 'block', texto: 'text-slate-500 dark:text-slate-400' },
+];
+
+export type Slot =
+    | { fonte: 'banco'; status: PromoCampanhaStatus }
+    | { fonte: 'cs'; status: PromoStatus }
+    | { fonte: 'vazio' };
+
+/** O que o CS marcou numa campanha, com a data pra saber se ainda vale. */
+export interface MarcaCampanha {
+    status: PromoStatus;
+    em?: string | null;
+}
+
+/**
+ * A marcação do CS vale enquanto o banco não alcançou o momento em que ela foi
+ * feita. Depois disso o banco é quem sabe: se ele chegou e não tem item, a
+ * oferta não existe (ou foi arquivada) e a cobrança tem que voltar.
+ *
+ * `negado` é a exceção e NÃO expira: não é afirmação sobre item nenhum, é
+ * decisão do parceiro. Expirar isso faria o painel cobrar eternamente uma
+ * campanha que já foi recusada.
+ */
+export function marcaCampanhaVale(marca: MarcaCampanha | undefined, dadoAte?: Date | null): boolean {
+    if (!marca) return false;
+    if (marca.status === 'negado') return true;
+    if (!marca.em) return false;
+    const t = Date.parse(marca.em);
+    if (Number.isNaN(t)) return false;
+    if (!dadoAte) return true;   // idade do dado desconhecida: mantém a marcação (lado seguro)
+    return t > dadoAte.getTime();
+}
+
+/** Resolve a linha da campanha. `detalhe` ausente = campanha da cidade sem nada. */
+export function slotDaCampanha(
+    detalhe: PromoCampanhaDetalhe | undefined,
+    marca: MarcaCampanha | undefined,
+    dadoAte?: Date | null,
+): Slot {
+    const vivos = detalhe ? detalhe.itens.rascunho + detalhe.itens.pendente + detalhe.itens.aprovado : 0;
+    if (detalhe && vivos > 0) return { fonte: 'banco', status: detalhe.status };
+    if (marcaCampanhaVale(marca, dadoAte)) return { fonte: 'cs', status: marca!.status };
+    // Item morto é informação real ("já esteve no ar e caiu"), e vale mais que
+    // o vazio — mas perde pra marcação fresca do CS, que pode ser a recriação.
+    if (detalhe && detalhe.itens.morto > 0) return { fonte: 'banco', status: 'caiu' };
+    return { fonte: 'vazio' };
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // DE QUEM É A VEZ — o estado do parceiro inteiro, não de uma campanha.
@@ -163,6 +232,16 @@ export const VEZ_META: Record<VezDaPromo, VezMeta> = {
     },
 };
 
+/** O que o veredito precisa saber da marcação do CS nesta linha. */
+export interface MarcaCs {
+    /** Campanhas da cidade ainda sem item e sem marcação. */
+    faltaCriar: number;
+    /** Campanhas cobertas por marcação do CS. Sem este número, `faltaCriar === 0`
+     *  também seria verdade para quem não tem campanha nenhuma — e a célula
+     *  dizia "criada · aguarda" pra parceiro sem cidade mapeada. */
+    marcadas: number;
+}
+
 /**
  * A ordem é a mesma do veredito da coluna, e é deliberada: "tem promoção no
  * ar?" vem antes de tudo. Parceiro com promo rodando E uma segunda oferta
@@ -173,9 +252,10 @@ export function vezDaPromocao(r: PromoResumo, marca?: MarcaCs): VezDaPromo {
     if (r.noAr > 0) return 'no_ar';
     if (r.pendente > 0) return 'parceiro';
 
-    // A partir daqui a bola seria do CS. Se ele já marcou que fez, e a marca é
-    // mais nova que o dado, a coluna cala a boca em vez de cobrar de novo.
-    if (marcaValida(marca)) return 'aguardando_banco';
+    // A partir daqui a bola seria do CS. `faltaCriar` conta os slots que
+    // continuam VAZIOS — campanha sem item no banco e sem marcação do CS. É
+    // essa a contagem que vira trabalho; o que ele já marcou sai da fila.
+    if (marca && marca.marcadas > 0 && marca.faltaCriar === 0) return 'aguardando_banco';
 
     if (r.rascunho > 0) return 'cs_publicar';
     if (r.caiu > 0) return 'cs_reativar';
@@ -185,17 +265,22 @@ export function vezDaPromocao(r: PromoResumo, marca?: MarcaCs): VezDaPromo {
 }
 
 /**
- * A marcação do CS e até quando o dado da réplica enxerga.
- *
- * `dadoAte = null` significa "não sei a idade do dado" — e aí a marca NÃO
- * expira. É o lado seguro: mandar criar de novo uma oferta que já existe
- * custa mais caro do que deixar um "aguardando banco" sobrando.
+ * Conta os slots da linha: quantos continuam VAZIOS (nem item no banco, nem
+ * marcação do CS) e quantos o CS já marcou. `faltaCriar` é o que vira trabalho
+ * e o que o veredito mostra ("criar 3").
  */
-export interface MarcaCs {
-    /** Quando o CS marcou "já criei" (ISO). */
-    marcadoEm?: string | null;
-    /** Instante até onde o dado da réplica enxerga (ver `dadoAteDe`). */
-    dadoAte?: Date | null;
+export function contarSlots(
+    r: PromoResumo,
+    marcas: Record<string, MarcaCampanha | undefined>,
+    dadoAte?: Date | null,
+): MarcaCs {
+    let faltaCriar = 0, marcadas = 0;
+    for (const d of r.detalhe) {
+        const fonte = slotDaCampanha(d, marcas[d.campanha], dadoAte).fonte;
+        if (fonte === 'vazio') faltaCriar++;
+        else if (fonte === 'cs') marcadas++;
+    }
+    return { faltaCriar, marcadas };
 }
 
 /** "23h atrás" / "2 dias atrás" — a idade do dado, pro rodapé do puxadinho. */
@@ -206,15 +291,6 @@ export function textoIdadeDado(atrasoMinutos: number | null): string | null {
     if (horas < 36) return `${horas}h atrás`;
     const dias = Math.round(horas / 24);
     return `${dias} ${dias === 1 ? 'dia' : 'dias'} atrás`;
-}
-
-/** A marca vale enquanto o banco ainda não alcançou o momento em que foi feita. */
-export function marcaValida(marca?: MarcaCs): boolean {
-    if (!marca?.marcadoEm) return false;
-    const t = Date.parse(marca.marcadoEm);
-    if (Number.isNaN(t)) return false;
-    if (!marca.dadoAte) return true;
-    return t > marca.dadoAte.getTime();
 }
 
 /**

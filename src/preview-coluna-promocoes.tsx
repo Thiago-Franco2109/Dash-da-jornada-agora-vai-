@@ -10,6 +10,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { usePromoStatus, computePromoResumo, type PromoResumo } from './hooks/usePromoStatus';
 import PromoColuna from './components/promo/PromoColuna';
+import type { PromoStatus } from './hooks/useStatusOverride';
 import { ESTADO_META, ORDEM_ESTADOS } from './components/promo/promoEstado';
 import './index.css';
 
@@ -57,7 +58,7 @@ export function PreviewColunaPromocoes() {
     const { promoData, pronto, loading, error, refetch, dadoAte } = usePromoStatus();
     // Marcação de teste: simula o CS tendo criado a oferta AGORA, com o dado da
     // réplica 23h atrás. Tem que calar a cobrança e voltar sozinho amanhã.
-    const [marcados, setMarcados] = useState<Record<string, string>>({});
+    const [marcados, setMarcados] = useState<Record<string, Record<string, { status: PromoStatus; em: string }>>>({});
     const ordem = promoData.campanhas.map(c => c.nome);
 
     return (
@@ -128,10 +129,15 @@ export function PreviewColunaPromocoes() {
                                                     localidadeId={p.loc}
                                                     rowIndex={i}
                                                     totalRows={PARCEIROS.length}
-                                                    marcadoEm={marcados[p.id] ?? null}
+                                                    marcas={marcados[p.id]}
                                                     dadoAte={dadoAte}
                                                     atrasoMinutos={promoData.atrasoMinutos}
-                                                    onMarcarCriado={criado => setMarcados(m => ({ ...m, [p.id]: criado ? new Date().toISOString() : '' }))}
+                                                    onMarcarCampanha={(campanha, status) => setMarcados(m => {
+                                                        const doParceiro = { ...(m[p.id] ?? {}) };
+                                                        if (status) doParceiro[campanha] = { status, em: new Date().toISOString() };
+                                                        else delete doParceiro[campanha];
+                                                        return { ...m, [p.id]: doParceiro };
+                                                    })}
                                                 />
                                             </td>
                                         </tr>

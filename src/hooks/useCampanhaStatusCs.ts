@@ -21,6 +21,9 @@ export interface CampanhaEntrada {
     status: PromoStatus;
     motivo?: MotivoLigacao | null;
     motivoDetalhe?: string | null;
+    /** Quando o CS gravou (ISO). É o que faz a marcação expirar sozinha quando
+     *  a réplica alcança — ver `slotDaCampanha` em promoEstado.ts. */
+    em?: string | null;
 }
 
 /** [partnerId][campanhaId] = entrada */
@@ -31,7 +34,7 @@ let _cache: CampanhaStatusMap | null = null;
 async function fetchCampanhaStatus(): Promise<CampanhaStatusMap> {
     const { data, error } = await supabase
         .from('campanha_status_cs')
-        .select('partner_id, campanha_id, status, motivo, motivo_detalhe');
+        .select('partner_id, campanha_id, status, motivo, motivo_detalhe, atualizado_em');
     if (error) throw new Error(error.message);
 
     const map: CampanhaStatusMap = {};
@@ -41,6 +44,7 @@ async function fetchCampanhaStatus(): Promise<CampanhaStatusMap> {
             status: row.status as PromoStatus,
             motivo: (row.motivo as MotivoLigacao) ?? null,
             motivoDetalhe: row.motivo_detalhe ?? null,
+            em: row.atualizado_em ?? null,
         };
     }
     return map;
@@ -84,6 +88,7 @@ export function useCampanhaStatusCs() {
             status,
             motivo: extras?.motivo ?? null,
             motivoDetalhe: extras?.motivoDetalhe ?? null,
+            em: new Date().toISOString(),
         };
 
         const aplicar = (valor: CampanhaEntrada | undefined) => setStatusMap(prev => {

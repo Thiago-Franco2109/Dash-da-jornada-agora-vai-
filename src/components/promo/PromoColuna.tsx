@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PromoCampanhaDetalhe, PromoResumo } from '../../hooks/usePromoStatus';
-import { ESTADO_META, VEZ_META, marcaValida, textoEspera, textoEsperaCurto, textoIdadeDado, vezDaPromocao } from './promoEstado';
+import {
+    ESTADO_META, VEZ_META, STATUS_CS_PROMO, contarSlots, slotDaCampanha,
+    textoEspera, textoEsperaCurto, textoIdadeDado, vezDaPromocao,
+    type MarcaCampanha,
+} from './promoEstado';
+import type { PromoStatus } from '../../hooks/useStatusOverride';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../../utils/campanhaPrioridade';
 
 /**
@@ -35,14 +40,15 @@ interface PromoColunaProps {
     erro?: string | null;
     /** Tentar de novo — vale pra tabela inteira (o dado é um fetch só). */
     onRetry?: () => void;
-    /** Quando o CS marcou "já criei a oferta" (ISO). */
-    marcadoEm?: string | null;
+    /** O que o CS marcou em cada campanha (por NOME da campanha). */
+    marcas?: Record<string, MarcaCampanha | undefined>;
     /** Até onde o dado da réplica enxerga — define quando a marcação expira. */
     dadoAte?: Date | null;
     /** Idade do dado em minutos, só pra escrever "23h atrás" no rodapé. */
     atrasoMinutos?: number | null;
-    /** Marca/desmarca "já criei a oferta". Ausente = célula só leitura. */
-    onMarcarCriado?: (criado: boolean) => void;
+    /** Grava o status do CS numa campanha. `null` volta pro vazio.
+     *  Ausente = célula só leitura. */
+    onMarcarCampanha?: (campanha: string, status: PromoStatus | null) => void;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -81,9 +87,11 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcadoEm, dadoAte, atrasoMinutos, onMarcarCriado }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
+    /** Qual linha do puxadinho está com o seletor aberto. */
+    const [editando, setEditando] = useState<string | null>(null);
 
     useEffect(() => {
         if (!open) return;
@@ -141,7 +149,10 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
     // não, a segunda é "de quem é a vez?" (ver vezDaPromocao). Quando a bola é
     // do CS o veredito é um VERBO, não um placar — "0 de 4" dizia o tamanho do
     // buraco e não dizia o que fazer com ele.
-    const vez = vezDaPromocao(resumo, { marcadoEm, dadoAte });
+    const marcasDaLinha = marcas ?? {};
+    const slots = contarSlots(resumo, marcasDaLinha, dadoAte);
+    const faltaCriar = slots.faltaCriar;
+    const vez = vezDaPromocao(resumo, slots);
     const vezMeta = VEZ_META[vez];
 
     if (vez === 'desconhecido') {
@@ -157,6 +168,8 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         : vez === 'parceiro' ? `${resumo.pendente} esperando`
         : vez === 'cs_publicar' ? (resumo.rascunho > 1 ? `publicar ${resumo.rascunho}` : 'publicar')
         : vez === 'aguardando_banco' ? 'criada · aguarda'
+        // Verbo + quantos slots continuam vazios: diz o que fazer E o tamanho.
+        : vez === 'cs_criar' && faltaCriar > 1 ? `criar ${faltaCriar}`
         : vezMeta.label;
     const veredito = { texto: textoVeredito, classe: vezMeta.texto };
 
@@ -166,7 +179,6 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
         .sort((a, b) => b.score - a.score || a.d.campanha.localeCompare(b.d.campanha, 'pt-BR'));
 
     const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
-    const marcado = marcaValida({ marcadoEm, dadoAte });
     const idadeDado = textoIdadeDado(atrasoMinutos ?? null);
 
     return (
@@ -216,7 +228,7 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
 
             {open && (
                 <div
-                    className={`absolute left-1/2 z-50 w-[244px] -translate-x-1/2 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'} rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-black/10 dark:bg-slate-800 dark:ring-white/10`}
+                    className={`absolute left-1/2 z-50 w-[268px] -translate-x-1/2 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'} rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-black/10 dark:bg-slate-800 dark:ring-white/10`}
                     onClick={e => e.stopPropagation()}
                 >
                     {linhas.length === 0 && (
@@ -225,73 +237,107 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                         </p>
                     )}
                     {linhas.map(({ d, motivo }) => {
-                        const meta = ESTADO_META[d.status];
-                        const conteudo = (
-                            <>
-                                <span className={`h-2.5 w-2.5 shrink-0 rounded-[2px] ${meta.segmento} ${d.status === 'sem item' ? 'ring-1 ring-inset ring-slate-300 dark:ring-slate-600' : ''}`} />
-                                <span className="flex-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                                    {d.campanha}
-                                </span>
-                                <span className={`shrink-0 text-[10px] font-bold tabular-nums ${meta.texto}`}>
-                                    {rotuloCurto(d)}
-                                </span>
-                            </>
-                        );
-                        const title = `${motivo}\n${textoItens(d.itens)}${d.status === 'pendente' && d.dias != null ? `\nParada há ${textoEspera(d.dias)}` : ''}${meta.acao ? `\n→ ${meta.acao}` : ''}`;
-                        const classe = 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-slate-50 dark:hover:bg-slate-700/60';
-                        return d.campanhaId != null ? (
-                            <a
-                                key={d.campanha}
-                                href={cmsCampanhaUrl(d.campanhaId, localidadeId)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={`${title}\n\nAbrir no CMS`}
-                                className={classe}
-                            >
-                                {conteudo}
-                            </a>
-                        ) : (
-                            <div key={d.campanha} title={title} className={classe}>{conteudo}</div>
+                        const slot = slotDaCampanha(d, marcasDaLinha[d.campanha], dadoAte);
+                        const aberto = editando === d.campanha;
+                        const opcaoCs = slot.fonte === 'cs'
+                            ? STATUS_CS_PROMO.find(o => o.valor === slot.status)
+                            : undefined;
+                        const metaBanco = slot.fonte === 'banco' ? ESTADO_META[slot.status] : undefined;
+
+                        const title = slot.fonte === 'banco'
+                            ? `${motivo}\n${textoItens(d.itens)}${slot.status === 'pendente' && d.dias != null ? `\nParada há ${textoEspera(d.dias)}` : ''}${metaBanco?.acao ? `\n→ ${metaBanco.acao}` : ''}`
+                            : slot.fonte === 'cs'
+                                ? `Você marcou "${opcaoCs?.label}". O banco ainda não enxerga — some sozinho quando ele alcançar.`
+                                : 'Sem item no banco e sem marcação: falta criar esta oferta no painel.';
+
+                        return (
+                            <div key={d.campanha} className="relative">
+                                <div className="flex w-full items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-slate-50 dark:hover:bg-slate-700/60">
+                                    {/* Quadradinho da trilha. Vazio = contorno tracejado:
+                                        slot por preencher, não um estado a mais. */}
+                                    <span className={`h-2.5 w-2.5 shrink-0 rounded-[2px] ${
+                                        slot.fonte === 'banco' ? metaBanco!.segmento
+                                        : slot.fonte === 'cs' ? 'bg-sky-400/70'
+                                        : 'border border-dashed border-slate-300 dark:border-slate-600'
+                                    }`} />
+
+                                    {/* O nome leva pro CMS, que é onde a oferta nasce. */}
+                                    {d.campanhaId != null ? (
+                                        <a
+                                            href={cmsCampanhaUrl(d.campanhaId, localidadeId)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={`${title}\n\nAbrir no CMS`}
+                                            className="flex-1 truncate text-left text-[11px] font-semibold text-slate-700 underline-offset-2 hover:underline dark:text-slate-200"
+                                        >
+                                            {d.campanha}
+                                        </a>
+                                    ) : (
+                                        <span title={title} className="flex-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                                            {d.campanha}
+                                        </span>
+                                    )}
+
+                                    {/* O estado. Vindo do banco é só leitura — ele manda.
+                                        Vazio ou marcação do CS vira botão: é o que o CS controla. */}
+                                    {slot.fonte === 'banco' ? (
+                                        <span title={title} className={`shrink-0 text-[10px] font-bold tabular-nums ${metaBanco!.texto}`}>
+                                            {rotuloCurto({ ...d, status: slot.status })}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            disabled={!onMarcarCampanha}
+                                            onClick={e => { e.stopPropagation(); setEditando(aberto ? null : d.campanha); }}
+                                            title={onMarcarCampanha ? `${title}\n\nClique pra marcar em que pé está.` : title}
+                                            className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition ${
+                                                slot.fonte === 'cs'
+                                                    ? `${opcaoCs?.texto} hover:bg-slate-100 dark:hover:bg-slate-700`
+                                                    : 'border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 dark:border-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
+                                            } disabled:cursor-default`}
+                                        >
+                                            {slot.fonte === 'cs' ? opcaoCs?.curto ?? slot.status : 'marcar'}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {aberto && onMarcarCampanha && (
+                                    <div className="mt-0.5 rounded-lg bg-slate-50 p-1 dark:bg-slate-900/60">
+                                        {STATUS_CS_PROMO.map(o => (
+                                            <button
+                                                key={o.valor}
+                                                type="button"
+                                                onClick={() => { onMarcarCampanha(d.campanha, o.valor); setEditando(null); }}
+                                                className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-medium transition hover:bg-white dark:hover:bg-slate-700 ${o.texto}`}
+                                            >
+                                                <span className="material-symbols-outlined text-[13px] leading-none">{o.icone}</span>
+                                                {o.label}
+                                            </button>
+                                        ))}
+                                        {slot.fonte === 'cs' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { onMarcarCampanha(d.campanha, null); setEditando(null); }}
+                                                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] text-slate-400 transition hover:bg-white dark:hover:bg-slate-700"
+                                            >
+                                                <span className="material-symbols-outlined text-[13px] leading-none">backspace</span>
+                                                Limpar
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         );
                     })}
 
-                    {/* Rodapé: idade do dado + a marcação.
-                        O dado da réplica atrasa ~1 dia (medido: 23h em 10/11/2026),
-                        então sem isto a coluna cobra oferta que o CS criou hoje de
-                        manhã e segue cobrando até amanhã. A marca NÃO finge que o
-                        item existe: ela diz "marquei", e morre sozinha quando o
-                        banco alcança — se lá não tiver item, a cobrança volta. */}
-                    <div className="mt-1 border-t border-slate-100 px-2 pb-1 pt-1.5 dark:border-slate-700">
-                        {idadeDado && (
-                            <p className="mb-1 text-[10px] leading-tight text-slate-400 dark:text-slate-500">
-                                Estado do banco: {idadeDado}.
-                            </p>
-                        )}
-                        {onMarcarCriado && (
-                            marcado ? (
-                                <button
-                                    type="button"
-                                    onClick={() => { onMarcarCriado(false); setOpen(false); }}
-                                    title="Tirar a marcação. A coluna volta a mostrar o que o banco diz."
-                                    className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] font-semibold text-sky-700 transition hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-900/20"
-                                >
-                                    <span className="material-symbols-outlined text-[14px] leading-none">task_alt</span>
-                                    <span className="flex-1">Marcado como criado</span>
-                                    <span className="text-[10px] font-normal text-slate-400">desmarcar</span>
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => { onMarcarCriado(true); setOpen(false); }}
-                                    title="Some com a cobrança até o banco alcançar. Não inventa item nenhum — se o banco chegar sem oferta, a cobrança volta."
-                                    className="flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/60"
-                                >
-                                    <span className="material-symbols-outlined text-[14px] leading-none">check_circle</span>
-                                    Já criei a oferta no painel
-                                </button>
-                            )
-                        )}
-                    </div>
+                    {/* A idade do dado fica à vista: a réplica atrasa ~1 dia (medido:
+                        23h em 10/11/2026), e sem isso a coluna apresenta ontem como
+                        agora. É também o que faz a marcação do CS expirar sozinha. */}
+                    {idadeDado && (
+                        <p className="mt-1 border-t border-slate-100 px-2 pb-0.5 pt-1.5 text-[10px] leading-tight text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                            Estado do banco: {idadeDado}.
+                        </p>
+                    )}
                 </div>
             )}
         </div>

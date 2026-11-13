@@ -35,6 +35,9 @@ export interface ContextoAvaliacao {
     localidadePorEstab: Map<string, string>;
     /** Até onde o dado da réplica de promoções enxerga — expira a marcação do CS. */
     promoDadoAte?: Date | null;
+    /** O que o CS marcou em (parceiro, campanha). Sem isto o filtro "minha vez"
+     *  listaria de novo quem ele já marcou como criado. */
+    marcaCampanha?: (estabId: string, campanhaNome: string) => { status: string; em?: string | null } | undefined;
 }
 
 export interface ResultadoFiltro {

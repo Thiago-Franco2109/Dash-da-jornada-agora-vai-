@@ -3,7 +3,8 @@ import type { ContextoAvaliacao } from '../utils/avaliarFiltro';
 import { getRowCampaignStatus } from '../components/PerformanceTable';
 import { CAMPAIGN_TYPES } from './campaignTypes';
 import { CAMPAIGN_STATUS_OPTIONS } from './promoCupomFilter';
-import { VEZ_META, vezDaPromocao } from '../components/promo/promoEstado';
+import { VEZ_META, contarSlots, vezDaPromocao, type MarcaCampanha } from '../components/promo/promoEstado';
+import type { PromoStatus } from '../hooks/useStatusOverride';
 import {
     OPERADORES_POR_TIPO,
     novoId,
@@ -195,9 +196,16 @@ export function camposFiltraveisJornada(opts: { isCD: boolean }): CampoFiltravel
             indisponivelMsg: 'Carregando o status de promoções…',
             // Sem localidade o resumo não conhece as campanhas da cidade:
             // responde "não sei" (undefined), nunca um balde qualquer.
-            valor: (row, ctx) => (row.promo_resumo
-                ? VEZ_META[vezDaPromocao(row.promo_resumo, { marcadoEm: row.promo_marcado_em, dadoAte: ctx.promoDadoAte })].grupo
-                : undefined),
+            valor: (row, ctx) => {
+                const resumo = row.promo_resumo;
+                if (!resumo) return undefined;
+                const marcas: Record<string, MarcaCampanha | undefined> = {};
+                for (const d of resumo.detalhe) {
+                    const e = ctx.marcaCampanha?.(String(row.estab_id ?? ''), d.campanha);
+                    if (e) marcas[d.campanha] = { status: e.status as PromoStatus, em: e.em };
+                }
+                return VEZ_META[vezDaPromocao(resumo, contarSlots(resumo, marcas, ctx.promoDadoAte))].grupo;
+            },
             opcoes: [
                 { valor: 'cs', rotulo: 'Minha vez — criar, publicar ou reativar' },
                 { valor: 'parceiro', rotulo: 'Vez do parceiro — oferta pronta, falta aceitar' },

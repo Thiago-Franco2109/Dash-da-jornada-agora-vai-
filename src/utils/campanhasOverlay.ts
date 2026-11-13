@@ -61,12 +61,7 @@ export function overlayCampanhas(
     const promo_resumo = promoData
         ? computePromoResumo(id, localidade_id, promoData)
         : undefined;
-    // Marcação "já criei a oferta" do CS. Fica junto do resumo, ANTES do portão
-    // do `map`, pelo mesmo motivo: quem marcou hoje não pode voltar a ver
-    // "criar oferta" só porque outra Function está lenta.
-    const marcaPromo = overridesMap?.[id];
-    const promo_marcado_em = marcaPromo?.promo === 'confirmado' ? (marcaPromo.em ?? null) : null;
-    const comPromo: EnrichedPerformanceRow = { ...row, promo_resumo, localidade_id, promo_marcado_em };
+    const comPromo: EnrichedPerformanceRow = { ...row, promo_resumo, localidade_id };
 
     // Daqui pra baixo é estado de campanha vindo do `map`: enquanto ele não
     // carregou, não mexe (evita "Não ofertado" falso).
