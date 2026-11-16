@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ACCESS_DATA_SOURCE } from '../config/dataSource';
 import { encodeSheetTabForGateway } from '../utils/dataSync';
+import { findCellByNames } from '../utils/sheetColumnMatch';
 
 const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? 'https://sheets-api-production-0097.up.railway.app')
     .trim()
@@ -31,11 +32,43 @@ function isDateColumn(key: string): boolean {
 
 export interface StoreAccessData {
     estabelecimento: string;
+    estabId: string;           // id da planilha ('' quando a linha não traz)
     acessosUnicos: number;    // soma total de todos os dias disponíveis
     mediaDiaria: number;       // média de acessos por dia
     lastDayAcessos: number;    // valor do último dia disponível
     totalDias: number;         // quantos dias têm dados
+    /** nome repetido na planilha: a linha não identifica uma loja só */
+    ambiguo?: boolean;
     raw: Record<string, any>;  // linha completa da planilha
+}
+
+const ACCESS_ID_COLUMNS = ['ESTAB_ID', 'ESTABELECIMENTO_ID', 'ID_ESTABELECIMENTO', 'ID LOJA', 'ID'];
+
+/** Chaves do mapa: id é autoritativo, nome é fallback (ver memória: identidade é o ID) */
+const byId = (id: string) => `id:${id.trim()}`;
+const byName = (nome: string) => `nome:${nome.trim().toLowerCase()}`;
+
+/**
+ * Resolve os acessos de um parceiro. Tenta o estab_id primeiro; só cai no nome
+ * quando a planilha não traz id. Nome repetido devolve null — a planilha tem
+ * duas lojas com aquele nome e qualquer número escolhido seria chute.
+ */
+export function lookupAccess(
+    accessData: Record<string, StoreAccessData>,
+    partner: { estab_id?: string | number | null; estabelecimento?: string | null },
+): StoreAccessData | null {
+    const id = partner.estab_id == null ? '' : String(partner.estab_id).trim();
+    if (id) {
+        const hit = accessData[byId(id)];
+        if (hit) return hit;
+    }
+
+    const nome = (partner.estabelecimento ?? '').trim();
+    if (!nome) return null;
+
+    const hit = accessData[byName(nome)];
+    if (!hit || hit.ambiguo) return null;
+    return hit;
 }
 
 export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {}) {
@@ -104,15 +137,31 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
 
                 const mediaDiaria = diasComDados > 0 ? Math.round(totalAcessos / diasComDados) : 0;
 
-                // Indexa pela chave em lowercase para matching case-insensitive
-                parsedData[storeName.trim().toLowerCase()] = {
+                const estabId = findCellByNames(row, ACCESS_ID_COLUMNS).replace(/\D/g, '');
+
+                const entry: StoreAccessData = {
                     estabelecimento: storeName.trim(),
+                    estabId,
                     acessosUnicos: totalAcessos,
                     mediaDiaria,
                     lastDayAcessos,
                     totalDias: diasComDados,
                     raw: row,
                 };
+
+                // O id identifica a loja sozinho; o nome não (se repete entre cidades).
+                if (estabId) parsedData[byId(estabId)] = entry;
+
+                // Antes a linha seguinte de mesmo nome sobrescrevia a anterior em
+                // silêncio e o painel mostrava o acesso da loja errada. Agora a
+                // colisão fica marcada e o número é omitido.
+                const nameKey = byName(storeName);
+                const prev = parsedData[nameKey];
+                if (prev && prev.estabId !== estabId) {
+                    parsedData[nameKey] = { ...prev, ambiguo: true };
+                } else if (!prev) {
+                    parsedData[nameKey] = entry;
+                }
             });
 
             setAccessData(parsedData);

@@ -77,7 +77,7 @@ import { useProductMode } from './context/ProductModeContext';
 import { useManagerSession } from './context/ManagerSessionContext';
 import { useCityFocus } from './context/CityFocusContext';
 import LoginPage from './components/LoginPage';
-import { useDailyAccessSync } from './hooks/useDailyAccessSync';
+import { useDailyAccessSync, lookupAccess } from './hooks/useDailyAccessSync';
 import { buildNoCityIndexMap } from './config/managerMapping';
 import JornadaKpiMetas from './components/JornadaKpiMetas';
 import { CACHE_KEYS } from './utils/dataSync';
@@ -978,7 +978,7 @@ function App() {
               <PartnerDetailsView
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
-                dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+                dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 viewContext={undefined}
                 crmPartner={crmPartnerForSelected}
@@ -1159,7 +1159,7 @@ function App() {
             <PartnerDetailsView
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
-              dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+              dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
@@ -1199,7 +1199,7 @@ function App() {
             <PartnerDetailsView
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
-              dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+              dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={isCD ? 'desempenho' : undefined}
               crmPartner={!isCD ? crmPartnerForSelected : null}
@@ -1242,7 +1242,7 @@ function App() {
             <PartnerDetailsView
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
-              dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+              dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext="desempenho"
             />
@@ -1282,7 +1282,7 @@ function App() {
               <PartnerDetailsView
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
-                dailyAccessData={accessData[currentSelectedRow.estabelecimento.toLowerCase()]}
+                dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}
