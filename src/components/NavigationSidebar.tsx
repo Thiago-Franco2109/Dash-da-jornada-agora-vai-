@@ -34,6 +34,7 @@ export default function NavigationSidebar({ currentView, onNavigate }: Navigatio
             isCD
                 ? { id: 'cd_desempenho' as AppView, icon: 'storefront', label: 'Todas as Lojas' }
                 : { id: 'todos_parceiros' as AppView, icon: 'groups', label: 'Todos os Parceiros' },
+            ...(!isCD ? [{ id: 'indicador' as AppView, icon: 'table_chart', label: 'Indicador' }] : []),
             { id: 'churn' as AppView, icon: 'trending_down', label: 'Churn' },
         ] },
         { label: 'CS Growth', items: !isCD ? [

@@ -16,6 +16,7 @@ export type AppView =
     | 'churn'
     | 'cs_kpis'
     | 'todos_parceiros'
+    | 'indicador'
     | 'settings'
     | 'about'
     | 'managers'

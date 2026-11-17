@@ -14,6 +14,7 @@ import ManagersView from './components/ManagersView';
 import ProfileView from './components/ProfileView';
 import CDDesempenhoView from './components/CDDesempenhoView';
 import AllPartnersView from './components/AllPartnersView';
+import IndicadorView from './components/IndicadorView';
 import CsKpisView from './components/CsKpisView';
 import OkrView from './components/OkrView';
 import TrelloView from './components/TrelloView';
@@ -171,7 +172,7 @@ function App() {
   const pedidoMensalTabActive = isAuthenticated && !isCD && currentView === 'pedido_mensal';
   const crmTabActive = isAuthenticated && !isCD && currentView === 'crm';
   const crmDataEnabled = isAuthenticated && !isCD && (
-    crmTabActive || currentView === 'todos_parceiros' || currentView === 'churn' || selectedRow !== null || partnerSearchOpen
+    crmTabActive || currentView === 'todos_parceiros' || currentView === 'indicador' || currentView === 'churn' || selectedRow !== null || partnerSearchOpen
   );
   const {
     data: desempenhoRawRows,
@@ -464,7 +465,7 @@ function App() {
     setFiltroJornada(grupoVazio());
     setSelectedRow(null);
     setSortConfig({ key: 'indice_desempenho', direction: 'asc' });
-    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'crm_jornada' || currentView === 'todos_parceiros')) {
+    if (isCD && (currentView === 'carteira' || currentView === 'carteira_grupo' || currentView === 'acoes_promocionais' || currentView === 'pedido_mensal' || currentView === 'crm' || currentView === 'crm_jornada' || currentView === 'todos_parceiros' || currentView === 'indicador')) {
       setCurrentView('dashboard');
     }
     if (currentView === 'cd_desempenho') {
@@ -843,7 +844,7 @@ function App() {
   // 'okr' entra aqui porque a lista do KR 2 é montada sobre indicadorEnrichedData:
   // reconciliar a linha contra o pool da Jornada pegaria uma versão de outra
   // origem, ou nenhuma.
-  const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros' || currentView === 'okr'
+  const activeEnrichedPool = currentView === 'churn' || currentView === 'todos_parceiros' || currentView === 'indicador' || currentView === 'okr'
     ? (isCD ? enrichedDesempenhoData : indicadorEnrichedData)
     : currentView === 'cd_desempenho'
       ? enrichedDesempenhoData
@@ -866,7 +867,7 @@ function App() {
     // 'okr' entra na lista: a ficha abre SOBRE a aba da OKR. Mandar o CS para
     // a Jornada no meio da varredura da lista de trabalho perderia o lugar dele.
     if (currentView !== 'dashboard' && currentView !== 'cd_desempenho' && currentView !== 'churn'
-        && currentView !== 'todos_parceiros' && currentView !== 'okr') {
+        && currentView !== 'todos_parceiros' && currentView !== 'indicador' && currentView !== 'okr') {
       setCurrentView('dashboard');
     }
   };
@@ -1191,6 +1192,35 @@ function App() {
               onRelevanceChange={handleRelevanceChange}
               dataSourceLabel="INDICADOR_FORMATADO"
               pedidosMesHeader={indicadorPedidosMesHeader}
+            />
+          )
+        ) : currentView === 'indicador' ? (
+          currentSelectedRow ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+            <PartnerDetailsView
+              partner={currentSelectedRow}
+              onBack={() => setSelectedRow(null)}
+              dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+              onRefresh={() => setMappingVersion(v => v + 1)}
+              viewContext={undefined}
+              crmPartner={crmPartnerForSelected}
+              topCities={topCitiesByGmv}
+              onCampaignStatusChange={handleCampaignStatusChange}
+            />
+            </div>
+          ) : (
+            <IndicadorView
+              partners={crmPartnersNoFoco}
+              isLoading={loadingCrm}
+              isRefreshing={refreshingCrm}
+              error={crmError}
+              isUsingCache={crmUsingCache}
+              lastSyncTime={crmLastSync}
+              onRefresh={refreshCrmData}
+              onPartnerClick={(estabId) => {
+                const linha = indicadorEnrichedData.find(r => String(r.estab_id) === estabId);
+                if (linha) handleRowClick(linha);
+              }}
             />
           )
         ) : currentView === 'churn' ? (
