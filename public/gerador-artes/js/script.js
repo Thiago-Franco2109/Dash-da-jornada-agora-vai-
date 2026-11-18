@@ -247,13 +247,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const templates = await window.StorageManager.getTemplates();
         const t = templates.find(x => x.id === id);
         if (t) {
-            // Strip out variant keys to export only normal Feed and Story templates
+            // As variantes "sem foto" vão JUNTO. Antes eram descartadas de
+            // propósito ("strip out variant keys"), e o resultado era perda
+            // silenciosa: quem montasse as quatro abas do editor exportava só
+            // duas e descobria na hora de gerar a arte de um item sem foto.
+            // O renderizador usa `feed_no_image`/`story_no_image` quando a
+            // linha não tem imagem nenhuma (ver hostBridge.pickTemplateFormat).
             const exportObj = {
                 id: t.id,
                 name: t.name,
                 feed: t.feed,
-                story: t.story
+                story: t.story,
             };
+            if (t.feed_no_image && t.feed_no_image.objects && t.feed_no_image.objects.length) {
+                exportObj.feed_no_image = t.feed_no_image;
+            }
+            if (t.story_no_image && t.story_no_image.objects && t.story_no_image.objects.length) {
+                exportObj.story_no_image = t.story_no_image;
+            }
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href",     dataStr);
