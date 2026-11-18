@@ -49,9 +49,13 @@ export const CD_DESEMPENHO_SOURCES = [CD_DESEMPENHO_DATA_SOURCE];
 
 export const ACCESS_DATA_SOURCE = {
     sheetId: '1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA',
-    // `analytics` é o retorno cru do SyncWith (dia × loja) e traz estabelecimento_id.
-    // A aba "novo relatório final" só lista lojas novas e é indexada por nome.
-    range: 'analytics',
+    // Espelho de `analytics` (dia × loja, com estabelecimento_id) começando na
+    // linha do cabeçalho. Não dá para ler `analytics` direto: a linha 1 dela é a
+    // faixa do add-on SyncWith, e o gateway monta as colunas pela linha 1 — o
+    // painel recebia uma coluna só, chamada "Refresh failed: Unexpected failure".
+    // A aba "novo relatório final" também não serve: só lista lojas novas e
+    // é indexada por nome.
+    range: 'acessos_painel',
 };
 
 /**
