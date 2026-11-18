@@ -2,23 +2,25 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Teste do renderizador — ordem da pilha e canto arredondado</title>
+  <title>Teste do renderizador</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
   <script src="js/canvasRenderer.js"></script>
 </head>
 <body style="font-family: system-ui; padding: 16px">
   <h3>Teste do renderizador</h3>
+  <p style="color:#555">Abra <code>/gerador-artes/_teste-renderer.html</code> depois de mexer no
+     <code>canvasRenderer.js</code>. Tudo tem que terminar em <b>passou: true</b>.</p>
   <pre id="saida">rodando…</pre>
-  <img id="arte" style="max-width: 420px; border: 1px solid #ccc" />
+  <div id="artes" style="display:flex; gap:12px; flex-wrap:wrap"></div>
 <script>
-// Arquivo de teste, não faz parte do gerador. Prova duas coisas sem precisar
-// montar template no editor:
+// Arquivo de teste, não faz parte do gerador. Cobre o que é fácil de quebrar
+// sem ninguém perceber, porque só aparece na arte final:
 //   1. a pilha segue a ORDEM DO TEMPLATE, não a ordem de download;
-//   2. `placeholderShape: 'rounded'` recorta o canto de verdade.
+//   2. `placeholderShape: 'rounded'` recorta o canto de verdade;
+//   3. `customStrike` risca o preço antigo;
+//   4. `discountPct` sai calculado dos dois preços, sem ninguém digitar.
 
-const LADO = 600;
-
-/** Quadrado chapado como data URL — serve de foto e de logo no teste. */
+/** Quadrado chapado como data URL — faz as vezes de foto, logo e fundo. */
 function quadrado(cor, lado) {
     const c = document.createElement('canvas');
     c.width = c.height = lado;
@@ -28,79 +30,153 @@ function quadrado(cor, lado) {
     return c.toDataURL();
 }
 
-// Fundo preto, foto vermelha GRANDE (decodifica devagar), logo azul PEQUENA
-// (decodifica rápido). Com o código antigo a logo chegava primeiro e ficava
-// EMBAIXO da foto, invertendo o template.
-const fundo  = quadrado('#000000', LADO);
-const foto   = quadrado('#ff0000', 1600);
-const logo   = quadrado('#0000ff', 64);
-
-const template = {
-    bgDimensions: { w: LADO, h: LADO },
-    objects: [
-        { type: 'image', src: fundo, isBgImage: true, width: LADO, height: LADO, scaleX: 1, scaleY: 1, left: 0, top: 0 },
-        // Foto ocupando o miolo, com canto arredondado de 80px.
-        { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'itemImage',
-          placeholderShape: 'rounded', placeholderRadius: 80,
-          left: 100, top: 100, width: 400, height: 400, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
-        // Logo sobre o canto inferior direito da foto — tem que ficar POR CIMA.
-        { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'logoImage',
-          placeholderShape: 'square',
-          left: 400, top: 400, width: 120, height: 120, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
-    ],
-};
-
-/** Cor de um pixel da arte gerada, como [r,g,b]. */
-function pixel(ctx, x, y) {
-    const d = ctx.getImageData(x, y, 1, 1).data;
-    return [d[0], d[1], d[2]];
+/**
+ * Pixels da arte gerada.
+ *
+ * Lê por `createImageBitmap`, não por `<img>.decode()`: o decode de um
+ * elemento <img> fica pendurado quando a aba não está sendo desenhada (aba em
+ * segundo plano) e o teste nunca terminava.
+ */
+async function pixelsDa(dataUrl) {
+    const bmp = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    return {
+        largura: bmp.width,
+        altura: bmp.height,
+        em: (x, y) => { const d = ctx.getImageData(x, y, 1, 1).data; return [d[0], d[1], d[2]]; },
+        claros: () => {
+            const d = ctx.getImageData(0, 0, bmp.width, bmp.height).data;
+            let n = 0;
+            for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i+1] > 200 && d[i+2] > 200) n++;
+            return n;
+        },
+    };
 }
 
 const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 30);
 
+function mostrar(dataUrl, titulo) {
+    const box = document.createElement('figure');
+    box.style.margin = '0';
+    box.innerHTML = `<img src="${dataUrl}" style="height:260px;border:1px solid #ccc">
+                     <figcaption style="font-size:12px;color:#555">${titulo}</figcaption>`;
+    document.getElementById('artes').appendChild(box);
+}
+
+const LADO = 600;
+const fundo = quadrado('#000000', LADO);
+
+/** 1 e 2 — pilha e canto arredondado. */
+async function testePilhaECanto() {
+    // Foto vermelha GRANDE (decodifica devagar) e logo azul PEQUENA (rápida):
+    // com o código antigo a logo chegava primeiro e ficava EMBAIXO da foto,
+    // invertendo o que o template manda.
+    const foto = quadrado('#ff0000', 1600);
+    const logo = quadrado('#0000ff', 64);
+
+    const template = {
+        bgDimensions: { w: LADO, h: LADO },
+        objects: [
+            { type: 'image', src: fundo, isBgImage: true, width: LADO, height: LADO, scaleX: 1, scaleY: 1, left: 0, top: 0 },
+            { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'itemImage',
+              placeholderShape: 'rounded', placeholderRadius: 80,
+              left: 100, top: 100, width: 400, height: 400, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
+            // Logo sobre o canto da foto — tem que ficar POR CIMA.
+            { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'logoImage',
+              placeholderShape: 'square',
+              left: 400, top: 400, width: 120, height: 120, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
+        ],
+    };
+
+    const r = await CanvasRenderer.generateImage({ itemImage: foto, logoImage: logo }, template, true);
+    mostrar(r.full, 'pilha + canto arredondado');
+    const p = await pixelsDa(r.full);
+
+    const miolo = p.em(300, 300);        // dentro da foto: vermelho
+    const canto = p.em(108, 108);        // dentro do raio de 80px: fundo preto
+    const bordaReta = p.em(300, 105);    // borda longe do canto: vermelho
+    const sobre = p.em(460, 460);        // área coberta pela logo: azul
+
+    return {
+        tamanho: `${p.largura}x${p.altura}`,
+        miolo_da_foto: miolo,
+        canto_da_foto: canto,
+        borda_reta_da_foto: bordaReta,
+        sobreposicao_logo: sobre,
+        ok_foto_desenhou: perto(miolo, [255, 0, 0]),
+        ok_canto_arredondado: perto(canto, [0, 0, 0]),
+        ok_borda_reta: perto(bordaReta, [255, 0, 0]),
+        ok_logo_por_cima: perto(sobre, [0, 0, 255]),
+    };
+}
+
+/** 3 e 4 — risco no preço antigo e porcentagem calculada. */
+async function testeTextos() {
+    const caixa = (bindKey, extra) => ({
+        type: 'rect', isPlaceholder: true, placeholderType: 'text', bindKey,
+        customColor: '#ffffff', customFont: 'Inter', customAlign: 'center',
+        left: 50, top: 150, width: 300, height: 60, scaleX: 1, scaleY: 1,
+        originX: 'left', originY: 'top', ...extra,
+    });
+    const comFundo = objs => ({
+        bgDimensions: { w: 400, h: 400 },
+        objects: [{ type: 'image', src: quadrado('#000000', 400), isBgImage: true, width: 400, height: 400, scaleX: 1, scaleY: 1, left: 0, top: 0 }, ...objs],
+    });
+    const linha = () => ({ partnerName: 'Fê e Rick Açaíteria', priceOrig: 'R$ 17,50', pricePromo: 'R$ 9,99' });
+
+    const claros = async (t) => {
+        const r = await CanvasRenderer.generateImage(linha(), t, true);
+        return (await pixelsDa(r.full)).claros();
+    };
+
+    const parceiro = await claros(comFundo([caixa('partnerName')]));
+    const semRisco = await claros(comFundo([caixa('priceOrig')]));
+    const comRisco = await claros(comFundo([caixa('priceOrig', { customStrike: true })]));
+    const desconto = await claros(comFundo([caixa('discountPct')]));
+
+    // A conta do desconto é testada direto, caso a caso.
+    const pct = (de, por) => CanvasRenderer.camposDerivados({ priceOrig: de, pricePromo: por }).discountPct;
+
+    return {
+        pixels_nome_parceiro: parceiro,
+        pixels_preco_sem_risco: semRisco,
+        pixels_preco_com_risco: comRisco,
+        pixels_desconto: desconto,
+        desconto_17_50_para_9_99: pct('R$ 17,50', 'R$ 9,99'),
+        desconto_com_milhar: pct('R$ 1.234,56', 'R$ 617,28'),
+        desconto_sem_preco_cheio: pct('', 'R$ 9,99'),
+        desconto_promo_mais_cara: pct('R$ 10,00', 'R$ 12,00'),
+        ok_nome_parceiro_desenhou: parceiro > 500,
+        ok_desconto_desenhou: desconto > 300,
+        ok_risco_desenhou: comRisco > semRisco,
+        ok_desconto_calculado: pct('R$ 17,50', 'R$ 9,99') === '43%',
+        ok_desconto_milhar: pct('R$ 1.234,56', 'R$ 617,28') === '50%',
+        // Sem preço cheio, ou promo mais cara, o selo sai VAZIO — nunca "0% OFF".
+        ok_desconto_vazio_quando_nao_da: pct('', 'R$ 9,99') === '' && pct('R$ 10,00', 'R$ 12,00') === '',
+    };
+}
+
 (async () => {
     const saida = document.getElementById('saida');
     try {
-        const r = await CanvasRenderer.generateImage(
-            { itemImage: foto, logoImage: logo },
-            template,
-            true,
-        );
-        document.getElementById('arte').src = r.full;
-
-        // Lê os pixels por createImageBitmap, não por <img>.decode(): o decode
-        // de um elemento <img> fica pendurado quando a aba não está sendo
-        // desenhada (aba em segundo plano), e o teste nunca terminava.
-        const blob = await (await fetch(r.full)).blob();
-        const bmp = await createImageBitmap(blob);
-        const c = new OffscreenCanvas(bmp.width, bmp.height);
-        const ctx = c.getContext('2d');
-        ctx.drawImage(bmp, 0, 0);
-        const img = { width: bmp.width, height: bmp.height };
-
         const resultado = {
-            tamanho: `${img.width}x${img.height}`,
-            // Centro da foto: vermelho.
-            miolo_da_foto: pixel(ctx, 300, 300),
-            // Canto superior esquerdo da foto (x=105,y=105): dentro do raio de
-            // 80px, então tem que ser FUNDO (preto), não vermelho.
-            canto_da_foto: pixel(ctx, 108, 108),
-            // Borda reta da foto, longe do canto: vermelho.
-            borda_reta_da_foto: pixel(ctx, 300, 105),
-            // Sobreposição: a logo cobre 400..520; aqui tem que ser AZUL.
-            sobreposicao_logo: pixel(ctx, 460, 460),
+            pilha_e_canto: await testePilhaECanto(),
+            textos: await testeTextos(),
         };
-
-        resultado.ok_canto_arredondado = perto(resultado.canto_da_foto, [0, 0, 0]);
-        resultado.ok_borda_reta = perto(resultado.borda_reta_da_foto, [255, 0, 0]);
-        resultado.ok_logo_por_cima = perto(resultado.sobreposicao_logo, [0, 0, 255]);
-        resultado.passou = resultado.ok_canto_arredondado && resultado.ok_borda_reta && resultado.ok_logo_por_cima;
+        const todos = [...Object.entries(resultado.pilha_e_canto), ...Object.entries(resultado.textos)]
+            .filter(([k]) => k.startsWith('ok_'));
+        resultado.passou = todos.every(([, v]) => v === true);
+        resultado.falhou_em = todos.filter(([, v]) => v !== true).map(([k]) => k);
 
         window.__resultado = resultado;
         saida.textContent = JSON.stringify(resultado, null, 2);
+        saida.style.background = resultado.passou ? '#e8f8ee' : '#fde8e8';
     } catch (err) {
         window.__resultado = { erro: String(err) };
         saida.textContent = 'ERRO: ' + err;
+        saida.style.background = '#fde8e8';
     }
 })();
 </script>

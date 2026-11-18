@@ -260,6 +260,9 @@
                                 <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="priceOrig" onclick="Editor.addTextElement('[R$ 120,00]', 'priceOrig')"><i class="ph ph-tag-chevron"></i> Preço Original</button>
                                 <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="daysText" onclick="Editor.addTextElement('[Apenas Segunda]', 'daysText')"><i class="ph ph-calendar"></i> Dias Ativo</button>
                                 
+                                <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="partnerName" onclick="Editor.addTextElement('[Nome do Parceiro]', 'partnerName')"><i class="ph ph-storefront"></i> Nome Parceiro</button>
+                                <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="discountPct" onclick="Editor.addTextElement('[43%]', 'discountPct')"><i class="ph ph-percent"></i> % Desconto</button>
+
                                 <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="itemImage" onclick="Editor.addPlaceholder('itemImage', 'square')"><i class="ph ph-image"></i> Foto Produto</button>
                                 <button class="btn btn-sm btn-outline add-el-btn mb-2" data-bindkey="logoImage" onclick="Editor.addPlaceholder('logoImage', 'circle')"><i class="ph ph-user-circle"></i> Logo Parceiro</button>
                             </div>
@@ -287,6 +290,12 @@
                                         <option value="Inter">Inter (Padrão)</option>
                                         <!-- Custom fonts injected here -->
                                     </select>
+                                </div>
+                                <div class="form-group" id="strike-wrapper" style="display:none;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                                        <input type="checkbox" id="prop-strike" style="width:auto;">
+                                        Riscar o texto (preço antigo)
+                                    </label>
                                 </div>
                                 <div class="form-group" id="radius-wrapper" style="display:none;">
                                     <label>Canto arredondado</label>

@@ -115,7 +115,7 @@ const CanvasRenderer = {
         }
     },
 
-    createTextImage(text, targetWidth, targetHeight, color, fontName, alignment) {
+    createTextImage(text, targetWidth, targetHeight, color, fontName, alignment, strike) {
         return new Promise((resolve) => {
             const offCanvas = document.createElement('canvas');
             const ctx = offCanvas.getContext('2d');
@@ -148,6 +148,19 @@ const CanvasRenderer = {
             }
             
             ctx.fillText(text, xPos, targetHeight / 2);
+
+            // "de R$ 17,50" riscado: o preço antigo só convence cortado. O traço
+            // é desenhado sobre a LARGURA MEDIDA do texto, não sobre a caixa —
+            // a caixa costuma ser bem maior que a frase e o risco sairia
+            // sobrando dos dois lados.
+            if (strike && text) {
+                const larguraTexto = Math.min(ctx.measureText(text).width, targetWidth);
+                let x0 = 0;
+                if (alignment === 'center') x0 = (targetWidth - larguraTexto) / 2;
+                else if (alignment === 'right') x0 = targetWidth - larguraTexto;
+                const espessura = Math.max(2, Math.round(fontSize * 0.07));
+                ctx.fillRect(x0, (targetHeight / 2) - (espessura / 2), larguraTexto, espessura);
+            }
             
             fabric.Image.fromURL(offCanvas.toDataURL(), (img) => {
                 resolve(img);
@@ -155,8 +168,57 @@ const CanvasRenderer = {
         });
     },
 
+    /**
+     * Preço escrito por humano vira número. Aceita "R$ 1.234,56", "17,50",
+     * "9.99" — e devolve null para o que não dá pra ler, porque chutar zero
+     * aqui viraria "100% OFF" na arte.
+     */
+    precoParaNumero(txt) {
+        if (txt === null || txt === undefined) return null;
+        const limpo = String(txt).replace(/[^0-9.,]/g, '');
+        if (!limpo) return null;
+        let normalizado;
+        if (limpo.includes(',')) {
+            // Vírgula é o decimal; ponto, se houver, é separador de milhar.
+            normalizado = limpo.replace(/\./g, '').replace(',', '.');
+        } else {
+            normalizado = limpo;
+        }
+        const n = Number(normalizado);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    },
+
+    /**
+     * Campos que a arte usa mas ninguém digita — hoje só o desconto.
+     *
+     * Fica AQUI, e não em quem monta a linha, porque os três caminhos do
+     * gerador (CSV em massa, Geração Avulsa e a ponte do painel) passam por
+     * `generateImage`. Calcular em cada um daria três implementações para
+     * divergirem com o tempo.
+     *
+     * Valor já digitado na linha ganha do calculado: se um dia a planilha
+     * trouxer o desconto pronto, ele manda.
+     */
+    camposDerivados(row) {
+        if (!row || row.discountPct) return row;
+        const de = this.precoParaNumero(row.priceOrig ?? row.preco_original);
+        const por = this.precoParaNumero(row.pricePromo ?? row.preco_promocional);
+        // Sem preço cheio, ou "promoção" que não desconta nada: campo vazio, e
+        // a arte sai sem número no selo em vez de anunciar "0% OFF".
+        if (de === null || por === null || por >= de) {
+            row.discountPct = '';
+            row.desconto = '';
+            return row;
+        }
+        const pct = Math.round(((de - por) / de) * 100);
+        row.discountPct = `${pct}%`;
+        row.desconto = row.discountPct;
+        return row;
+    },
+
     async generateImage(dataRow, templateConfigFormat, isFeed) {
         await document.fonts.ready;
+        this.camposDerivados(dataRow);
         return new Promise((resolve, reject) => {
             if (!templateConfigFormat || !templateConfigFormat.objects) {
                 return reject("Template format invalid");
@@ -295,7 +357,8 @@ const CanvasRenderer = {
                         targetH,
                         obj.customColor || '#ffffff',
                         obj.customFont || 'Inter',
-                        obj.customAlign || 'center'
+                        obj.customAlign || 'center',
+                        obj.customStrike === true
                     ).then(textImg => {
                         textImg.set({
                             left: obj.left,

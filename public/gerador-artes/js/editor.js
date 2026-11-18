@@ -145,7 +145,7 @@ const Editor = {
 
     saveHistory() {
         if (this.isProcessingUndo || this.isLoadingFormat) return;
-        const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+        const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'customStrike', 'isBgImage', 'textLabel']);
         this.templateData[this.currentFormat].objects = json.objects;
         
         this.undoStack.push(JSON.stringify(json));
@@ -239,7 +239,7 @@ const Editor = {
         if (active) {
             active.clone((cloned) => {
                 this.clipboard = cloned;
-            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'customStrike', 'isBgImage', 'textLabel']);
         }
     },
 
@@ -266,7 +266,7 @@ const Editor = {
                 this.canvas.setActiveObject(clonedObj);
                 this.canvas.requestRenderAll();
                 this.saveHistory();
-            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'customStrike', 'isBgImage', 'textLabel']);
         }
     },
 
@@ -330,6 +330,13 @@ const Editor = {
                 colorPicker.value = val;
                 this.updateTextColor(val);
             }
+        });
+
+        document.getElementById('prop-strike').addEventListener('change', (e) => {
+            const obj = this.canvas.getActiveObject();
+            if (!obj || obj.placeholderType !== 'text') return;
+            obj.customStrike = e.target.checked;
+            this.saveHistory();
         });
 
         document.getElementById('prop-radius').addEventListener('input', (e) => {
@@ -501,6 +508,9 @@ const Editor = {
             document.getElementById('prop-color-hex').value = color.toUpperCase();
             document.getElementById('prop-font').value = obj.customFont || 'Inter';
             
+            document.getElementById('strike-wrapper').style.display = 'block';
+            document.getElementById('prop-strike').checked = obj.customStrike === true;
+
             document.querySelectorAll('.align-btn').forEach(b => b.classList.remove('active'));
             if(obj.customAlign) {
                 const btn = document.querySelector(`.align-btn[data-align="${obj.customAlign}"]`);
@@ -509,6 +519,7 @@ const Editor = {
         } else {
             document.getElementById('color-wrapper').style.display = 'none';
             document.getElementById('prop-font').parentElement.style.display = 'none';
+            document.getElementById('strike-wrapper').style.display = 'none';
         }
 
         // Canto arredondado só faz sentido em foto retangular: a logo já é
@@ -713,7 +724,7 @@ const Editor = {
             this.canvas.renderAll();
             this.isProcessingUndo = false;
             
-            const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'customStrike', 'isBgImage', 'textLabel']);
             this.templateData[this.currentFormat].objects = json.objects;
         });
     },
