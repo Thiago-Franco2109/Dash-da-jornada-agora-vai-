@@ -49,7 +49,9 @@ export const CD_DESEMPENHO_SOURCES = [CD_DESEMPENHO_DATA_SOURCE];
 
 export const ACCESS_DATA_SOURCE = {
     sheetId: '1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA',
-    range: 'novo relatório final',
+    // `analytics` é o retorno cru do SyncWith (dia × loja) e traz estabelecimento_id.
+    // A aba "novo relatório final" só lista lojas novas e é indexada por nome.
+    range: 'analytics',
 };
 
 /**

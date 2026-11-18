@@ -25,11 +25,6 @@ function getFetchOptions(): RequestInit {
 }
 
 
-// Detecta se uma string é uma coluna de data no formato "YYYY-M-D" ou "YYYY-MM-DD"
-function isDateColumn(key: string): boolean {
-    return /^\d{4}-\d{1,2}-\d{1,2}$/.test(key.trim());
-}
-
 export interface StoreAccessData {
     estabelecimento: string;
     estabId: string;           // id da planilha ('' quando a linha não traz)
@@ -42,7 +37,15 @@ export interface StoreAccessData {
     raw: Record<string, any>;  // linha completa da planilha
 }
 
-const ACCESS_ID_COLUMNS = ['ESTAB_ID', 'ESTABELECIMENTO_ID', 'ID_ESTABELECIMENTO', 'ID LOJA', 'ID'];
+const ACCESS_ID_COLUMNS = ['ESTABELECIMENTO_ID', 'ESTAB_ID', 'ID_ESTABELECIMENTO', 'ID LOJA', 'ID'];
+const ACCESS_DAY_COLUMNS = ['Day', 'Dia', 'Date', 'Data'];
+const ACCESS_USERS_COLUMNS = ['Active users', 'Usuarios ativos', 'Usuários ativos', 'Acessos', 'Users'];
+const ACCESS_STORE_COLUMNS = ['Loja', 'Estabelecimento', 'Parceiro'];
+
+/** GA devolve "(not set)" quando o evento não trouxe o parâmetro — não é loja. */
+function isNotSet(valor: string): boolean {
+    return !valor || /^\(not set\)$/i.test(valor.trim());
+}
 
 /** Chaves do mapa: id é autoritativo, nome é fallback (ver memória: identidade é o ID) */
 const byId = (id: string) => `id:${id.trim()}`;
@@ -99,68 +102,93 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
 
             const json = await res.json();
             const rows: Record<string, any>[] = json.data?.rows || (Array.isArray(json) ? json : json.values || []);
-            const parsedData: Record<string, StoreAccessData> = {};
+
+            // A aba `analytics` é o retorno cru do SyncWith: uma linha por dia × loja,
+            // não uma linha por loja com colunas de data. Agregamos por
+            // estabelecimento_id, que identifica a loja sozinho (o nome não).
+            type Acumulado = {
+                estabelecimento: string;
+                estabId: string;
+                total: number;
+                dias: Set<string>;
+                ultimoTs: number;
+                ultimoValor: number;
+                raw: Record<string, any>;
+            };
+
+            const porChave = new Map<string, Acumulado>();
+            const idsPorNome = new Map<string, Set<string>>();
 
             rows.forEach((row: any) => {
                 if (!row) return;
 
-                const keys = Object.keys(row);
-
-                // A coluna "Loja" (ou similar) identifica o estabelecimento
-                const storeNameKey = keys.find(k => /^loja$|^estabelecimento$|^parceiro$|^nome$/i.test(k.trim())) || keys[0];
-                const storeName = row[storeNameKey];
-
-                if (typeof storeName !== 'string' || !storeName.trim()) return;
-
-                // Todas as outras colunas com formato YYYY-M-D ou YYYY-MM-DD são acessos diários
-                const dateKeys = keys.filter(k => k !== storeNameKey && isDateColumn(k));
-
-                // Ordena as datas para pegar o dia mais recente
-                const sortedDates = [...dateKeys].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-                let totalAcessos = 0;
-                let diasComDados = 0;
-                let lastDayAcessos = 0;
-
-                for (const dateKey of dateKeys) {
-                    const val = parseInt(String(row[dateKey] ?? '').replace(/\D/g, ''), 10);
-                    if (!isNaN(val) && val > 0) {
-                        totalAcessos += val;
-                        diasComDados++;
-                    }
-                }
-
-                if (sortedDates.length > 0) {
-                    const lastKey = sortedDates[sortedDates.length - 1];
-                    lastDayAcessos = parseInt(String(row[lastKey] ?? '').replace(/\D/g, ''), 10) || 0;
-                }
-
-                const mediaDiaria = diasComDados > 0 ? Math.round(totalAcessos / diasComDados) : 0;
-
+                const nome = findCellByNames(row, ACCESS_STORE_COLUMNS);
                 const estabId = findCellByNames(row, ACCESS_ID_COLUMNS).replace(/\D/g, '');
 
-                const entry: StoreAccessData = {
-                    estabelecimento: storeName.trim(),
+                // Linha sem loja e sem id é o acesso que o app não atribuiu a ninguém.
+                if (isNotSet(nome) && !estabId) return;
+
+                const usuarios = parseInt(String(findCellByNames(row, ACCESS_USERS_COLUMNS)).replace(/\D/g, ''), 10);
+                if (isNaN(usuarios) || usuarios <= 0) return;
+
+                const dia = findCellByNames(row, ACCESS_DAY_COLUMNS);
+                const chave = estabId ? byId(estabId) : byName(nome);
+
+                const acc: Acumulado = porChave.get(chave) ?? {
+                    estabelecimento: isNotSet(nome) ? '' : nome.trim(),
                     estabId,
-                    acessosUnicos: totalAcessos,
-                    mediaDiaria,
-                    lastDayAcessos,
-                    totalDias: diasComDados,
+                    total: 0,
+                    dias: new Set<string>(),
+                    ultimoTs: -Infinity,
+                    ultimoValor: 0,
                     raw: row,
                 };
 
-                // O id identifica a loja sozinho; o nome não (se repete entre cidades).
-                if (estabId) parsedData[byId(estabId)] = entry;
+                acc.total += usuarios;
+                if (dia) {
+                    acc.dias.add(dia);
+                    const ts = Date.parse(dia);
+                    if (!isNaN(ts) && ts >= acc.ultimoTs) {
+                        acc.ultimoTs = ts;
+                        acc.ultimoValor = usuarios;
+                    }
+                }
+                if (!acc.estabelecimento && !isNotSet(nome)) acc.estabelecimento = nome.trim();
+                porChave.set(chave, acc);
 
-                // Antes a linha seguinte de mesmo nome sobrescrevia a anterior em
-                // silêncio e o painel mostrava o acesso da loja errada. Agora a
-                // colisão fica marcada e o número é omitido.
-                const nameKey = byName(storeName);
-                const prev = parsedData[nameKey];
-                if (prev && prev.estabId !== estabId) {
-                    parsedData[nameKey] = { ...prev, ambiguo: true };
-                } else if (!prev) {
-                    parsedData[nameKey] = entry;
+                if (!isNotSet(nome)) {
+                    const chaveNome = byName(nome);
+                    const ids = idsPorNome.get(chaveNome) ?? new Set<string>();
+                    ids.add(estabId);
+                    idsPorNome.set(chaveNome, ids);
+                }
+            });
+
+            const parsedData: Record<string, StoreAccessData> = {};
+
+            porChave.forEach((acc, chave) => {
+                const totalDias = acc.dias.size;
+                const entry: StoreAccessData = {
+                    estabelecimento: acc.estabelecimento,
+                    estabId: acc.estabId,
+                    acessosUnicos: acc.total,
+                    mediaDiaria: totalDias > 0 ? Math.round(acc.total / totalDias) : 0,
+                    lastDayAcessos: acc.ultimoValor,
+                    totalDias,
+                    raw: acc.raw,
+                };
+                parsedData[chave] = entry;
+
+                // O índice por nome só vale quando aquele nome aponta para uma loja
+                // só. Com dois ids no mesmo nome, qualquer número seria chute.
+                if (acc.estabId && acc.estabelecimento) {
+                    const chaveNome = byName(acc.estabelecimento);
+                    const ids = idsPorNome.get(chaveNome);
+                    if (ids && ids.size > 1) {
+                        parsedData[chaveNome] = { ...entry, ambiguo: true };
+                    } else if (!parsedData[chaveNome]) {
+                        parsedData[chaveNome] = entry;
+                    }
                 }
             });
 
