@@ -204,19 +204,74 @@ const CanvasRenderer = {
         });
     },
 
+    /**
+     * Raio do canto, em pixels da arte, convertido para a escala interna do recorte.
+     *
+     * O clipPath vive dentro da imagem, que já está escalada por `ratio` para
+     * cobrir o espaço; depois o próprio clip é reescalado por `obj.scale/ratio`.
+     * O `ratio` se cancela e sobra `obj.scaleX` — então um raio de R px na arte
+     * final vale R/scaleX em unidade local. Sem essa divisão, placeholder
+     * redimensionado no editor saía com o canto proporcionalmente maior.
+     *
+     * X e Y são divididos separadamente de propósito: placeholder esticado
+     * (scaleX ≠ scaleY) precisa de rx ≠ ry para o canto sair REDONDO, não oval.
+     */
+    cornerRadii(obj) {
+        const r = Number(obj.placeholderRadius) || 0;
+        if (r <= 0) return null;
+        const sx = Math.abs(obj.scaleX) || 1;
+        const sy = Math.abs(obj.scaleY) || 1;
+        // Metade do lado é o máximo útil: além disso o fabric já desenha o
+        // "stadium" e qualquer valor maior não muda nada.
+        return {
+            rx: Math.min(r / sx, obj.width / 2),
+            ry: Math.min(r / sy, obj.height / 2),
+        };
+    },
+
+    /** O recorte do placeholder: círculo, retângulo com canto ou retângulo reto. */
+    buildClipPath(obj) {
+        if (obj.placeholderShape === 'circle') {
+            return new fabric.Circle({
+                radius: (obj.width / 2),
+                originX: 'center',
+                originY: 'center',
+            });
+        }
+        const raio = obj.placeholderShape === 'rounded' ? this.cornerRadii(obj) : null;
+        return new fabric.Rect({
+            width: obj.width,
+            height: obj.height,
+            originX: 'center',
+            originY: 'center',
+            ...(raio ? { rx: raio.rx, ry: raio.ry } : {}),
+        });
+    },
+
     async loadObjects(canvas, objectsJson, dataRow, scaleM, resolve, reject) {
         // Sem este try/catch, um erro síncrono ou numa promise dentro deste callback nunca
         // chega a `resolve`/`reject` — a `generateImage` de fora fica pendente pra sempre
         // (o "Gerando..." trava indefinidamente na UI, sem nenhum erro visível).
         fabric.util.enlivenObjects(objectsJson, async (objs) => {
           try {
+            /**
+             * ⚠️ A PILHA É DECIDIDA AQUI, NÃO PELO DOWNLOAD.
+             *
+             * A versão anterior fazia `canvas.add()` lá dentro do `.then()` de
+             * cada imagem. Como o fabric empilha na ordem em que recebe, quem
+             * ficava por cima era simplesmente quem terminasse de baixar
+             * primeiro — a logo do parceiro (arquivo pequeno) quase sempre
+             * chegava antes da foto do produto e ia parar EMBAIXO dela. Era
+             * sorteio: a mesma arte saía diferente dependendo da rede.
+             *
+             * Agora cada objeto guarda a posição que tem no template, e o
+             * canvas só é montado quando todo mundo terminou. Sobreposição
+             * virou decisão de quem desenha o template.
+             */
+            const slots = new Array(objs.length).fill(null);
             const promises = [];
 
-            for (let obj of objs) {
-                // No scale mapping needed, objects are already in true coordinates
-                // Keep obj as is
-
-
+            objs.forEach((obj, indice) => {
                 if (obj.isBgImage) {
                     obj.set({
                         scaleX: canvas.width / obj.width,
@@ -226,21 +281,20 @@ const CanvasRenderer = {
                         left: 0,
                         top: 0
                     });
-                    canvas.add(obj);
-                    obj.sendToBack();
+                    slots[indice] = obj;
                 }
                 else if (obj.placeholderType === 'text' && obj.bindKey) {
                     let textVal = String(dataRow[obj.bindKey] || '');
-                    
+
                     const targetW = obj.width * obj.scaleX;
                     const targetH = obj.height * obj.scaleY;
-                    
+
                     const p = this.createTextImage(
-                        textVal, 
-                        targetW, 
-                        targetH, 
-                        obj.customColor || '#ffffff', 
-                        obj.customFont || 'Inter', 
+                        textVal,
+                        targetW,
+                        targetH,
+                        obj.customColor || '#ffffff',
+                        obj.customFont || 'Inter',
                         obj.customAlign || 'center'
                     ).then(textImg => {
                         textImg.set({
@@ -249,10 +303,10 @@ const CanvasRenderer = {
                             originX: obj.originX,
                             originY: obj.originY
                         });
-                        canvas.add(textImg);
+                        slots[indice] = textImg;
                     });
                     promises.push(p);
-                } 
+                }
                 else if (obj.isPlaceholder && obj.bindKey) {
                     let imgUrl = dataRow[obj.bindKey];
                     if (imgUrl) {
@@ -260,14 +314,14 @@ const CanvasRenderer = {
                             if (fImg && fImg.width && fImg.height) {
                                 const targetW = obj.width * obj.scaleX;
                                 const targetH = obj.height * obj.scaleY;
-                                
+
                                 const ratioX = targetW / fImg.width;
                                 const ratioY = targetH / fImg.height;
                                 const ratio = Math.max(ratioX, ratioY);
 
                                 const originX = obj.originX || 'left';
                                 const originY = obj.originY || 'top';
-                                
+
                                 const placeholderCenterX = obj.left + (originX === 'center' ? 0 : targetW / 2);
                                 const placeholderCenterY = obj.top + (originY === 'center' ? 0 : targetH / 2);
 
@@ -280,27 +334,12 @@ const CanvasRenderer = {
                                     scaleY: ratio
                                 });
 
-                                let clipPath;
-                                if (obj.placeholderShape === 'circle') {
-                                    clipPath = new fabric.Circle({
-                                        radius: (obj.width / 2),
-                                        originX: 'center',
-                                        originY: 'center',
-                                    });
-                                } else {
-                                    clipPath = new fabric.Rect({
-                                        width: obj.width,
-                                        height: obj.height,
-                                        originX: 'center',
-                                        originY: 'center',
-                                    });
-                                }
-                                
+                                const clipPath = this.buildClipPath(obj);
                                 clipPath.scaleX = 1/ratio * obj.scaleX;
                                 clipPath.scaleY = 1/ratio * obj.scaleY;
-                                
+
                                 fImg.set({ clipPath: clipPath });
-                                canvas.add(fImg);
+                                slots[indice] = fImg;
                             } else {
                                 if(!dataRow.alert) dataRow.alert = `Não foi possível carregar a imagem de "${obj.bindKey}" (URL inacessível ou bloqueada pela rede/navegador).`;
                             }
@@ -310,11 +349,19 @@ const CanvasRenderer = {
                         if(!dataRow.alert) dataRow.alert = `Campo "${obj.bindKey}" sem valor de imagem para preencher este elemento.`;
                     }
                 } else {
-                    canvas.add(obj);
+                    slots[indice] = obj;
                 }
-            }
+            });
 
             await Promise.all(promises);
+
+            // Só agora a pilha é montada, na ordem do template. Imagem que
+            // falhou deixou o slot nulo e simplesmente não entra.
+            slots.forEach(obj => { if (obj) canvas.add(obj); });
+            // O fundo vai pro fim da pilha mesmo que no template ele não seja o
+            // primeiro objeto — template antigo não garante essa ordem.
+            slots.forEach(obj => { if (obj && obj.isBgImage) obj.sendToBack(); });
+
             canvas.renderAll();
 
             const fullDataUrl = canvas.toDataURL({ format: 'png', quality: 1 });

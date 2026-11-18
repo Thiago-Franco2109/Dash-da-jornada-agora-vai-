@@ -288,6 +288,18 @@
                                         <!-- Custom fonts injected here -->
                                     </select>
                                 </div>
+                                <div class="form-group" id="radius-wrapper" style="display:none;">
+                                    <label>Canto arredondado</label>
+                                    <input type="range" id="prop-radius" class="form-control" min="0" max="400" step="4" value="0" style="padding:0;">
+                                    <small id="prop-radius-val" style="color: var(--gray-600);">0 px</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Ordem na pilha</label>
+                                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
+                                        <button class="btn btn-sm btn-outline" onclick="Editor.moveSelected('up')" title="Trazer para frente"><i class="ph ph-arrow-up"></i> Frente</button>
+                                        <button class="btn btn-sm btn-outline" onclick="Editor.moveSelected('down')" title="Mandar para trás"><i class="ph ph-arrow-down"></i> Trás</button>
+                                    </div>
+                                </div>
                                 <div class="form-group mb-6">
                                     <label>Alinhar Elementos</label>
                                     <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">

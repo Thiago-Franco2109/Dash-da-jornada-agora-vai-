@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Teste do renderizador — ordem da pilha e canto arredondado</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="js/canvasRenderer.js"></script>
+</head>
+<body style="font-family: system-ui; padding: 16px">
+  <h3>Teste do renderizador</h3>
+  <pre id="saida">rodando…</pre>
+  <img id="arte" style="max-width: 420px; border: 1px solid #ccc" />
+<script>
+// Arquivo de teste, não faz parte do gerador. Prova duas coisas sem precisar
+// montar template no editor:
+//   1. a pilha segue a ORDEM DO TEMPLATE, não a ordem de download;
+//   2. `placeholderShape: 'rounded'` recorta o canto de verdade.
+
+const LADO = 600;
+
+/** Quadrado chapado como data URL — serve de foto e de logo no teste. */
+function quadrado(cor, lado) {
+    const c = document.createElement('canvas');
+    c.width = c.height = lado;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = cor;
+    ctx.fillRect(0, 0, lado, lado);
+    return c.toDataURL();
+}
+
+// Fundo preto, foto vermelha GRANDE (decodifica devagar), logo azul PEQUENA
+// (decodifica rápido). Com o código antigo a logo chegava primeiro e ficava
+// EMBAIXO da foto, invertendo o template.
+const fundo  = quadrado('#000000', LADO);
+const foto   = quadrado('#ff0000', 1600);
+const logo   = quadrado('#0000ff', 64);
+
+const template = {
+    bgDimensions: { w: LADO, h: LADO },
+    objects: [
+        { type: 'image', src: fundo, isBgImage: true, width: LADO, height: LADO, scaleX: 1, scaleY: 1, left: 0, top: 0 },
+        // Foto ocupando o miolo, com canto arredondado de 80px.
+        { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'itemImage',
+          placeholderShape: 'rounded', placeholderRadius: 80,
+          left: 100, top: 100, width: 400, height: 400, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
+        // Logo sobre o canto inferior direito da foto — tem que ficar POR CIMA.
+        { type: 'rect', isPlaceholder: true, placeholderType: 'image', bindKey: 'logoImage',
+          placeholderShape: 'square',
+          left: 400, top: 400, width: 120, height: 120, scaleX: 1, scaleY: 1, originX: 'left', originY: 'top' },
+    ],
+};
+
+/** Cor de um pixel da arte gerada, como [r,g,b]. */
+function pixel(ctx, x, y) {
+    const d = ctx.getImageData(x, y, 1, 1).data;
+    return [d[0], d[1], d[2]];
+}
+
+const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 30);
+
+(async () => {
+    const saida = document.getElementById('saida');
+    try {
+        const r = await CanvasRenderer.generateImage(
+            { itemImage: foto, logoImage: logo },
+            template,
+            true,
+        );
+        document.getElementById('arte').src = r.full;
+
+        // Lê os pixels por createImageBitmap, não por <img>.decode(): o decode
+        // de um elemento <img> fica pendurado quando a aba não está sendo
+        // desenhada (aba em segundo plano), e o teste nunca terminava.
+        const blob = await (await fetch(r.full)).blob();
+        const bmp = await createImageBitmap(blob);
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const ctx = c.getContext('2d');
+        ctx.drawImage(bmp, 0, 0);
+        const img = { width: bmp.width, height: bmp.height };
+
+        const resultado = {
+            tamanho: `${img.width}x${img.height}`,
+            // Centro da foto: vermelho.
+            miolo_da_foto: pixel(ctx, 300, 300),
+            // Canto superior esquerdo da foto (x=105,y=105): dentro do raio de
+            // 80px, então tem que ser FUNDO (preto), não vermelho.
+            canto_da_foto: pixel(ctx, 108, 108),
+            // Borda reta da foto, longe do canto: vermelho.
+            borda_reta_da_foto: pixel(ctx, 300, 105),
+            // Sobreposição: a logo cobre 400..520; aqui tem que ser AZUL.
+            sobreposicao_logo: pixel(ctx, 460, 460),
+        };
+
+        resultado.ok_canto_arredondado = perto(resultado.canto_da_foto, [0, 0, 0]);
+        resultado.ok_borda_reta = perto(resultado.borda_reta_da_foto, [255, 0, 0]);
+        resultado.ok_logo_por_cima = perto(resultado.sobreposicao_logo, [0, 0, 255]);
+        resultado.passou = resultado.ok_canto_arredondado && resultado.ok_borda_reta && resultado.ok_logo_por_cima;
+
+        window.__resultado = resultado;
+        saida.textContent = JSON.stringify(resultado, null, 2);
+    } catch (err) {
+        window.__resultado = { erro: String(err) };
+        saida.textContent = 'ERRO: ' + err;
+    }
+})();
+</script>
+</body>
+</html>

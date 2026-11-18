@@ -145,7 +145,7 @@ const Editor = {
 
     saveHistory() {
         if (this.isProcessingUndo || this.isLoadingFormat) return;
-        const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+        const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
         this.templateData[this.currentFormat].objects = json.objects;
         
         this.undoStack.push(JSON.stringify(json));
@@ -239,7 +239,7 @@ const Editor = {
         if (active) {
             active.clone((cloned) => {
                 this.clipboard = cloned;
-            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
         }
     },
 
@@ -266,7 +266,7 @@ const Editor = {
                 this.canvas.setActiveObject(clonedObj);
                 this.canvas.requestRenderAll();
                 this.saveHistory();
-            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            }, ['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
         }
     },
 
@@ -275,7 +275,12 @@ const Editor = {
         this.canvas.on('selection:updated', (e) => this.showElementProps(e.selected[0]));
         this.canvas.on('selection:cleared', () => document.getElementById('element-props').classList.add('hidden'));
 
-        this.canvas.on('object:modified', () => this.saveHistory());
+        // Redimensionar muda scaleX/scaleY, e o `rx` do fabric é unidade local:
+        // sem recalcular, o canto crescia junto com o placeholder.
+        this.canvas.on('object:modified', (e) => {
+            if (e && e.target) this.aplicarRaio(e.target);
+            this.saveHistory();
+        });
         this.canvas.on('object:added', () => this.saveHistory());
         this.canvas.on('object:removed', () => this.saveHistory());
 
@@ -326,6 +331,16 @@ const Editor = {
                 this.updateTextColor(val);
             }
         });
+
+        document.getElementById('prop-radius').addEventListener('input', (e) => {
+            const obj = this.canvas.getActiveObject();
+            if (!obj || obj.placeholderType !== 'image') return;
+            obj.placeholderRadius = Number(e.target.value) || 0;
+            this.aplicarRaio(obj);
+            document.getElementById('prop-radius-val').textContent = `${obj.placeholderRadius} px`;
+            this.canvas.requestRenderAll();
+        });
+        document.getElementById('prop-radius').addEventListener('change', () => this.saveHistory());
 
         document.getElementById('prop-font').addEventListener('change', (e) => {
             const obj = this.canvas.getActiveObject();
@@ -431,6 +446,47 @@ const Editor = {
         }
     },
 
+    /**
+     * Mesma conta do canvasRenderer.cornerRadii: o raio é guardado em pixels da
+     * ARTE, e o fabric desenha `rx` em unidade local (multiplicada por scaleX na
+     * tela). Dividir por scaleX/scaleY separadamente mantém o canto redondo
+     * mesmo em placeholder esticado — e mantém o editor igual ao resultado.
+     */
+    aplicarRaio(obj) {
+        if (!obj || obj.placeholderType !== 'image' || obj.placeholderShape === 'circle') return;
+        const r = Number(obj.placeholderRadius) || 0;
+        const sx = Math.abs(obj.scaleX) || 1;
+        const sy = Math.abs(obj.scaleY) || 1;
+        obj.set({
+            rx: Math.min(r / sx, obj.width / 2),
+            ry: Math.min(r / sy, obj.height / 2),
+        });
+        // Raio zero volta a ser retângulo reto: é o que o renderizador entende
+        // como "sem canto", e evita template com shape 'rounded' e raio 0.
+        obj.placeholderShape = r > 0 ? 'rounded' : 'square';
+    },
+
+    /**
+     * Sobe ou desce um elemento na pilha.
+     *
+     * O fundo é o objeto de índice 0 e não pode ser ultrapassado: um elemento
+     * atrás dele simplesmente some da arte, sem nenhum aviso.
+     */
+    moveSelected(direcao) {
+        const obj = this.canvas.getActiveObject();
+        if (!obj || obj.isBgImage) return;
+        const temFundo = this.canvas.getObjects().some(o => o.isBgImage);
+        const minimo = temFundo ? 1 : 0;
+
+        if (direcao === 'up') {
+            this.canvas.bringForward(obj);
+        } else if (this.canvas.getObjects().indexOf(obj) > minimo) {
+            this.canvas.sendBackwards(obj);
+        }
+        this.canvas.requestRenderAll();
+        this.saveHistory();
+    },
+
     showElementProps(obj) {
         if (!obj) return;
         const panel = document.getElementById('element-props');
@@ -453,6 +509,17 @@ const Editor = {
         } else {
             document.getElementById('color-wrapper').style.display = 'none';
             document.getElementById('prop-font').parentElement.style.display = 'none';
+        }
+
+        // Canto arredondado só faz sentido em foto retangular: a logo já é
+        // recortada em círculo e o raio não teria o que arredondar.
+        const raioBox = document.getElementById('radius-wrapper');
+        const ehFotoRetangular = obj.placeholderType === 'image' && obj.placeholderShape !== 'circle';
+        raioBox.style.display = ehFotoRetangular ? 'block' : 'none';
+        if (ehFotoRetangular) {
+            const r = Number(obj.placeholderRadius) || 0;
+            document.getElementById('prop-radius').value = r;
+            document.getElementById('prop-radius-val').textContent = `${r} px`;
         }
     },
 
@@ -646,7 +713,7 @@ const Editor = {
             this.canvas.renderAll();
             this.isProcessingUndo = false;
             
-            const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
+            const json = this.canvas.toJSON(['bindKey', 'isPlaceholder', 'placeholderShape', 'placeholderRadius', 'placeholderType', 'customColor', 'customFont', 'customAlign', 'isBgImage', 'textLabel']);
             this.templateData[this.currentFormat].objects = json.objects;
         });
     },
