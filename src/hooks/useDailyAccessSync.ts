@@ -30,7 +30,7 @@ export interface StoreAccessData {
     estabId: string;           // id da planilha ('' quando a linha não traz)
     acessosUnicos: number;    // soma total de todos os dias disponíveis
     mediaDiaria: number;       // média de acessos por dia
-    lastDayAcessos: number;    // valor do último dia disponível
+    ultimoDia: string;         // data do último dia com acesso (YYYY-MM-DD)
     totalDias: number;         // quantos dias têm dados
     /** nome repetido na planilha: a linha não identifica uma loja só */
     ambiguo?: boolean;
@@ -38,9 +38,10 @@ export interface StoreAccessData {
 }
 
 const ACCESS_ID_COLUMNS = ['ESTABELECIMENTO_ID', 'ESTAB_ID', 'ID_ESTABELECIMENTO', 'ID LOJA', 'ID'];
-const ACCESS_DAY_COLUMNS = ['Day', 'Dia', 'Date', 'Data'];
 const ACCESS_USERS_COLUMNS = ['Active users', 'Usuarios ativos', 'Usuários ativos', 'Acessos', 'Users'];
 const ACCESS_STORE_COLUMNS = ['Loja', 'Estabelecimento', 'Parceiro'];
+const ACCESS_DIAS_COLUMNS = ['dias', 'Dias'];
+const ACCESS_ULTIMO_DIA_COLUMNS = ['ultimo_dia', 'Ultimo dia', 'Último dia'];
 
 /** GA devolve "(not set)" quando o evento não trouxe o parâmetro — não é loja. */
 function isNotSet(valor: string): boolean {
@@ -128,58 +129,50 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
             const json = await res.json();
             const rows: Record<string, any>[] = json.data?.rows || (Array.isArray(json) ? json : json.values || []);
 
-            // A aba `analytics` é o retorno cru do SyncWith: uma linha por dia × loja,
-            // não uma linha por loja com colunas de data. Agregamos por
-            // estabelecimento_id, que identifica a loja sozinho (o nome não).
+            // A aba `acessos_painel` já vem agregada por loja (ver comentário em
+            // ACCESS_DATA_SOURCE). Agregar na planilha não é preferência: o gateway
+            // corta a resposta em ~10 mil linhas, e a `analytics` crua tem ~31 mil —
+            // o painel recebia só o topo da lista ordenada por volume e as lojas
+            // pequenas sumiam sem erro nenhum.
             type Acumulado = {
                 estabelecimento: string;
                 estabId: string;
                 total: number;
-                dias: Set<string>;
-                ultimoTs: number;
-                ultimoValor: number;
-                raw: Record<string, any>;
+                dias: number;
+                ultimoDia: string;
             };
 
             const porChave = new Map<string, Acumulado>();
             const idsPorNome = new Map<string, Set<string>>();
-            const diasGlobais = new Set<string>();
 
             rows.forEach((row: any) => {
                 if (!row) return;
 
                 const nome = findCellByNames(row, ACCESS_STORE_COLUMNS);
                 const estabId = findCellByNames(row, ACCESS_ID_COLUMNS).replace(/\D/g, '');
-
-                // Linha sem loja e sem id é o acesso que o app não atribuiu a ninguém.
                 if (isNotSet(nome) && !estabId) return;
 
                 const usuarios = parseInt(String(findCellByNames(row, ACCESS_USERS_COLUMNS)).replace(/\D/g, ''), 10);
                 if (isNaN(usuarios) || usuarios <= 0) return;
 
-                const dia = findCellByNames(row, ACCESS_DAY_COLUMNS);
-                const chave = estabId ? byId(estabId) : byName(nome);
+                const dias = parseInt(String(findCellByNames(row, ACCESS_DIAS_COLUMNS)).replace(/\D/g, ''), 10) || 0;
+                const ultimoDia = findCellByNames(row, ACCESS_ULTIMO_DIA_COLUMNS);
 
+                // Mesmo id pode vir em mais de uma linha quando o nome da loja mudou
+                // no GA ao longo da janela (ex.: 15941 aparece como "lanchonete do
+                // filipi" e "lanchonete e pizzaria du filipi").
+                const chave = estabId ? byId(estabId) : byName(nome);
                 const acc: Acumulado = porChave.get(chave) ?? {
                     estabelecimento: isNotSet(nome) ? '' : nome.trim(),
                     estabId,
                     total: 0,
-                    dias: new Set<string>(),
-                    ultimoTs: -Infinity,
-                    ultimoValor: 0,
-                    raw: row,
+                    dias: 0,
+                    ultimoDia: '',
                 };
 
                 acc.total += usuarios;
-                if (dia) {
-                    acc.dias.add(dia);
-                    diasGlobais.add(dia);
-                    const ts = Date.parse(dia);
-                    if (!isNaN(ts) && ts >= acc.ultimoTs) {
-                        acc.ultimoTs = ts;
-                        acc.ultimoValor = usuarios;
-                    }
-                }
+                acc.dias += dias;
+                if (ultimoDia > acc.ultimoDia) acc.ultimoDia = ultimoDia;
                 if (!acc.estabelecimento && !isNotSet(nome)) acc.estabelecimento = nome.trim();
                 porChave.set(chave, acc);
 
@@ -192,17 +185,19 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
             });
 
             const parsedData: Record<string, StoreAccessData> = {};
+            let maiorJanela = 0;
 
             porChave.forEach((acc, chave) => {
-                const totalDias = acc.dias.size;
+                if (acc.dias > maiorJanela) maiorJanela = acc.dias;
+
                 const entry: StoreAccessData = {
                     estabelecimento: acc.estabelecimento,
                     estabId: acc.estabId,
                     acessosUnicos: acc.total,
-                    mediaDiaria: totalDias > 0 ? Math.round(acc.total / totalDias) : 0,
-                    lastDayAcessos: acc.ultimoValor,
-                    totalDias,
-                    raw: acc.raw,
+                    mediaDiaria: acc.dias > 0 ? Math.round(acc.total / acc.dias) : 0,
+                    ultimoDia: acc.ultimoDia,
+                    totalDias: acc.dias,
+                    raw: {},
                 };
                 parsedData[chave] = entry;
 
@@ -219,8 +214,9 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
                 }
             });
 
+            setDiasJanela(maiorJanela);
+
             setAccessData(parsedData);
-            setDiasJanela(diasGlobais.size);
             setLastSyncTime(new Date());
 
         } catch (err: any) {

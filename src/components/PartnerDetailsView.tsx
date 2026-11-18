@@ -710,9 +710,13 @@ export default function PartnerDetailsView({
                                                 <p className="text-[10px] text-slate-400 mt-0.5">acessos únicos</p>
                                             </div>
                                             <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
-                                                <p className="text-xs text-slate-500 font-semibold mb-1">Último Dia</p>
-                                                <p className="text-xl font-bold text-slate-800 dark:text-white">{dailyAccessData!.lastDayAcessos}</p>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">acessos</p>
+                                                <p className="text-xs text-slate-500 font-semibold mb-1">Último dia com dado</p>
+                                                <p className="text-xl font-bold text-slate-800 dark:text-white">
+                                                    {dailyAccessData!.ultimoDia
+                                                        ? dailyAccessData!.ultimoDia.split('-').reverse().join('/')
+                                                        : '—'}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">fim da janela medida</p>
                                             </div>
                                         </div>
                                     </div>

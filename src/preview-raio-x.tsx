@@ -50,7 +50,7 @@ const accessData: Record<string, StoreAccessData> = Object.fromEntries(
             estabId: id,
             acessosUnicos: acessos,
             mediaDiaria: Math.round(acessos / DIAS_ACESSO),
-            lastDayAcessos: 0,
+            ultimoDia: '2026-11-17',
             totalDias: DIAS_ACESSO,
             raw: {},
         },

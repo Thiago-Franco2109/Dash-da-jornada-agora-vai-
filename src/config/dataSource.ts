@@ -49,10 +49,17 @@ export const CD_DESEMPENHO_SOURCES = [CD_DESEMPENHO_DATA_SOURCE];
 
 export const ACCESS_DATA_SOURCE = {
     sheetId: '1fSmujBzlFtu4ZTuTl5v2nUcFwL3uol3QFqRrzEUULEA',
-    // Espelho de `analytics` (dia × loja, com estabelecimento_id) começando na
-    // linha do cabeçalho. Não dá para ler `analytics` direto: a linha 1 dela é a
-    // faixa do add-on SyncWith, e o gateway monta as colunas pela linha 1 — o
-    // painel recebia uma coluna só, chamada "Refresh failed: Unexpected failure".
+    // Aba que agrega `analytics` por loja: estabelecimento_id, Loja, Active users,
+    // dias, ultimo_dia — cabeçalho na linha 1.
+    //
+    // Não dá para ler `analytics` direto, por dois motivos independentes:
+    //   1. A linha 1 dela é a faixa do add-on SyncWith, e o gateway monta as
+    //      colunas pela linha 1 — chegava uma coluna só, chamada
+    //      "Refresh failed: Unexpected failure".
+    //   2. O gateway corta em ~10 mil linhas e a `analytics` crua tem ~31 mil,
+    //      ordenada por volume. O painel via só as lojas grandes; as pequenas
+    //      sumiam sem erro — o funil aparecia vazio como se não houvesse acesso.
+    //
     // A aba "novo relatório final" também não serve: só lista lojas novas e
     // é indexada por nome.
     range: 'acessos_painel',
