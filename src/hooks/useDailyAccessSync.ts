@@ -56,6 +56,22 @@ const byName = (nome: string) => `nome:${nome.trim().toLowerCase()}`;
  * quando a planilha não traz id. Nome repetido devolve null — a planilha tem
  * duas lojas com aquele nome e qualquer número escolhido seria chute.
  */
+/**
+ * Acesso de uma loja QUALQUER pelo id — sem o fallback por nome do
+ * `lookupAccess`, que existe só para o parceiro que veio da planilha sem id.
+ * É o que a comparação com a concorrência usa: lá o id sai do banco e nome
+ * repetido entre cidades não pode nem encostar na conta (ver memória
+ * "identidade de loja é o ID").
+ */
+export function lookupAccessById(
+    accessData: Record<string, StoreAccessData>,
+    id: string | number,
+): StoreAccessData | null {
+    const chave = String(id).trim();
+    if (!chave) return null;
+    return accessData[byId(chave)] ?? null;
+}
+
 export function lookupAccess(
     accessData: Record<string, StoreAccessData>,
     partner: { estab_id?: string | number | null; estabelecimento?: string | null },
@@ -76,6 +92,15 @@ export function lookupAccess(
 
 export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {}) {
     const [accessData, setAccessData] = useState<Record<string, StoreAccessData>>({});
+    /**
+     * Dias DISTINTOS que a planilha inteira cobre.
+     *
+     * `StoreAccessData.mediaDiaria` divide pelos dias em que AQUELA loja teve
+     * acesso, e a planilha não traz linha de dia zerado: loja vista em 3 dias
+     * de 30 ganha média de 3 dias e parece movimentada. Para comparar lojas
+     * entre si a divisão tem que ser pela mesma janela — esta.
+     */
+    const [diasJanela, setDiasJanela] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
@@ -118,6 +143,7 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
 
             const porChave = new Map<string, Acumulado>();
             const idsPorNome = new Map<string, Set<string>>();
+            const diasGlobais = new Set<string>();
 
             rows.forEach((row: any) => {
                 if (!row) return;
@@ -147,6 +173,7 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
                 acc.total += usuarios;
                 if (dia) {
                     acc.dias.add(dia);
+                    diasGlobais.add(dia);
                     const ts = Date.parse(dia);
                     if (!isNaN(ts) && ts >= acc.ultimoTs) {
                         acc.ultimoTs = ts;
@@ -193,6 +220,7 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
             });
 
             setAccessData(parsedData);
+            setDiasJanela(diasGlobais.size);
             setLastSyncTime(new Date());
 
         } catch (err: any) {
@@ -211,6 +239,7 @@ export function useDailyAccessSync({ enabled = true }: { enabled?: boolean } = {
 
     return {
         accessData,
+        diasJanela,
         loadingAccess: isLoading,
         accessError: error,
         lastAccessSync: lastSyncTime,

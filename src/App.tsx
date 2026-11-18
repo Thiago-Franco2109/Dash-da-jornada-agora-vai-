@@ -454,7 +454,7 @@ function App() {
   };
 
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
-  const { accessData, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
+  const { accessData, diasJanela, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
 
   // Resetar filtros de tela ao alternar entre Marketplace e Cardápio Digital (gestor persiste na sessão)
   useEffect(() => {
@@ -980,6 +980,8 @@ function App() {
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
                 dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 viewContext={undefined}
                 crmPartner={crmPartnerForSelected}
@@ -1161,6 +1163,8 @@ function App() {
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
               dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
@@ -1201,6 +1205,8 @@ function App() {
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
               dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
@@ -1230,6 +1236,8 @@ function App() {
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
               dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={isCD ? 'desempenho' : undefined}
               crmPartner={!isCD ? crmPartnerForSelected : null}
@@ -1273,6 +1281,8 @@ function App() {
               partner={currentSelectedRow}
               onBack={() => setSelectedRow(null)}
               dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext="desempenho"
             />
@@ -1313,6 +1323,8 @@ function App() {
                 partner={currentSelectedRow}
                 onBack={() => setSelectedRow(null)}
                 dailyAccessData={lookupAccess(accessData, currentSelectedRow) ?? undefined}
+                accessData={accessData}
+                diasAcesso={diasJanela}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}

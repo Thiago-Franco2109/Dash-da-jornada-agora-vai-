@@ -138,7 +138,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'trello-card-anexar', 'trello-anexo',
     'cardapio-analise', 'parceiro-acesso', 'pedido-relatorio',
     'okr-trimestre',
-    'parceiro-diagnostico', 'parceiro-historico',
+    'parceiro-diagnostico', 'parceiro-historico', 'parceiro-raio-x',
   ])
   return {
     name: 'db-functions-dev',

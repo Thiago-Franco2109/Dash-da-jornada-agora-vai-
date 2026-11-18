@@ -30,6 +30,8 @@ import PartnerCardapioSection from './PartnerCardapioSection';
 import { useCardapioAnalise } from '../hooks/useCardapioAnalise';
 import { useParceiroAcesso } from '../hooks/useParceiroAcesso';
 import PartnerDiagnosticoSection from './PartnerDiagnosticoSection';
+import PartnerRaioXSection from './PartnerRaioXSection';
+import { useParceiroRaioX } from '../hooks/useParceiroRaioX';
 import PartnerFuncionamentoSection from './PartnerFuncionamentoSection';
 import PartnerPedidosSection from './PartnerPedidosSection';
 import PartnerHistoricoSection from './PartnerHistoricoSection';
@@ -40,6 +42,10 @@ interface PartnerDetailsViewProps {
     onBack: () => void;
     /** Live data from the unique daily accesses API */
     dailyAccessData?: StoreAccessData;
+    /** Mapa inteiro de acessos — o raio-x compara a visita dele com a dos concorrentes. */
+    accessData?: Record<string, StoreAccessData>;
+    /** Dias distintos cobertos pela planilha de acessos (janela comum a todas as lojas). */
+    diasAcesso?: number;
     onRefresh: () => void;
     viewContext?: 'journey' | 'desempenho';
     crmPartner?: CrmPartner | null;
@@ -59,6 +65,8 @@ export default function PartnerDetailsView({
     partner,
     onBack,
     dailyAccessData,
+    accessData = {},
+    diasAcesso = 0,
     onRefresh,
     viewContext = 'journey',
     crmPartner,
@@ -87,6 +95,7 @@ export default function PartnerDetailsView({
     // da planilha não existe no banco do CMS e os hooks devolvem null sem chamar nada.
     const { data: cardapioAnalise, loading: cardapioLoading, error: cardapioError } = useCardapioAnalise(partner.estab_id);
     const { data: parceiroAcesso } = useParceiroAcesso(partner.estab_id);
+    const { data: raioX, loading: raioXLoading, error: raioXError } = useParceiroRaioX(partner.estab_id);
     const { getCmsPromoUrl, getLocalidadeId, loading: cityIdsLoading } = useCityIds();
 
     const BASE_PROMO_URL = 'https://admin.bigou.com.br/campanha/promocao/cadastro/26';
@@ -502,6 +511,20 @@ export default function PartnerDetailsView({
             <div className="p-6">
                 {activeTab === 'geral' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                        {/* Raio-x primeiro e em largura cheia: a pergunta "qual problema
+                            atacar" tem que ser respondida antes de qualquer número de
+                            meta — foi a falta dela que obrigava o CS a abrir seis telas. */}
+                        <div className="lg:col-span-3">
+                            <PartnerRaioXSection
+                                raioX={raioX}
+                                loading={raioXLoading}
+                                error={raioXError}
+                                accessData={accessData}
+                                diasAcesso={diasAcesso}
+                                preLancamento={!!preLanc}
+                            />
+                        </div>
+
                         {/* Left Column: Basic Info & Current Metrics */}
                         <div className="lg:col-span-2 space-y-6">
                             {/* Interpretation Box — pausado, a leitura de desempenho não se aplica:
