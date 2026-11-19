@@ -62,7 +62,11 @@ export const ACCESS_DATA_SOURCE = {
     //
     // A aba "novo relatório final" também não serve: só lista lojas novas e
     // é indexada por nome.
-    range: 'acessos_painel',
+    // Renomeada de `acessos_painel` em 19/11/2026: o gateway passou a devolver
+    // `pending` indefinidamente para aquele nome (outras planilhas respondiam 200
+    // e o peso da fórmula foi descartado como causa — uma versão com `limit 20`
+    // pendurava igual). Trocar o nome muda a chave e contorna o cache travado.
+    range: 'acessos_painel_v2',
 };
 
 /**
