@@ -37,14 +37,19 @@ export const handler: Handler = async (event) => {
     try {
         connection = await getConnection();
 
-        // Só parceiro vivo (1 = ativo, 4 = suspenso), como a aba LOJAS_DELIVERY.
-        // Incluir os 5.4k cancelados levaria o payload de ~50 KB para ~250 KB
-        // gzipado em toda visita, e nenhuma tela mostra a logo de quem cancelou.
+        // Parceiro vivo (1 = ativo, 4 = suspenso) e pendente (0 = assinou e ainda
+        // não lançou). O pendente entra porque a Lista jornada 28D mostra a aba
+        // Pré-lançamento, e a logo já vem preenchida no cadastro: 238 das 266
+        // lojas pendentes têm arquivo, ou seja, +16% de payload.
+        //
+        // Cancelado (2 e 5) continua de fora: são 5.5k lojas, o payload iria de
+        // ~50 KB para ~250 KB gzipado em toda visita, e nenhuma tela mostra a
+        // logo de quem cancelou.
         const [rows] = await connection.query<RowDataPacket[]>(
             `SELECT id AS loja_id, nome AS nome_loja, plano3 AS arquivo
              FROM estabelecimento
              WHERE plano3 IS NOT NULL AND plano3 <> ''
-               AND delivery IN (1, 4)`,
+               AND delivery IN (0, 1, 4)`,
         );
 
         const lojas = rows.map(r => ({

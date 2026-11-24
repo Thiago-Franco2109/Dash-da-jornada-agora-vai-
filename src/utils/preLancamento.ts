@@ -2,6 +2,7 @@ import { enrichPartnerData, type EnrichedPerformanceRow } from './calculations';
 import type { ParceiroPendente } from '../hooks/useOnboardingPendente';
 import type { CardTrelloOnboarding, EtapaTrello } from '../hooks/useOnboardingTrello';
 import type { ProductModeKey } from '../config/managerMapping';
+import { normalizeEstabId } from './indicadorSheet';
 
 /**
  * Parceiros que assinaram contrato e ainda NÃO lançaram, prontos pra entrar na
@@ -45,9 +46,15 @@ function montarLinha(args: {
     cidade: string;
     mode: ProductModeKey;
     relMap: Record<string, number>;
+    logoMap: Record<string, string>;
     preLancamento: NonNullable<EnrichedPerformanceRow['pre_lancamento']>;
 }): EnrichedPerformanceRow {
-    const { estabId, nome, cidade, mode, relMap, preLancamento } = args;
+    const { estabId, nome, cidade, mode, relMap, logoMap, preLancamento } = args;
+
+    // Mesmas chaves do mergeLogoMapIntoRows: id primeiro, nome como reserva.
+    // A logo já vem do cadastro, então a loja costuma ter foto no dia 1 — mas
+    // ela só chega aqui porque a function `logos` agora lista delivery = 0.
+    const logoUrl = logoMap[normalizeEstabId(estabId)] || logoMap[nome.trim()] || undefined;
 
     const minimal = {
         cidade,
@@ -62,7 +69,7 @@ function montarLinha(args: {
 
     // Chamamos o enrich não pelos números (todos seriam NaN sem lançamento), mas
     // porque é ele que resolve analista, peso da cidade e estado de contato.
-    let row = enrichPartnerData(minimal, undefined, undefined, mode);
+    let row = enrichPartnerData(minimal, logoUrl, undefined, mode);
 
     row = {
         ...row,
@@ -93,9 +100,11 @@ export function buildPreLancamentoRows(args: {
     /** estab_ids que já lançaram — card deles duplicaria a loja na tela. */
     jaLancados: Set<string>;
     relMap: Record<string, number>;
+    /** Mapa de logos do `useDataSync` — a linha não passa pelo merge dele. */
+    logoMap?: Record<string, string>;
     mode: ProductModeKey;
 }): EnrichedPerformanceRow[] {
-    const { pendentes, cards, etapasPorEstabId, jaLancados, relMap, mode } = args;
+    const { pendentes, cards, etapasPorEstabId, jaLancados, relMap, logoMap = {}, mode } = args;
 
     const doBanco = new Set(pendentes.map(p => p.estabId));
     const linhas: EnrichedPerformanceRow[] = [];
@@ -109,6 +118,7 @@ export function buildPreLancamentoRows(args: {
             cidade: p.cidade,
             mode,
             relMap,
+            logoMap,
             preLancamento: {
                 origem: 'banco',
                 dias: p.diasPendente,
@@ -133,6 +143,7 @@ export function buildPreLancamentoRows(args: {
             cidade: '',                              // o card não sabe a cidade — não inventar
             mode,
             relMap,
+            logoMap,
             preLancamento: {
                 origem: 'trello',
                 dias: null,                          // sem data de assinatura no card

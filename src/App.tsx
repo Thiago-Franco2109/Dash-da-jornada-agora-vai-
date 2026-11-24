@@ -138,7 +138,7 @@ function App() {
   const activeCacheKey = isCD ? CACHE_KEYS.cd_novos : CACHE_KEYS.marketplace;
 
   // 1. Data Synchronization — só inicia após autenticação
-  const { data: rawRows, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, refreshData } = useDataSync({
+  const { data: rawRows, isLoading: loadingSync, error: syncError, lastSyncTime, isUsingCache, logoMap, refreshData } = useDataSync({
     sources: activeSources,
     cacheKey: activeCacheKey,
     enabled: isAuthenticated,
@@ -560,6 +560,7 @@ function App() {
       etapasPorEstabId: onboardingEtapasTrello,
       jaLancados,
       relMap,
+      logoMap,
       mode,
     });
     const prontas = linhas.map(row => aplicarPausaOnboarding(
@@ -569,7 +570,7 @@ function App() {
     // Card do Trello sem cidade não entra no foco da OKR: é cidade desconhecida,
     // não "talvez seja uma delas" (ver CityFocusContext).
     return filtrarPorCidade(prontas, row => row.cidade);
-  }, [isCD, enrichedDataCompleto, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap, filtrarPorCidade]);
+  }, [isCD, enrichedDataCompleto, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, logoMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap, filtrarPorCidade]);
 
   /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
   const jornadaPool = useMemo(

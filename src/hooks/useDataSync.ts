@@ -56,6 +56,11 @@ export function useDataSync({
     const [error, setError] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
     const [isUsingCache, setIsUsingCache] = useState(false);
+    /**
+     * Mapa id/nome → logo, exposto porque a aba Pré-lançamento monta as linhas
+     * por fora do `data` (ver utils/preLancamento.ts) e precisa da mesma fonte.
+     */
+    const [logoMap, setLogoMap] = useState<Record<string, string>>({});
 
     const performSync = useCallback(async () => {
         if (!enabled) return;
@@ -134,6 +139,8 @@ export function useDataSync({
                         return {} as Record<string, { promo: string; cupom: string }>;
                     }),
                 ]);
+
+                setLogoMap(fetchedLogoMap);
 
                 let mergedData = mergeLogoMapIntoRows(flatFetchedData, fetchedLogoMap);
                 mergedData = mergeAvaliacoesMapIntoRows(mergedData, fetchedAvaliacoesMap);
@@ -244,6 +251,7 @@ export function useDataSync({
         error,
         lastSyncTime,
         isUsingCache,
+        logoMap,
         refreshData: () => performSync(),
     };
 }
