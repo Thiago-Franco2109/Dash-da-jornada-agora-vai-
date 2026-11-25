@@ -139,6 +139,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'cardapio-analise', 'parceiro-acesso', 'pedido-relatorio',
     'okr-trimestre',
     'parceiro-diagnostico', 'parceiro-historico', 'parceiro-raio-x',
+    'ga-acessos',
   ])
   return {
     name: 'db-functions-dev',
