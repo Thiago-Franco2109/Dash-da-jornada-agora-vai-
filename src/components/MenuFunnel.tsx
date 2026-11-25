@@ -163,6 +163,7 @@ export default function MenuFunnel({ steps, sourceLinks = [] }: MenuFunnelProps)
                     {steps.map((step, i) => {
                         // Altura da barra baseada no % real (com um mínimo para visibilidade)
                         const barH = i === 0 ? 100 : Math.max(10, step.pctOfFirst);
+                        const barraCurta = barH < 25;
                         
                         return (
                             <div
@@ -189,11 +190,22 @@ export default function MenuFunnel({ steps, sourceLinks = [] }: MenuFunnelProps)
                                 {/* Bar container */}
                                 <div className="relative h-28 w-full bg-slate-50 dark:bg-slate-900/50">
                                     <div
-                                        className="absolute bottom-0 left-0 right-0 bg-primary flex flex-col items-center justify-end pb-3 transition-all duration-500"
+                                        className="absolute bottom-0 left-0 right-0 bg-primary transition-all duration-500"
                                         style={{ height: `${barH}%` }}
+                                    />
+                                    {/* Num funil real a queda é brutal (2% da cidade entra na loja), então a
+                                        barra é um fiapo e o rótulo branco dentro dela some no fundo branco.
+                                        Abaixo de 25% o número sai para fora da barra, em texto escuro. */}
+                                    <span
+                                        className={`absolute left-0 right-0 text-center font-bold text-sm transition-all duration-500 ${
+                                            barraCurta ? 'text-slate-700 dark:text-slate-200' : 'text-white'
+                                        }`}
+                                        style={barraCurta
+                                            ? { bottom: `calc(${barH}% + 6px)` }
+                                            : { bottom: '12px' }}
                                     >
-                                        <span className="font-bold text-sm text-white">{step.pctOfFirst.toFixed(2)}%</span>
-                                    </div>
+                                        {step.pctOfFirst.toFixed(2)}%
+                                    </span>
                                 </div>
                             </div>
                         );
