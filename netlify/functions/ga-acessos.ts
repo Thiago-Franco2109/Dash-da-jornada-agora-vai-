@@ -73,7 +73,7 @@ export const handler: Handler = async (event) => {
 
         const dateRanges = [{ startDate: inicio, endDate: fim }];
 
-        const [porLoja, porCidade] = await Promise.all([
+        const [porLoja, porCidade, porLojaOntem] = await Promise.all([
             runReport(token, {
                 dateRanges,
                 dimensions: [{ name: 'customEvent:estabelecimento_id' }],
@@ -88,6 +88,16 @@ export const handler: Handler = async (event) => {
                 dimensionFilter: filtroAccessStore,
                 limit: 1000,
             }),
+            // Só o último dia. Vem junto porque "quantos acessos a loja teve
+            // ontem" é pergunta de rotina do CS, e uma média de 30 dias não
+            // responde isso — a loja pode ter caído a zero na semana.
+            runReport(token, {
+                dateRanges: [{ startDate: fim, endDate: fim }],
+                dimensions: [{ name: 'customEvent:estabelecimento_id' }],
+                metrics: [{ name: 'activeUsers' }],
+                dimensionFilter: filtroAccessStore,
+                limit: 100000,
+            }),
         ]);
 
         // `(not set)` é acesso que o app não atribuiu a ninguém — não é loja nem
@@ -99,6 +109,13 @@ export const handler: Handler = async (event) => {
             const id = row.dimensionValues[0]?.value ?? '';
             if (naoAtribuido(id)) continue;
             lojas[id.trim()] = Number(row.metricValues[0]?.value ?? 0);
+        }
+
+        const lojasOntem: Record<string, number> = {};
+        for (const row of porLojaOntem.rows ?? []) {
+            const id = row.dimensionValues[0]?.value ?? '';
+            if (naoAtribuido(id)) continue;
+            lojasOntem[id.trim()] = Number(row.metricValues[0]?.value ?? 0);
         }
 
         const cidades: Record<string, number> = {};
@@ -115,6 +132,7 @@ export const handler: Handler = async (event) => {
                 ok: true,
                 janela: { inicio, fim, dias },
                 lojas,
+                lojasOntem,
                 cidades,
             }),
         };

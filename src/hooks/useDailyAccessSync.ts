@@ -13,6 +13,7 @@ export interface StoreAccessData {
     estabelecimento: string;   // '' — a API devolve id, não nome (e nome não identifica loja)
     estabId: string;
     acessosUnicos: number;
+    acessosOntem: number;      // último dia da janela, isolado
     mediaDiaria: number;
     ultimoDia: string;         // fim da janela
     totalDias: number;         // tamanho da janela
@@ -76,6 +77,7 @@ export function useDailyAccessSync({ enabled = true, dias = 30 }: { enabled?: bo
 
             const janelaResp: JanelaAcesso = json.janela ?? { inicio: '', fim: '', dias };
             const lojas: Record<string, number> = json.lojas ?? {};
+            const lojasOntem: Record<string, number> = json.lojasOntem ?? {};
 
             const parsed: Record<string, StoreAccessData> = {};
             for (const [id, total] of Object.entries(lojas)) {
@@ -85,6 +87,7 @@ export function useDailyAccessSync({ enabled = true, dias = 30 }: { enabled?: bo
                     estabelecimento: '',
                     estabId: id,
                     acessosUnicos: acessos,
+                    acessosOntem: Number(lojasOntem[id]) || 0,
                     mediaDiaria: janelaResp.dias > 0 ? Math.round(acessos / janelaResp.dias) : 0,
                     ultimoDia: janelaResp.fim,
                     totalDias: janelaResp.dias,

@@ -741,7 +741,7 @@ export default function PartnerDetailsView({
                                             <span className="size-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_6px_rgb(99,102,241)]"></span>
                                             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">Acessos ao Cardápio <span className="text-xs text-indigo-500 font-semibold">(tempo real)</span></h4>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-4">
+                                        <div className="grid grid-cols-4 gap-3">
                                             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800/30">
                                                 <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mb-1">Total no Período</p>
                                                 <p className="text-xl font-bold text-indigo-700 dark:text-indigo-300">{dailyAccessData!.acessosUnicos.toLocaleString('pt-BR')}</p>
@@ -751,6 +751,13 @@ export default function PartnerDetailsView({
                                                 <p className="text-xs text-slate-500 font-semibold mb-1">Média / Dia</p>
                                                 <p className="text-xl font-bold text-slate-800 dark:text-white">{dailyAccessData!.mediaDiaria}</p>
                                                 <p className="text-[10px] text-slate-400 mt-0.5">acessos únicos</p>
+                                            </div>
+                                            <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                                                <p className="text-xs text-slate-500 font-semibold mb-1">Ontem</p>
+                                                <p className="text-xl font-bold text-slate-800 dark:text-white">{dailyAccessData!.acessosOntem}</p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                                    {janelaAcesso ? janelaAcesso.fim.slice(8) + '/' + janelaAcesso.fim.slice(5, 7) : 'último dia'}
+                                                </p>
                                             </div>
                                             <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
                                                 <p className="text-xs text-slate-500 font-semibold mb-1">Janela medida</p>
