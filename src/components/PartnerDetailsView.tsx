@@ -4,7 +4,7 @@ import { formatarMoedaBRL } from '../config/cdContracts';
 import { type EnrichedPerformanceRow, DESEMPENHO_WEEKS_COUNT, getChurnInterpretationBox, getInterpretationBox, getStarColor, getTendenciaColor, getTendenciaLabel, getWeekValue } from '../utils/calculations';
 import MenuFunnel, { type FunnelStep, type MenuFunnelSourceLink } from './MenuFunnel';
 import { ACCESS_DATA_SOURCE, THIAGO_DATA_SOURCE } from '../config/dataSource';
-import type { StoreAccessData } from '../hooks/useDailyAccessSync';
+import type { StoreAccessData, JanelaAcesso } from '../hooks/useDailyAccessSync';
 import { finishJourney, reopenJourney } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
 import { useCityIds } from '../hooks/useCityIds';
@@ -46,6 +46,8 @@ interface PartnerDetailsViewProps {
     accessData?: Record<string, StoreAccessData>;
     /** Dias distintos cobertos pela planilha de acessos (janela comum a todas as lojas). */
     diasAcesso?: number;
+    /** Janela que o GA respondeu — exibida junto dos acessos. */
+    janelaAcesso?: JanelaAcesso | null;
     onRefresh: () => void;
     viewContext?: 'journey' | 'desempenho';
     crmPartner?: CrmPartner | null;
@@ -67,6 +69,7 @@ export default function PartnerDetailsView({
     dailyAccessData,
     accessData = {},
     diasAcesso = 0,
+    janelaAcesso = null,
     onRefresh,
     viewContext = 'journey',
     crmPartner,
@@ -702,7 +705,7 @@ export default function PartnerDetailsView({
                                             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800/30">
                                                 <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mb-1">Total no Período</p>
                                                 <p className="text-xl font-bold text-indigo-700 dark:text-indigo-300">{dailyAccessData!.acessosUnicos.toLocaleString('pt-BR')}</p>
-                                                <p className="text-[10px] text-indigo-500 mt-0.5">{dailyAccessData!.totalDias} dias com dados</p>
+                                                <p className="text-[10px] text-indigo-500 mt-0.5">usuários únicos em {dailyAccessData!.totalDias} dias</p>
                                             </div>
                                             <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
                                                 <p className="text-xs text-slate-500 font-semibold mb-1">Média / Dia</p>
@@ -710,13 +713,13 @@ export default function PartnerDetailsView({
                                                 <p className="text-[10px] text-slate-400 mt-0.5">acessos únicos</p>
                                             </div>
                                             <div className="bg-slate-100 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
-                                                <p className="text-xs text-slate-500 font-semibold mb-1">Último dia com dado</p>
-                                                <p className="text-xl font-bold text-slate-800 dark:text-white">
-                                                    {dailyAccessData!.ultimoDia
-                                                        ? dailyAccessData!.ultimoDia.split('-').reverse().join('/')
+                                                <p className="text-xs text-slate-500 font-semibold mb-1">Janela medida</p>
+                                                <p className="text-base font-bold text-slate-800 dark:text-white">
+                                                    {janelaAcesso
+                                                        ? `${janelaAcesso.inicio.slice(8)}/${janelaAcesso.inicio.slice(5, 7)} a ${janelaAcesso.fim.slice(8)}/${janelaAcesso.fim.slice(5, 7)}`
                                                         : '—'}
                                                 </p>
-                                                <p className="text-[10px] text-slate-400 mt-0.5">fim da janela medida</p>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">o GA não conta o dia de hoje</p>
                                             </div>
                                         </div>
                                     </div>
