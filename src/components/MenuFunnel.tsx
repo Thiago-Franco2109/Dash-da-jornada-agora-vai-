@@ -93,7 +93,7 @@ function MenuFunnelHelp({ sourceLinks }: { sourceLinks: MenuFunnelSourceLink[] }
                         style={{ top: popoverPos.top, right: popoverPos.right }}
                     >
                     <p className="text-sm text-slate-600 dark:text-slate-300 mb-3 leading-relaxed">
-                        O funil cruza <strong>acessos únicos</strong> (planilha de acessos) com <strong>pedidos confirmados</strong> (planilha de onboarding). Use os atalhos abaixo para conferir a origem dos números ou corrigir divergências.
+                        O funil vai de <strong>quem abriu alguma loja na cidade</strong> para <strong>quem abriu esta loja</strong> e daí para <strong>quem pediu</strong>. As duas primeiras etapas são do Google Analytics e têm a mesma unidade, então a queda entre elas é a fatia da cidade que o parceiro capturou.
                     </p>
                     <div className="flex flex-col gap-2">
                         {sourceLinks.map(link => (
@@ -146,7 +146,7 @@ export default function MenuFunnel({ steps, sourceLinks = [] }: MenuFunnelProps)
                 <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30 text-sm">
                     <span className="material-symbols-outlined text-blue-500 text-[20px] mt-0.5">info</span>
                     <span className="text-blue-800 dark:text-blue-300">
-                        <strong>Apenas dados integrados:</strong> acessos únicos vêm da planilha conectada ao gateway; compras são os pedidos confirmados do onboarding desta loja. Não há etapas intermediárias nem estimativas.
+                        <strong>Apenas dados medidos:</strong> os acessos vêm do Google Analytics (evento de abrir a loja, por id do estabelecimento); compras são os pedidos confirmados do onboarding. Não há etapas intermediárias nem estimativas.
                     </span>
                 </div>
             </div>
@@ -201,7 +201,7 @@ export default function MenuFunnel({ steps, sourceLinks = [] }: MenuFunnelProps)
                 </div>
 
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">
-                    * Funil limitado aos dados disponíveis nas planilhas integradas (sem comparativo com concorrentes ou etapas estimadas).
+                    * A etapa de cidade só aparece quando o nome da cidade casa com o do Google Analytics — sem casamento exato, ela é omitida em vez de exibir um denominador errado.
                 </p>
             </div>
         </div>

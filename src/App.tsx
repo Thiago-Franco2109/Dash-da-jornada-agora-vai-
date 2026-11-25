@@ -454,7 +454,7 @@ function App() {
   };
 
   // -- Live API Access Data (Unique Store Accesses) — só inicia após autenticação
-  const { accessData, diasJanela, janelaAcesso, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
+  const { accessData, diasJanela, janelaAcesso, cidadesAcesso, loadingAccess, accessError, refreshAccessData } = useDailyAccessSync({ enabled: isAuthenticated });
 
   // Resetar filtros de tela ao alternar entre Marketplace e Cardápio Digital (gestor persiste na sessão)
   useEffect(() => {
@@ -984,6 +984,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 viewContext={undefined}
                 crmPartner={crmPartnerForSelected}
@@ -1168,6 +1169,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
@@ -1211,6 +1213,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={undefined}
               crmPartner={crmPartnerForSelected}
@@ -1243,6 +1246,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext={isCD ? 'desempenho' : undefined}
               crmPartner={!isCD ? crmPartnerForSelected : null}
@@ -1289,6 +1293,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
               onRefresh={() => setMappingVersion(v => v + 1)}
               viewContext="desempenho"
             />
@@ -1332,6 +1337,7 @@ function App() {
                 accessData={accessData}
                 diasAcesso={diasJanela}
                 janelaAcesso={janelaAcesso}
+                cidadesAcesso={cidadesAcesso}
                 onRefresh={() => setMappingVersion(v => v + 1)}
                 crmPartner={crmPartnerForSelected}
                 topCities={topCitiesByGmv}

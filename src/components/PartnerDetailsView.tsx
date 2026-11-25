@@ -7,7 +7,7 @@ import { ACCESS_DATA_SOURCE, THIAGO_DATA_SOURCE } from '../config/dataSource';
 import type { StoreAccessData, JanelaAcesso } from '../hooks/useDailyAccessSync';
 import { finishJourney, reopenJourney } from '../config/partnerState';
 import { usePartnerRelevance } from '../hooks/usePartnerRelevance';
-import { useCityIds } from '../hooks/useCityIds';
+import { useCityIds, normalize } from '../hooks/useCityIds';
 import { usePausaOnboarding } from '../hooks/usePausaOnboarding';
 import { useCrmNotes } from '../hooks/useCrmNotes';
 import { useAuth } from '../context/AuthContext';
@@ -48,6 +48,8 @@ interface PartnerDetailsViewProps {
     diasAcesso?: number;
     /** Janela que o GA respondeu — exibida junto dos acessos. */
     janelaAcesso?: JanelaAcesso | null;
+    /** Acessos por cidade (GA), para a primeira etapa do funil. */
+    cidadesAcesso?: Record<string, number>;
     onRefresh: () => void;
     viewContext?: 'journey' | 'desempenho';
     crmPartner?: CrmPartner | null;
@@ -70,6 +72,7 @@ export default function PartnerDetailsView({
     accessData = {},
     diasAcesso = 0,
     janelaAcesso = null,
+    cidadesAcesso = {},
     onRefresh,
     viewContext = 'journey',
     crmPartner,
@@ -238,30 +241,67 @@ export default function PartnerDetailsView({
         return links;
     })();
 
-    // ---- Funil: apenas dados reais das planilhas integradas (acessos + pedidos) ----
+    // ---- Funil: cidade → loja → compra, tudo medido, nada estimado ----
     const orders = partner.total_pedidos;
     const hasLiveAPI = !!dailyAccessData && dailyAccessData.acessosUnicos > 0;
+
+    /**
+     * Acessos da cidade do parceiro: quantas pessoas de lá abriram ALGUMA loja
+     * na janela. É o mesmo tipo de unidade da etapa seguinte (usuário que abriu
+     * loja), então a queda entre as duas mede uma coisa só — a fatia da cidade
+     * que esta loja capturou. O total de quem abriu o app serviria de pouco:
+     * misturaria quem nunca navegou com quem foi no concorrente.
+     *
+     * O nome da cidade vem do app (`localidade` no GA) e nem sempre casa com o
+     * cadastro — o GA tem "Cordeiro / Cantagalo" numa linha só, por exemplo.
+     * Sem casamento exato a etapa é omitida: um denominador errado aqui vira
+     * porcentagem errada na tela do CS.
+     */
+    const acessosCidade = (() => {
+        const cidade = (partner.cidade ?? '').trim();
+        if (!cidade || !cidadesAcesso) return 0;
+        const alvo = normalize(cidade);
+        for (const [nome, total] of Object.entries(cidadesAcesso)) {
+            if (normalize(nome) === alvo) return total;
+        }
+        return 0;
+    })();
 
     const funnel: FunnelStep[] = (() => {
         if (hasLiveAPI && dailyAccessData) {
             const acessos = dailyAccessData.acessosUnicos;
-            const pctCompras = acessos > 0 ? parseFloat(((orders / acessos) * 100).toFixed(2)) : 0;
-            return [
-                {
-                    label: 'Acessos',
-                    description: 'acessos únicos (planilha integrada)',
-                    icon: 'visibility',
-                    value: acessos,
+            const base = acessosCidade > 0 ? acessosCidade : acessos;
+            const pct = (v: number) => (base > 0 ? parseFloat(((v / base) * 100).toFixed(2)) : 0);
+
+            const etapas: FunnelStep[] = [];
+
+            if (acessosCidade > 0) {
+                etapas.push({
+                    label: 'Acessos na cidade',
+                    description: `abriram alguma loja em ${partner.cidade}`,
+                    icon: 'location_city',
+                    value: acessosCidade,
                     pctOfFirst: 100,
-                },
-                {
-                    label: 'Compras',
-                    description: 'pedidos confirmados (onboarding)',
-                    icon: 'shopping_cart',
-                    value: orders,
-                    pctOfFirst: pctCompras,
-                },
-            ];
+                });
+            }
+
+            etapas.push({
+                label: 'Acessos na loja',
+                description: 'abriram o cardápio deste parceiro',
+                icon: 'visibility',
+                value: acessos,
+                pctOfFirst: acessosCidade > 0 ? pct(acessos) : 100,
+            });
+
+            etapas.push({
+                label: 'Compras',
+                description: 'pedidos confirmados (onboarding)',
+                icon: 'shopping_cart',
+                value: orders,
+                pctOfFirst: pct(orders),
+            });
+
+            return etapas;
         }
         // Sem planilha de acessos: exibe só pedidos confirmados vindos da planilha principal
         if (orders > 0) {
