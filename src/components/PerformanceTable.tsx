@@ -12,9 +12,8 @@ import {
 import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 import { usePromoStatus, type PromoResumo } from '../hooks/usePromoStatus';
-import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
-import { useCampanhaCidadeCs } from '../hooks/useCampanhaCidadeCs';
-import { campaignIdFromNome } from '../config/campaignTypes';
+import { useTrelloJornada } from '../hooks/useTrelloJornada';
+import { campoDaCampanha, statusPorCampanha, VALOR_ATIVOU, VALOR_NAO_OFERTADO } from '../config/trelloCampos';
 import PromoColuna from './promo/PromoColuna';
 import { urgenciaOnboarding } from '../utils/preLancamento';
 import { formatarDataBR, motivoPausaChip, motivoPausaLabel } from '../config/pausaOnboarding';
@@ -487,21 +486,34 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // Status do CS por (parceiro, campanha) — tabela que já existe e já é
     // chaveada assim. É o que deixa marcar campanha a campanha em vez de
     // carimbar o parceiro inteiro de uma vez.
-    const { getEntrada, setCampanhaStatus, erro: erroMarcacao } = useCampanhaStatusCs();
-    // Campanha que a praça não oferta. Chave é a CIDADE: um clique tira a
-    // campanha da conta de todos os parceiros dela (ver campanha_cidade_cs.sql).
-    const { setNaoOfertadaNaCidade, erro: erroCidade } = useCampanhaCidadeCs();
+    // Status por campanha: a fonte é o CAMPO PERSONALIZADO do card no quadro
+    // "[SC] Onboarding e Jornada". É onde o CS já marcava à mão antes do painel
+    // ter onde guardar, e é o que a tabela do Supabase duplicava (mal: não
+    // estava nem salvando). O card também dá o atalho "Abrir card no Trello" —
+    // antes só o pré-lançamento tinha link, e vinha de outro quadro.
+    const { getCard: getCardTrello, camposDoQuadro, marcarCampo, erro: erroMarcacao } = useTrelloJornada();
 
     /** Marcações desta linha, indexadas pelo NOME da campanha (que é a chave
-     *  que o `promo_resumo` usa). */
-    const marcasDoParceiro = useCallback((pid: string, resumo?: PromoResumo) => {
-        const out: Record<string, { status: PromoStatusValue; em?: string | null } | undefined> = {};
-        for (const d of resumo?.detalhe ?? []) {
-            const e = getEntrada(pid, campaignIdFromNome(d.campanha));
-            if (e) out[d.campanha] = { status: e.status, em: e.em };
+     *  que o `promo_resumo` usa). Vêm do card, não do Supabase.
+     *
+     *  "Ativou" resolve o slot; "Não ofertado" marca que a promo ainda não foi
+     *  mandada pro parceiro e CONTINUA contando como trabalho (vira
+     *  'aguardando', que `contarSlots` trata como pendente). "Não roda na
+     *  cidade" não aparece aqui: o `promo_resumo` já removeu a campanha do
+     *  `detalhe` (ver computePromoResumo).
+     *
+     *  `naoExpira` porque o card é o registro, não um "já criei" provisório
+     *  esperando o banco confirmar. */
+    const marcasDoParceiro = useCallback((pid: string) => {
+        const card = getCardTrello(pid);
+        if (!card) return {};
+        const out: Record<string, { status: PromoStatusValue; em?: string | null; naoExpira?: boolean } | undefined> = {};
+        for (const [campanha, valor] of Object.entries(statusPorCampanha(card.campos))) {
+            if (valor === VALOR_ATIVOU) out[campanha] = { status: 'ativo', naoExpira: true };
+            else if (valor === VALOR_NAO_OFERTADO) out[campanha] = { status: 'aguardando', naoExpira: true };
         }
         return out;
-    }, [getEntrada]);
+    }, [getCardTrello]);
     const ordemCampanhas = useMemo(() => promoData.campanhas.map(c => c.nome), [promoData.campanhas]);
 
     // Colunas de campanha exibidas: "Promoções" (consolidado, na coluna
@@ -912,18 +924,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     totalRows={data.length}
                                                                     erro={promoErro}
                                                                     onRetry={recarregarPromo}
-                                                                    marcas={marcasDoParceiro(partnerId, row.promo_resumo)}
+                                                                    marcas={marcasDoParceiro(partnerId)}
                                                                     dadoAte={promoDadoAte}
                                                                     atrasoMinutos={promoData.atrasoMinutos}
-                                                                    onMarcarCampanha={(campanha, status) =>
-                                                                        setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
-                                                                    erroMarcacao={erroMarcacao ?? erroCidade}
-                                                                    cidade={row.cidade}
+                                                                    onMarcarCampanha={(campanha, valor) =>
+                                                                        void marcarCampo(partnerId, campoDaCampanha(camposDoQuadro, campanha)?.nome ?? campanha, valor)}
+                                                                    erroMarcacao={erroMarcacao}
                                                                     parceiro={row.estabelecimento}
-                                                                    onMarcarCidade={row.localidade_id
-                                                                        ? (campanha, naoOfertada) =>
-                                                                            setNaoOfertadaNaCidade(row.localidade_id!, campanha, naoOfertada)
-                                                                        : undefined}
+                                                                    cardTrello={getCardTrello(partnerId)}
                                                                 />
                                                             </td>
                                                         );
@@ -1035,18 +1043,14 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             totalRows={data.length}
                                                             erro={promoErro}
                                                             onRetry={recarregarPromo}
-                                                            marcas={marcasDoParceiro(partnerId, row.promo_resumo)}
+                                                            marcas={marcasDoParceiro(partnerId)}
                                                             dadoAte={promoDadoAte}
                                                             atrasoMinutos={promoData.atrasoMinutos}
-                                                            onMarcarCampanha={(campanha, status) =>
-                                                                setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
-                                                            erroMarcacao={erroMarcacao ?? erroCidade}
-                                                            cidade={row.cidade}
+                                                            onMarcarCampanha={(campanha, valor) =>
+                                                                void marcarCampo(partnerId, campoDaCampanha(camposDoQuadro, campanha)?.nome ?? campanha, valor)}
+                                                            erroMarcacao={erroMarcacao}
                                                             parceiro={row.estabelecimento}
-                                                            onMarcarCidade={row.localidade_id
-                                                                ? (campanha, naoOfertada) =>
-                                                                    setNaoOfertadaNaCidade(row.localidade_id!, campanha, naoOfertada)
-                                                                : undefined}
+                                                            cardTrello={getCardTrello(partnerId)}
                                                         />
                                                     </td>
                                                 );

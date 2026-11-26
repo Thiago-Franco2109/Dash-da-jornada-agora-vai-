@@ -89,13 +89,38 @@ export const ORDEM_ESTADOS: PromoCampanhaStatus[] = ['aprovado', 'pendente', 'ra
 // foi criada hoje de manhã e segue cobrando até amanhã.
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Os status que o CS escolhe por campanha. `null` = vazio (falta criar). */
-export const STATUS_CS_PROMO: { valor: PromoStatus; label: string; curto: string; icone: string; texto: string }[] = [
+/**
+ * O que o CS escolhe por campanha. `null` = vazio (falta criar).
+ *
+ * São exatamente as opções do campo personalizado do card no quadro da jornada
+ * — o painel não pode oferecer um estado que o Trello não sabe guardar.
+ * "Aguardando retorno" e "Negado", que existiam quando isto morava no Supabase,
+ * saíram daqui: no quadro, "aguardando retorno" é uma LISTA pra onde o card se
+ * move, não um valor de campo.
+ */
+export const STATUS_CS_PROMO: {
+    valor: string; label: string; ajuda: string; curto: string; icone: string; texto: string;
+    /** true = a campanha deixa de contar. Só "Não roda na cidade" faz isso. */
+    tiraDaConta?: boolean;
+}[] = [
     // `curto` é o que cabe na linha do puxadinho ao lado do nome da campanha;
     // `label` é o do seletor, onde há espaço pra frase inteira.
-    { valor: 'ofertei', label: 'Aguardando retorno', curto: 'aguardando', icone: 'hourglass_top', texto: 'text-amber-700 dark:text-amber-400' },
-    { valor: 'ativo', label: 'Promo ativa', curto: 'ativa', icone: 'check_circle', texto: 'text-emerald-700 dark:text-emerald-400' },
-    { valor: 'negado', label: 'Negado', curto: 'negado', icone: 'block', texto: 'text-slate-500 dark:text-slate-400' },
+    {
+        valor: 'Ativou', label: 'Ativou', curto: 'ativa', icone: 'check_circle',
+        ajuda: 'A promoção está no ar pra este parceiro.',
+        texto: 'text-emerald-700 dark:text-emerald-400',
+    },
+    {
+        valor: 'Não ofertado', label: 'Não ofertado', curto: 'não ofertado', icone: 'send',
+        ajuda: 'Ainda não mandei a promo no WhatsApp do parceiro pra mostrar como funciona. Continua contando como trabalho.',
+        texto: 'text-amber-700 dark:text-amber-400',
+    },
+    {
+        valor: 'Não roda na cidade', label: 'Não roda na cidade', curto: 'não roda', icone: 'location_off',
+        ajuda: 'Esta campanha não vai ser ofertada nesta praça. É a única marcação que tira a campanha da conta.',
+        texto: 'text-slate-500 dark:text-slate-400',
+        tiraDaConta: true,
+    },
 ];
 
 export type Slot =
@@ -107,6 +132,15 @@ export type Slot =
 export interface MarcaCampanha {
     status: PromoStatus;
     em?: string | null;
+    /**
+     * Marcação que NÃO expira quando a réplica alcança.
+     *
+     * Vale pro que vem do campo personalizado do card: ali o Trello é o
+     * sistema de registro, não um "já criei" provisório esperando o banco
+     * confirmar. Sem isto a marcação do card seria descartada na hora, porque
+     * ela não tem carimbo de tempo por campo.
+     */
+    naoExpira?: boolean;
 }
 
 /**
@@ -120,6 +154,7 @@ export interface MarcaCampanha {
  */
 export function marcaCampanhaVale(marca: MarcaCampanha | undefined, dadoAte?: Date | null): boolean {
     if (!marca) return false;
+    if (marca.naoExpira) return true;
     if (marca.status === 'negado') return true;
     if (!marca.em) return false;
     const t = Date.parse(marca.em);
@@ -166,6 +201,7 @@ export type VezDaPromo =
     | 'parceiro'      // oferta pronta, esperando ele aceitar
     | 'cs_publicar'   // rascunho começado e nunca publicado
     | 'cs_reativar'   // já esteve no ar e caiu — ele já aceitou uma vez
+    | 'cs_ofertar'    // o CS marcou "Não ofertado" no card: falta mandar no zap
     | 'cs_criar'      // a cidade tem campanha e não existe oferta nenhuma
     | 'sem_campanha'  // cidade conhecida e sem campanha vigente: não há o que ofertar
     | 'desconhecido'; // sem localidade mapeada — "não sei", nunca "não tem"
@@ -212,6 +248,12 @@ export const VEZ_META: Record<VezDaPromo, VezMeta> = {
         texto: ESTADO_META.caiu.texto,
         grupo: 'cs',
     },
+    cs_ofertar: {
+        label: 'ofertar',
+        descricao: 'Você marcou no card que ainda não mandou a promo no WhatsApp do parceiro. Sua vez: apresentar.',
+        texto: ESTADO_META.pendente.texto,
+        grupo: 'cs',
+    },
     cs_criar: {
         label: 'criar oferta',
         descricao: 'A cidade tem campanha e não existe oferta nenhuma montada: o parceiro não tem o que ativar. Sua vez: gerar a oferta no painel.',
@@ -240,6 +282,9 @@ export interface MarcaCs {
      *  também seria verdade para quem não tem campanha nenhuma — e a célula
      *  dizia "criada · aguarda" pra parceiro sem cidade mapeada. */
     marcadas: number;
+    /** Dos slots pendentes, quantos o CS já marcou como "Não ofertado" no card
+     *  — ou seja, o que falta é mandar no WhatsApp, não montar a oferta. */
+    naoOfertados: number;
 }
 
 /**
@@ -259,6 +304,10 @@ export function vezDaPromocao(r: PromoResumo, marca?: MarcaCs): VezDaPromo {
 
     if (r.rascunho > 0) return 'cs_publicar';
     if (r.caiu > 0) return 'cs_reativar';
+    // Tudo que falta já está marcado como "Não ofertado": o que trava não é
+    // montar a oferta, é apresentá-la. Dizer "criar oferta" aqui mandaria o CS
+    // refazer um trabalho que ele já fez.
+    if (marca && marca.naoOfertados > 0 && marca.naoOfertados === marca.faltaCriar) return 'cs_ofertar';
     if (r.campanhasCidade > 0) return 'cs_criar';
     if (r.cidadeConhecida) return 'sem_campanha';
     return 'desconhecido';
@@ -274,13 +323,19 @@ export function contarSlots(
     marcas: Record<string, MarcaCampanha | undefined>,
     dadoAte?: Date | null,
 ): MarcaCs {
-    let faltaCriar = 0, marcadas = 0;
+    let faltaCriar = 0, marcadas = 0, naoOfertados = 0;
     for (const d of r.detalhe) {
-        const fonte = slotDaCampanha(d, marcas[d.campanha], dadoAte).fonte;
-        if (fonte === 'vazio') faltaCriar++;
-        else if (fonte === 'cs') marcadas++;
+        const slot = slotDaCampanha(d, marcas[d.campanha], dadoAte);
+        if (slot.fonte === 'vazio') { faltaCriar++; continue; }
+        if (slot.fonte !== 'cs') continue;
+        // SÓ 'ativo' resolve o slot. 'aguardando' é o "Não ofertado" do card:
+        // significa que a promo ainda não foi mandada pro parceiro, ou seja,
+        // continua sendo trabalho — contá-lo como resolvido apagaria da tela a
+        // própria fila que a coluna existe pra mostrar.
+        if (slot.status === 'ativo') marcadas++;
+        else { faltaCriar++; naoOfertados++; }
     }
-    return { faltaCriar, marcadas };
+    return { faltaCriar, marcadas, naoOfertados };
 }
 
 /** "23h atrás" / "2 dias atrás" — a idade do dado, pro rodapé do puxadinho. */

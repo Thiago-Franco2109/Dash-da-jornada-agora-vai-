@@ -77,6 +77,10 @@ const INITIAL_ROWS: EnrichedPerformanceRow[] = [
     mockRow({ estabelecimento: 'Dôce', estab_id: '3', cupomStatus: 'confirmado' }),
     mockRow({ estabelecimento: 'Fest Food', estab_id: '4', cupomStatus: 'negado' }),
     mockRow({ estabelecimento: 'Império das Massas', estab_id: '5', cupomStatus: 'ativo' }),
+    // Id real de card no quadro "[SC] Onboarding e Jornada": é o que exercita o
+    // botão "Abrir card no Trello" no puxadinho de Promoções. Os ids de 1 a 5
+    // acima não têm card, e o botão some — que é o comportamento certo.
+    mockRow({ estabelecimento: 'Lanchonete Sob Nova Direção', estab_id: '25769', cupomStatus: 'ativo' }),
     // Pré-lançamento: o CS marca promo e cupom ANTES da abertura, então a linha
     // clica e o dropdown abre igual às outras. Só a origem 'trello' é o caso em
     // que a loja ainda não está na réplica — o estab_id já é o do banco.

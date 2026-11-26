@@ -36,9 +36,10 @@ export function overlayCampanhas(
     overridesMap?: Record<string, { promo: string; cupom: string; em: string | null }>,
     promoData?: PromoStatusData,
     estabIdToLoc?: Map<string, string>,
-    /** Marcação "não ofertada nesta cidade" (ver useCampanhaCidadeCs). Tira a
-     *  campanha do denominador do parceiro, sem mexer em item que exista. */
-    naoOfertadaNaCidade?: (localidadeId: string | number | null | undefined, campanha: string) => boolean,
+    /** Marcação "Não ofertado" no card do parceiro (campo personalizado do
+     *  quadro da jornada). Tira a campanha do denominador dele, sem mexer em
+     *  item que exista. */
+    foraDaConta?: (estabId: string, campanha: string) => boolean,
 ): EnrichedPerformanceRow {
     // Resolve o id do banco: 1) estab_id; 2) fallback por nome (dashboard "novos
     // formatado", onde a linha não traz estab_id).
@@ -62,7 +63,7 @@ export function overlayCampanhas(
     // sempre que ela falhava, mesmo com o `promo-status` tendo chegado inteiro.
     const localidade_id = estabIdToLoc?.get(id);
     const promo_resumo = promoData
-        ? computePromoResumo(id, localidade_id, promoData, naoOfertadaNaCidade)
+        ? computePromoResumo(id, localidade_id, promoData, foraDaConta)
         : undefined;
     const comPromo: EnrichedPerformanceRow = { ...row, promo_resumo, localidade_id };
 

@@ -59,8 +59,8 @@ export interface PromoResumo {
     pendenteDiasMax: number | null;
     detalhe: PromoCampanhaDetalhe[];
     /**
-     * Campanhas que o CS marcou como não ofertadas NA CIDADE e em que este
-     * parceiro não tem item nenhum. Ficam FORA de toda contagem acima — é o que
+     * Campanhas marcadas como "Não ofertado" no card do parceiro e em que ele
+     * não tem item nenhum. Ficam FORA de toda contagem acima — é o que
      * deixa quem já fez tudo que dava fechar em "3/3 no ar" em vez de carregar
      * pra sempre uma campanha que a praça não oferta.
      *
@@ -124,21 +124,23 @@ export function computePromoResumo(
     localidadeId: string | number | null | undefined,
     data: PromoStatusData,
     /**
-     * "Esta campanha não é ofertada nesta cidade?" — marcação do CS, por cidade
-     * (ver useCampanhaCidadeCs). Sem ela toda campanha habilitada no CMS conta,
-     * que é o comportamento de antes.
+     * "Esta campanha está fora da conta deste parceiro?" — vem do campo
+     * personalizado do card no quadro da jornada, marcado como "Não ofertado"
+     * (ver src/config/trelloCampos.ts). Sem ela toda campanha habilitada no CMS
+     * conta, que é o comportamento de antes.
      */
-    naoOfertadaNaCidade?: (localidadeId: string | number | null | undefined, campanha: string) => boolean,
+    foraDaConta?: (estabId: string, campanha: string) => boolean,
 ): PromoResumo {
     const porCampanha = data.porParceiro[estabId] ?? {};
     const todasDaCidade = (localidadeId != null ? data.campanhasPorLocalidade[String(localidadeId)] : undefined) ?? [];
-    // O BANCO GANHA DA MARCAÇÃO, mas só com item VIVO: campanha marcada como não
-    // ofertada em que este parceiro tem item no ar (ou pendente, ou rascunho)
-    // continua aparecendo — esconder item vivo seria mentir na contagem.
+    // O BANCO GANHA DA MARCAÇÃO, mas só com item VIVO: campanha marcada como
+    // "Não ofertado" no card em que este parceiro tem item no ar (ou pendente,
+    // ou rascunho) continua aparecendo — esconder item vivo seria mentir na
+    // contagem.
     //
-    // Item só MORTO não segura a campanha: se a praça não oferta mais, item que
-    // caiu é o esperado, e mostrar "reativar" seria justamente a cobrança falsa
-    // que a marcação existe pra calar.
+    // Item só MORTO não segura a campanha: se ela não vai ser ofertada, item
+    // que caiu é o esperado, e mostrar "reativar" seria justamente a cobrança
+    // falsa que a marcação existe pra calar.
     const vivosDe = (camp: string) => {
         const cc = porCampanha[camp];
         return cc ? cc.rascunho + cc.pendente + cc.aprovado : 0;
@@ -146,7 +148,7 @@ export function computePromoResumo(
     const ocultas = new Set<string>();
     const cityCampaigns: string[] = [];
     for (const camp of todasDaCidade) {
-        if (naoOfertadaNaCidade?.(localidadeId, camp) && vivosDe(camp) === 0) ocultas.add(camp);
+        if (foraDaConta?.(estabId, camp) && vivosDe(camp) === 0) ocultas.add(camp);
         else cityCampaigns.push(camp);
     }
     const idPorNome = new Map(data.campanhas.map(c => [c.nome, c.id]));

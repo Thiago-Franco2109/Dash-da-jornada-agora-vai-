@@ -10,7 +10,6 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { usePromoStatus, computePromoResumo, type PromoResumo } from './hooks/usePromoStatus';
 import PromoColuna from './components/promo/PromoColuna';
-import type { PromoStatus } from './hooks/useStatusOverride';
 import { ESTADO_META, ORDEM_ESTADOS } from './components/promo/promoEstado';
 import './index.css';
 
@@ -58,13 +57,12 @@ export function PreviewColunaPromocoes() {
     const { promoData, pronto, loading, error, refetch, dadoAte } = usePromoStatus();
     // Marcação de teste: simula o CS tendo criado a oferta AGORA, com o dado da
     // réplica 23h atrás. Tem que calar a cobrança e voltar sozinho amanhã.
-    const [marcados, setMarcados] = useState<Record<string, Record<string, { status: PromoStatus; em: string }>>>({});
-    // Campanha não ofertada na cidade, em memória (no app isto mora no Supabase).
-    // Serve pra conferir o efeito que importa: a campanha sai do denominador de
-    // TODOS os parceiros daquela cidade de uma vez.
-    const [foraDaCidade, setForaDaCidade] = useState<Record<string, Set<string>>>({});
-    const naoOfertadaNaCidade = (loc: string | number | null | undefined, campanha: string) =>
-        Boolean(loc != null && foraDaCidade[String(loc)]?.has(campanha));
+    const [marcados, setMarcados] = useState<Record<string, Record<string, { status: 'ativo' | 'aguardando'; naoExpira: true }>>>({});
+    // Campanha marcada como "Não roda na cidade", em memória (no app isto é o
+    // campo personalizado do card). É a ÚNICA que sai do denominador — "Não
+    // ofertado" continua contando, porque é trabalho que falta fazer.
+    const [fora, setFora] = useState<Record<string, Set<string>>>({});
+    const foraDaConta = (estabId: string, campanha: string) => Boolean(fora[estabId]?.has(campanha));
     const ordem = promoData.campanhas.map(c => c.nome);
 
     return (
@@ -121,7 +119,7 @@ export function PreviewColunaPromocoes() {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {PARCEIROS.map((p, i) => {
-                                    const resumo = computePromoResumo(p.id, p.loc, promoData, naoOfertadaNaCidade);
+                                    const resumo = computePromoResumo(p.id, p.loc, promoData, foraDaConta);
                                     return (
                                         <tr key={p.id}>
                                             <td className="px-4 py-4 font-semibold text-slate-800 dark:text-slate-100">{p.nome}</td>
@@ -137,20 +135,22 @@ export function PreviewColunaPromocoes() {
                                                     marcas={marcados[p.id]}
                                                     dadoAte={dadoAte}
                                                     atrasoMinutos={promoData.atrasoMinutos}
-                                                    onMarcarCampanha={(campanha, status) => setMarcados(m => {
-                                                        const doParceiro = { ...(m[p.id] ?? {}) };
-                                                        if (status) doParceiro[campanha] = { status, em: new Date().toISOString() };
-                                                        else delete doParceiro[campanha];
-                                                        return { ...m, [p.id]: doParceiro };
-                                                    })}
-                                                    cidade={p.cidade}
+                                                    onMarcarCampanha={(campanha, valor) => {
+                                                        setMarcados(m => {
+                                                            const doParceiro = { ...(m[p.id] ?? {}) };
+                                                            if (valor === 'Ativou') doParceiro[campanha] = { status: 'ativo', naoExpira: true };
+                                                            else if (valor === 'Não ofertado') doParceiro[campanha] = { status: 'aguardando', naoExpira: true };
+                                                            else delete doParceiro[campanha];
+                                                            return { ...m, [p.id]: doParceiro };
+                                                        });
+                                                        setFora(f => {
+                                                            const doParceiro = new Set(f[p.id] ?? []);
+                                                            if (valor === 'Não roda na cidade') doParceiro.add(campanha);
+                                                            else doParceiro.delete(campanha);
+                                                            return { ...f, [p.id]: doParceiro };
+                                                        });
+                                                    }}
                                                     parceiro={p.nome}
-                                                    onMarcarCidade={(campanha, naoOfertada) => setForaDaCidade(f => {
-                                                        const daCidade = new Set(f[p.loc] ?? []);
-                                                        if (naoOfertada) daCidade.add(campanha);
-                                                        else daCidade.delete(campanha);
-                                                        return { ...f, [p.loc]: daCidade };
-                                                    })}
                                                 />
                                             </td>
                                         </tr>
