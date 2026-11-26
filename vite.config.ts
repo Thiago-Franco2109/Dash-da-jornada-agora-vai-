@@ -135,7 +135,7 @@ function dbFunctionsDevPlugin(): Plugin {
     'acoes-promocionais', 'promo-status', 'promo-item-arte', 'catalogo-item-arte', 'onboarding-parceiro', 'onboarding-trello',
     'cidade-detalhe',
     'trello-tarefas', 'loja-link', 'trello-atividade-hoje', 'trello-card-detalhe', 'trello-card-comentar', 'trello-card-editar',
-    'trello-card-anexar', 'trello-anexo', 'trello-jornada', 'trello-campo-gravar',
+    'trello-card-anexar', 'trello-anexo', 'trello-jornada', 'trello-campo-gravar', 'trello-card-criar',
     'cardapio-analise', 'parceiro-acesso', 'pedido-relatorio',
     'okr-trimestre',
     'parceiro-diagnostico', 'parceiro-historico', 'parceiro-raio-x',

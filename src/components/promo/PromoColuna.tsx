@@ -61,9 +61,11 @@ interface PromoColunaProps {
     /** Nome do parceiro, pra faixa de comemoração dizer de quem fechou a conta. */
     parceiro?: string;
     /** Card deste parceiro no quadro "[SC] Onboarding e Jornada". É onde o
-     *  status da campanha já é marcado à mão, então o atalho vive aqui.
-     *  Ausente = parceiro sem card no quadro (o botão some). */
+     *  status da campanha é gravado, então o atalho vive aqui.
+     *  Ausente = parceiro sem card: não há onde salvar, e a marcação some. */
     cardTrello?: { url: string; lista: string };
+    /** Cria o card deste parceiro no quadro. Só aparece quando não há card. */
+    onCriarCard?: () => void;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -102,7 +104,7 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha, erroMarcacao, parceiro, cardTrello }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha, erroMarcacao, parceiro, cardTrello, onCriarCard }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     /** Qual linha do puxadinho está com o seletor aberto. */
@@ -195,6 +197,11 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
     const linhas = resumo.detalhe
         .map(d => ({ d, score: classificarCampanha(entradaPrioridade(d)).score, motivo: motivoDaPrioridade(entradaPrioridade(d)) }))
         .sort((a, b) => b.score - a.score || a.d.campanha.localeCompare(b.d.campanha, 'pt-BR'));
+
+    // Sem card no quadro não há onde gravar. Oferecer "marcar" aqui seria um
+    // botão que sempre falha — pior que não ter botão. A marcação some e o
+    // rodapé passa a oferecer criar o card, que é o conserto de verdade.
+    const podeMarcar = Boolean(onMarcarCampanha && cardTrello);
 
     const openUpward = totalRows > 3 && rowIndex >= totalRows - 3;
     const idadeDado = textoIdadeDado(atrasoMinutos ?? null);
@@ -316,7 +323,7 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                         // Item vivo no banco: só leitura — "saiu do ar" e "sem item"
                                         // continuam clicáveis porque é olhando um deles que se
                                         // percebe que a campanha não vai acontecer ali.
-                                        onMarcarCampanha ? (
+                                        podeMarcar ? (
                                             <button
                                                 type="button"
                                                 onClick={e => { e.stopPropagation(); setEditando(aberto ? null : d.campanha); }}
@@ -333,21 +340,23 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                     ) : (
                                         <button
                                             type="button"
-                                            disabled={!onMarcarCampanha}
+                                            disabled={!podeMarcar}
                                             onClick={e => { e.stopPropagation(); setEditando(aberto ? null : d.campanha); }}
-                                            title={onMarcarCampanha ? `${title}\n\nClique pra marcar no card do Trello.` : title}
+                                            title={podeMarcar
+                                                ? `${title}\n\nClique pra marcar no card do Trello.`
+                                                : `${title}\n\nSem card no quadro: não há onde salvar a marcação.`}
                                             className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition ${
                                                 slot.fonte === 'cs'
                                                     ? `${opcaoCs?.texto} hover:bg-slate-100 dark:hover:bg-slate-700`
                                                     : 'border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 dark:border-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
                                             } disabled:cursor-default`}
                                         >
-                                            {slot.fonte === 'cs' ? opcaoCs?.curto ?? slot.status : 'marcar'}
+                                            {slot.fonte === 'cs' ? opcaoCs?.curto ?? slot.status : podeMarcar ? 'marcar' : '—'}
                                         </button>
                                     )}
                                 </div>
 
-                                {aberto && onMarcarCampanha && (
+                                {aberto && podeMarcar && onMarcarCampanha && (
                                     <div className="mt-0.5 rounded-lg bg-slate-50 p-1 dark:bg-slate-900/60">
                                         {/* As opções são as do campo do card — o painel não pode
                                             oferecer estado que o Trello não sabe guardar. */}
@@ -433,6 +442,28 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                     )}
                                 </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* Sem card não há onde gravar. Em vez de um botão de marcar que
+                        falha no clique, o rodapé diz o que está faltando e oferece o
+                        conserto. */}
+                    {!cardTrello && (
+                        <div className="mt-1 border-t border-slate-100 px-2 pb-0.5 pt-1.5 dark:border-slate-700">
+                            <p className="text-[10px] leading-tight text-amber-700 dark:text-amber-400">
+                                Sem card no quadro da jornada — não há onde salvar a marcação.
+                            </p>
+                            {onCriarCard && (
+                                <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); onCriarCard(); }}
+                                    title={`Cria o card de ${parceiro ?? 'parceiro'} na lista de entrada do quadro, no padrão "{id} - {nome}".`}
+                                    className="mt-1 flex w-full items-center gap-1.5 rounded-lg bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100 dark:bg-sky-900/20 dark:text-sky-400 dark:hover:bg-sky-900/40"
+                                >
+                                    <span className="material-symbols-outlined text-[13px] leading-none">add_card</span>
+                                    Criar card no Trello
+                                </button>
+                            )}
                         </div>
                     )}
 

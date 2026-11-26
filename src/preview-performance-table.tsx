@@ -81,6 +81,9 @@ const INITIAL_ROWS: EnrichedPerformanceRow[] = [
     // botão "Abrir card no Trello" no puxadinho de Promoções. Os ids de 1 a 5
     // acima não têm card, e o botão some — que é o comportamento certo.
     mockRow({ estabelecimento: 'Lanchonete Sob Nova Direção', estab_id: '25769', cupomStatus: 'ativo' }),
+    // Parceiro REAL sem card no quadro (conferido em 26/11/2026): é o caso em
+    // que não há onde gravar. A marcação some e o rodapé oferece criar o card.
+    mockRow({ estabelecimento: 'Açaí 2 irmãos', estab_id: '27939', cupomStatus: 'ativo' }),
     // Pré-lançamento: o CS marca promo e cupom ANTES da abertura, então a linha
     // clica e o dropdown abre igual às outras. Só a origem 'trello' é o caso em
     // que a loja ainda não está na réplica — o estab_id já é o do banco.

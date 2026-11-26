@@ -13,6 +13,7 @@ import { useEffect, useCallback, useSyncExternalStore } from 'react';
 
 const FN_URL = '/.netlify/functions/trello-jornada';
 const FN_GRAVAR = '/.netlify/functions/trello-campo-gravar';
+const FN_CRIAR = '/.netlify/functions/trello-card-criar';
 
 export interface CardJornada {
     cardId: string;
@@ -34,9 +35,13 @@ export interface TrelloJornadaData {
     /** porEstab[estabId] = card. Casado por ID, nunca por nome. */
     porEstab: Record<string, CardJornada>;
     camposDoQuadro: CampoDoQuadro[];
+    /** Lista onde o card nasce quando o painel cria um. */
+    listaEntrada: { id: string; nome: string } | null;
+    /** Card template do quadro — traz checklist e campos pro card novo. */
+    modeloId: string | null;
 }
 
-const VAZIO: TrelloJornadaData = { porEstab: {}, camposDoQuadro: [] };
+const VAZIO: TrelloJornadaData = { porEstab: {}, camposDoQuadro: [], listaEntrada: null, modeloId: null };
 
 /** Store de módulo com assinantes — o mesmo dado serve tabela, CRM e tela do
  *  parceiro, e é um fetch só pro quadro inteiro (33 cards). */
@@ -61,7 +66,12 @@ async function buscar(): Promise<TrelloJornadaData> {
     if (!res.ok || json?.ok === false) {
         throw new Error(json?.error || `Erro ${res.status} ao carregar os cards do Trello.`);
     }
-    return { porEstab: json.porEstab ?? {}, camposDoQuadro: json.camposDoQuadro ?? [] };
+    return {
+        porEstab: json.porEstab ?? {},
+        camposDoQuadro: json.camposDoQuadro ?? [],
+        listaEntrada: json.listaEntrada ?? null,
+        modeloId: json.modeloId ?? null,
+    };
 }
 
 function carregar(): void {
@@ -109,8 +119,15 @@ export function useTrelloJornada() {
     ): Promise<boolean> => {
         const card = _estado.data.porEstab[String(estabId)];
         const campo = _estado.data.camposDoQuadro.find(c => c.nome === nomeCampo);
-        if (!card || !campo) {
-            publicar({ erro: `Sem card ou campo "${nomeCampo}" no quadro pra gravar.` });
+        // Card e campo são problemas DIFERENTES, com conserto diferente: um se
+        // resolve criando o card, o outro rodando o script que sincroniza os
+        // campos do quadro. Juntar os dois numa frase só obriga a adivinhar.
+        if (!card) {
+            publicar({ erro: `Este parceiro não tem card no quadro da jornada — crie o card pra ter onde salvar.` });
+            return false;
+        }
+        if (!campo) {
+            publicar({ erro: `O quadro não tem o campo "${nomeCampo}". Rode: node scripts/trello-campos-campanha.mjs --aplicar` });
             return false;
         }
         const opcao = valorTexto == null ? null : campo.opcoes.find(o => o.texto === valorTexto);
@@ -153,11 +170,50 @@ export function useTrelloJornada() {
         }
     }, []);
 
+    /**
+     * Cria o card deste parceiro no quadro, no padrão "{id} - {nome}" que o
+     * casamento por ID espera. Sem card não há onde gravar campo nenhum — e o
+     * painel não pode oferecer uma marcação que vai falhar.
+     */
+    const criarCard = useCallback(async (estabId: string, nomeParceiro: string): Promise<boolean> => {
+        const { listaEntrada, modeloId } = _estado.data;
+        if (!listaEntrada) {
+            publicar({ erro: 'Não achei a lista de entrada do quadro pra criar o card.' });
+            return false;
+        }
+        try {
+            const res = await fetch(FN_CRIAR, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include' as RequestCredentials,
+                body: JSON.stringify({
+                    listaId: listaEntrada.id,
+                    // O título É a chave: `trello-jornada` casa card e parceiro
+                    // por este "{id} - {nome}".
+                    nome: `${estabId} - ${nomeParceiro}`,
+                    ...(modeloId ? { modeloId } : {}),
+                }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json?.ok === false) throw new Error(json?.error || `Erro ${res.status}`);
+            // Recarrega o quadro: é o que traz o card novo (e o id dele) pro
+            // resto da tela, incluindo o botão "Abrir card".
+            _estado = { ..._estado, carregado: false };
+            carregar();
+            return true;
+        } catch (err) {
+            console.error('[useTrelloJornada] falha ao criar card:', err);
+            publicar({ erro: err instanceof Error ? err.message : 'falha ao criar o card' });
+            return false;
+        }
+    }, []);
+
     return {
         cards: estado.data.porEstab,
         camposDoQuadro: estado.data.camposDoQuadro,
         getCard,
         marcarCampo,
+        criarCard,
         carregado: estado.carregado,
         erro: estado.erro,
         refetch: carregar,

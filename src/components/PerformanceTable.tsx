@@ -491,7 +491,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // ter onde guardar, e é o que a tabela do Supabase duplicava (mal: não
     // estava nem salvando). O card também dá o atalho "Abrir card no Trello" —
     // antes só o pré-lançamento tinha link, e vinha de outro quadro.
-    const { getCard: getCardTrello, camposDoQuadro, marcarCampo, erro: erroMarcacao } = useTrelloJornada();
+    const { getCard: getCardTrello, camposDoQuadro, marcarCampo, criarCard, erro: erroMarcacao } = useTrelloJornada();
 
     /** Marcações desta linha, indexadas pelo NOME da campanha (que é a chave
      *  que o `promo_resumo` usa). Vêm do card, não do Supabase.
@@ -932,6 +932,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     erroMarcacao={erroMarcacao}
                                                                     parceiro={row.estabelecimento}
                                                                     cardTrello={getCardTrello(partnerId)}
+                                                                    onCriarCard={() => void criarCard(partnerId, row.estabelecimento)}
                                                                 />
                                                             </td>
                                                         );
@@ -1051,6 +1052,7 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             erroMarcacao={erroMarcacao}
                                                             parceiro={row.estabelecimento}
                                                             cardTrello={getCardTrello(partnerId)}
+                                                            onCriarCard={() => void criarCard(partnerId, row.estabelecimento)}
                                                         />
                                                     </td>
                                                 );

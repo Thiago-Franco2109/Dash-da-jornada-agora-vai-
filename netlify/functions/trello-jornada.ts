@@ -116,6 +116,14 @@ export const handler: Handler = async (event) => {
         const porId = new Map(campos.map(c => [c.id, c]));
         const nomeDaLista = new Map(listas.map(l => [l.id, l.name]));
 
+        // Lista de ENTRADA e card MODELO: é o que o painel precisa pra criar o
+        // card de quem ainda não tem um. Sem isso a marcação de campanha fica
+        // num beco — o campo existe, mas não há card onde gravá-lo (medido em
+        // 26/11/2026: 5 dos 7 parceiros de "1 a 7 dias" estavam nessa situação).
+        const listaEntrada = listas.find(l => /^\s*entrada\s*$/i.test(l.name))
+            ?? listas.find(l => !/^\s*modelo\s*$/i.test(l.name));
+        const modelo = cards.find(c => /^\s*modelo\s*$/i.test(c.name));
+
         const porEstab: Record<string, CardJornada> = {};
         let semId = 0;
         // Um mesmo parceiro pode ter mais de um card (medido em 25/11/2026: o
@@ -151,6 +159,10 @@ export const handler: Handler = async (event) => {
                     opcoes: (c.options ?? []).map(o => ({ id: o.id, texto: o.value.text })),
                 })),
                 boardId,
+                /** Onde o card nasce quando o painel cria um. */
+                listaEntrada: listaEntrada ? { id: listaEntrada.id, nome: listaEntrada.name } : null,
+                /** Card template do quadro — traz checklist e campos pro card novo. */
+                modeloId: modelo?.id ?? null,
                 diagnostico: {
                     cards: cards.length,
                     comEstabId: Object.keys(porEstab).length,
