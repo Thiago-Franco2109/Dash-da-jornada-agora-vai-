@@ -69,6 +69,7 @@ import { useParceirosAtivos } from './hooks/useParceirosAtivos';
 import { useStatusOverridesMap } from './hooks/useStatusOverridesMap';
 import { usePromoStatus } from './hooks/usePromoStatus';
 import { useCampanhaStatusCs } from './hooks/useCampanhaStatusCs';
+import { useCampanhaCidadeCs } from './hooks/useCampanhaCidadeCs';
 import { campaignIdFromNome } from './config/campaignTypes';
 import { marcaCampanhaVale } from './components/promo/promoEstado';
 import { useCrmNotes } from './hooks/useCrmNotes';
@@ -349,6 +350,10 @@ function App() {
   const { overridesMap: campanhaOverrides, setOverride: setCampanhaOverride } = useStatusOverridesMap();
   // Status dos itens promocionais por parceiro/campanha (banco).
   const { promoData, pronto: promoPronto, dadoAte: promoDadoAte } = usePromoStatus();
+  // Campanha que a cidade não oferta: sai do denominador de todo parceiro dela.
+  // `naoOfertadaNaCidade` é estável enquanto o mapa não muda, então entra nas
+  // dependências dos useMemo que montam as listas sem recalcular à toa.
+  const { naoOfertadaNaCidade } = useCampanhaCidadeCs();
   // Marcação do CS por campanha — o filtro precisa dela pra não recolocar na
   // fila quem já foi marcado como criado.
   const { getEntrada: getMarcaCampanha } = useCampanhaStatusCs();
@@ -520,7 +525,7 @@ function App() {
       // relevância comercial da fonte única (aparece/edita no dashboard também)
       const rel = relMap[row.estab_id ?? ''] ?? relMap[enriched.estabelecimento];
       const withRel = rel != null ? { ...enriched, commercial_relevance: rel } : enriched;
-      const comCampanhas = applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
+      const comCampanhas = applyNomeBanco(overlayCampanhas(withRel, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade));
       return aplicarPausaOnboarding(comCampanhas, pausaMap);
     })
       .filter((row: EnrichedPerformanceRow) => {
@@ -530,7 +535,7 @@ function App() {
         return true;
       });
     return mergeOfertasManualStatus(rows, ofertasRecords);
-  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap]);
+  }, [rawRows, mappingVersion, showFinished, forceRender, mode, ofertasRecords, relMap, campanhasMap, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade, pausaMap]);
 
   /**
    * O que as telas de LISTA enxergam. A de Gestores fica de fora de propósito:
@@ -564,13 +569,13 @@ function App() {
       mode,
     });
     const prontas = linhas.map(row => aplicarPausaOnboarding(
-      overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc),
+      overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade),
       pausaMap,
     ));
     // Card do Trello sem cidade não entra no foco da OKR: é cidade desconhecida,
     // não "talvez seja uma delas" (ver CityFocusContext).
     return filtrarPorCidade(prontas, row => row.cidade);
-  }, [isCD, enrichedDataCompleto, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, logoMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, pausaMap, filtrarPorCidade]);
+  }, [isCD, enrichedDataCompleto, parceirosAtivos, onboardingPendentes, onboardingCardsTrello, onboardingEtapasTrello, relMap, logoMap, mode, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade, pausaMap, filtrarPorCidade]);
 
   /** O que a Lista jornada 28D e o CRM Jornada enxergam: lançados + pré-lançamento. */
   const jornadaPool = useMemo(
@@ -581,7 +586,7 @@ function App() {
   const indicadorEnrichedData = useMemo(
     () => {
       const base = mergeOfertasManualStatus(
-        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc))),
+        crmPartnersToEnrichedRows(crmPartners, relMap).map(r => applyNomeBanco(overlayCampanhas(r, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade))),
         ofertasRecords,
       );
       // Suplementa com parceiros ATIVOS do banco que ainda não estão na planilha
@@ -604,11 +609,11 @@ function App() {
         row = { ...row, dias_desde_lancamento: 0, pedidos_esperados: 0, indice_desempenho: 0, priority_stars: 0 };
         const rel = relMap[String(p.id)];
         if (rel != null) row = { ...row, commercial_relevance: rel };
-        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc));
+        extras.push(overlayCampanhas(row, campanhasMap, parceirosNomeToId, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade));
       }
       return filtrarPorCidade([...base, ...extras], r => r.cidade);
     },
-    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, mappingVersion, filtrarPorCidade],
+    [crmPartners, relMap, forceRender, ofertasRecords, campanhasMap, parceirosAtivos, mode, isCD, parceirosNomeToId, applyNomeBanco, campanhaOverrides, promoDataOuIndefinido, estabIdToLoc, naoOfertadaNaCidade, mappingVersion, filtrarPorCidade],
   );
 
   const indicadorPedidosMesHeader = crmParseInfo?.gmvColumn ?? undefined;

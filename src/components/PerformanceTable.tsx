@@ -13,6 +13,7 @@ import CampaignIcons from './CampaignIcons';
 import type { StatusOverrideField } from '../hooks/useStatusOverride';
 import { usePromoStatus, type PromoResumo } from '../hooks/usePromoStatus';
 import { useCampanhaStatusCs } from '../hooks/useCampanhaStatusCs';
+import { useCampanhaCidadeCs } from '../hooks/useCampanhaCidadeCs';
 import { campaignIdFromNome } from '../config/campaignTypes';
 import PromoColuna from './promo/PromoColuna';
 import { urgenciaOnboarding } from '../utils/preLancamento';
@@ -487,6 +488,9 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
     // chaveada assim. É o que deixa marcar campanha a campanha em vez de
     // carimbar o parceiro inteiro de uma vez.
     const { getEntrada, setCampanhaStatus, erro: erroMarcacao } = useCampanhaStatusCs();
+    // Campanha que a praça não oferta. Chave é a CIDADE: um clique tira a
+    // campanha da conta de todos os parceiros dela (ver campanha_cidade_cs.sql).
+    const { setNaoOfertadaNaCidade, erro: erroCidade } = useCampanhaCidadeCs();
 
     /** Marcações desta linha, indexadas pelo NOME da campanha (que é a chave
      *  que o `promo_resumo` usa). */
@@ -913,7 +917,13 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                                     atrasoMinutos={promoData.atrasoMinutos}
                                                                     onMarcarCampanha={(campanha, status) =>
                                                                         setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
-                                                                    erroMarcacao={erroMarcacao}
+                                                                    erroMarcacao={erroMarcacao ?? erroCidade}
+                                                                    cidade={row.cidade}
+                                                                    parceiro={row.estabelecimento}
+                                                                    onMarcarCidade={row.localidade_id
+                                                                        ? (campanha, naoOfertada) =>
+                                                                            setNaoOfertadaNaCidade(row.localidade_id!, campanha, naoOfertada)
+                                                                        : undefined}
                                                                 />
                                                             </td>
                                                         );
@@ -1030,7 +1040,13 @@ export default function PerformanceTable({ data, sortConfig, requestSort, onRowC
                                                             atrasoMinutos={promoData.atrasoMinutos}
                                                             onMarcarCampanha={(campanha, status) =>
                                                                 setCampanhaStatus(partnerId, campaignIdFromNome(campanha), status)}
-                                                            erroMarcacao={erroMarcacao}
+                                                            erroMarcacao={erroMarcacao ?? erroCidade}
+                                                            cidade={row.cidade}
+                                                            parceiro={row.estabelecimento}
+                                                            onMarcarCidade={row.localidade_id
+                                                                ? (campanha, naoOfertada) =>
+                                                                    setNaoOfertadaNaCidade(row.localidade_id!, campanha, naoOfertada)
+                                                                : undefined}
                                                         />
                                                     </td>
                                                 );

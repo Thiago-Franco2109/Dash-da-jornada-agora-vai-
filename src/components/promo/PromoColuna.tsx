@@ -6,18 +6,24 @@ import {
     type MarcaCampanha,
 } from './promoEstado';
 import type { PromoStatus } from '../../hooks/useStatusOverride';
-import { comemorarPromoAtiva } from './celebracao';
+import { comemorarPromoAtiva, comemorarParceiroCompleto } from './celebracao';
 import { classificarCampanha, motivoDaPrioridade, type EntradaPrioridade } from '../../utils/campanhaPrioridade';
 
 /**
  * Célula da coluna Promoções.
  *
  * Duas leituras na mesma altura de linha:
- *  1. TRILHA — um segmento por campanha vigente, sempre na MESMA posição
- *     horizontal (a ordem vem da lista global de campanhas). Isso faz a coluna
- *     ser varrida verticalmente: a 3ª casa é "Promo do Dia" em toda a tabela,
- *     tenha o parceiro item nela ou não. Campanha que não roda na cidade dele
- *     vira um risco fino — ausência de oportunidade, não ausência de trabalho.
+ *  1. TRILHA — um segmento por campanha que CONTA pra este parceiro, na ordem
+ *     global das campanhas (então dentro de uma mesma cidade a posição é
+ *     estável). Campanha que não roda na cidade dele, ou que o CS tirou da
+ *     conta, simplesmente não aparece.
+ *
+ *     Antes elas ficavam como um risco fino, pra toda linha ter as mesmas
+ *     casas e a coluna poder ser varrida verticalmente. Saiu por dois motivos:
+ *     o alinhamento entre linhas comparava pouco (cada cidade roda um conjunto
+ *     diferente de campanhas) e o risco não era lido como "não há oportunidade
+ *     aqui". Sem ele, a trilha é só o que dá pra fazer — e quem fechou a conta
+ *     vê os verdes num bloco contíguo, que é o retorno visual de ter terminado.
  *  2. VEREDITO — responde "tem promoção no ar?" e, quando não tem, "de quem é
  *     a vez?" (ver `vezDaPromocao`). Com a bola do lado do CS o texto é um
  *     VERBO — criar oferta / publicar / reativar — porque a coluna serve pra
@@ -53,6 +59,13 @@ interface PromoColunaProps {
     /** Falha ao gravar a marcação (tabela ausente, RLS, offline). Sem isto a
      *  reversão otimista é indistinguível de "o clique não funcionou". */
     erroMarcacao?: string | null;
+    /** Nome da cidade, só pra deixar explícito o alcance de "não ofertada aqui". */
+    cidade?: string;
+    /** Nome do parceiro, pra faixa de comemoração dizer de quem fechou a conta. */
+    parceiro?: string;
+    /** Marca/desmarca a campanha como NÃO OFERTADA NA CIDADE — vale pra todos os
+     *  parceiros dela. Ausente = a opção nem aparece. */
+    onMarcarCidade?: (campanha: string, naoOfertada: boolean) => void;
 }
 
 function cmsCampanhaUrl(campanhaId: number, localidadeId?: string | null): string {
@@ -91,11 +104,14 @@ function textoItens(itens: PromoCampanhaDetalhe['itens']): string {
     return partes.join(' · ') || 'nenhum item criado';
 }
 
-export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha, erroMarcacao }: PromoColunaProps) {
+export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowIndex, totalRows, erro, onRetry, marcas, dadoAte, atrasoMinutos, onMarcarCampanha, erroMarcacao, cidade, parceiro, onMarcarCidade }: PromoColunaProps) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     /** Qual linha do puxadinho está com o seletor aberto. */
     const [editando, setEditando] = useState<string | null>(null);
+    /** As campanhas ocultas na cidade ficam escondidas por padrão — mostrá-las é
+     *  justamente o que a marcação evita. O botão existe pra desfazer. */
+    const [verOcultas, setVerOcultas] = useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -198,10 +214,13 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                 <span className="flex items-end gap-[3px]" aria-hidden="true">
                     {ordem.map(nome => {
                         const d = porCampanha.get(nome);
-                        if (!d) {
-                            // Campanha vigente que não roda nesta cidade.
-                            return <span key={nome} className="h-[3px] w-[9px] rounded-full bg-slate-200/70 dark:bg-slate-700/60" />;
-                        }
+                        // Campanha que não conta pra este parceiro (não roda na cidade,
+                        // ou o CS tirou da conta) não ocupa espaço: some. O lugar
+                        // guardado virava um risco que ninguém lia como ausência de
+                        // oportunidade — lia como sujeira. Sem ele, a trilha mostra só
+                        // o que dá pra fazer aqui, e quem fechou a conta vê os verdes
+                        // encostados num bloco só.
+                        if (!d) return null;
                         const meta = ESTADO_META[d.status];
                         return (
                             <span
@@ -237,7 +256,12 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                 >
                     {linhas.length === 0 && (
                         <p className="px-2 py-2 text-[11px] text-slate-500 dark:text-slate-400">
-                            Nenhuma campanha vigente nesta cidade.
+                            {resumo.naoOfertadas.length > 0
+                                // Com tudo marcado como não ofertado, "nenhuma campanha
+                                // vigente" seria mentira: elas existem, foi o CS que as
+                                // tirou da conta — e isso tem que ficar dito.
+                                ? 'Todas as campanhas desta cidade estão fora da conta.'
+                                : 'Nenhuma campanha vigente nesta cidade.'}
                         </p>
                     )}
                     {linhas.map(({ d, motivo }) => {
@@ -247,6 +271,16 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                             ? STATUS_CS_PROMO.find(o => o.valor === slot.status)
                             : undefined;
                         const metaBanco = slot.fonte === 'banco' ? ESTADO_META[slot.status] : undefined;
+
+                        // Com item no banco (vivo ou morto) quem manda é ele: o status
+                        // de parceiro sai do seletor e sobra só a marcação de cidade.
+                        const podeMarcarParceiro = slot.fonte !== 'banco' && Boolean(onMarcarCampanha);
+
+                        // Marcar esta campanha como não ofertada deixaria o parceiro
+                        // com tudo no ar? É o que decide se há conclusão a comemorar
+                        // (e o selo "fecha" no botão, pra ele ver antes de clicar).
+                        const fecharia = resumo.noAr > 0
+                            && resumo.detalhe.every(x => x.campanha === d.campanha || x.status === 'aprovado');
 
                         const title = slot.fonte === 'banco'
                             ? `${motivo}\n${textoItens(d.itens)}${slot.status === 'pendente' && d.dias != null ? `\nParada há ${textoEspera(d.dias)}` : ''}${metaBanco?.acao ? `\n→ ${metaBanco.acao}` : ''}`
@@ -285,15 +319,31 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                     {/* O estado. Vindo do banco é só leitura — ele manda.
                                         Vazio ou marcação do CS vira botão: é o que o CS controla. */}
                                     {slot.fonte === 'banco' ? (
-                                        <span title={title} className={`shrink-0 text-[10px] font-bold tabular-nums ${metaBanco!.texto}`}>
-                                            {rotuloCurto({ ...d, status: slot.status })}
-                                        </span>
+                                        // O estado vindo do banco é só leitura — ele manda. Mas a
+                                        // marcação de CIDADE tem que caber aqui também: é olhando
+                                        // uma campanha em "saiu do ar"/"sem item" que se percebe
+                                        // que a praça não oferta aquilo. Sem isto, só dava pra
+                                        // marcar nas linhas vazias.
+                                        onMarcarCidade ? (
+                                            <button
+                                                type="button"
+                                                onClick={e => { e.stopPropagation(); setEditando(aberto ? null : d.campanha); }}
+                                                title={`${title}\n\nClique pra tirar esta campanha da conta da cidade.`}
+                                                className={`shrink-0 rounded-md px-1 py-0.5 text-[10px] font-bold tabular-nums transition hover:bg-slate-100 dark:hover:bg-slate-700 ${metaBanco!.texto}`}
+                                            >
+                                                {rotuloCurto({ ...d, status: slot.status })}
+                                            </button>
+                                        ) : (
+                                            <span title={title} className={`shrink-0 text-[10px] font-bold tabular-nums ${metaBanco!.texto}`}>
+                                                {rotuloCurto({ ...d, status: slot.status })}
+                                            </span>
+                                        )
                                     ) : (
                                         <button
                                             type="button"
-                                            disabled={!onMarcarCampanha}
+                                            disabled={!onMarcarCampanha && !onMarcarCidade}
                                             onClick={e => { e.stopPropagation(); setEditando(aberto ? null : d.campanha); }}
-                                            title={onMarcarCampanha ? `${title}\n\nClique pra marcar em que pé está.` : title}
+                                            title={onMarcarCampanha || onMarcarCidade ? `${title}\n\nClique pra marcar em que pé está.` : title}
                                             className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition ${
                                                 slot.fonte === 'cs'
                                                     ? `${opcaoCs?.texto} hover:bg-slate-100 dark:hover:bg-slate-700`
@@ -305,14 +355,16 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                     )}
                                 </div>
 
-                                {aberto && onMarcarCampanha && (
+                                {aberto && (podeMarcarParceiro || onMarcarCidade) && (
                                     <div className="mt-0.5 rounded-lg bg-slate-50 p-1 dark:bg-slate-900/60">
-                                        {STATUS_CS_PROMO.map(o => (
+                                        {/* Status do parceiro só quando o banco não manda nesta
+                                            linha: com item vivo (ou morto) lá, quem decide é ele. */}
+                                        {podeMarcarParceiro && STATUS_CS_PROMO.map(o => (
                                             <button
                                                 key={o.valor}
                                                 type="button"
                                                 onClick={e => {
-                                                    onMarcarCampanha(d.campanha, o.valor);
+                                                    onMarcarCampanha?.(d.campanha, o.valor);
                                                     setEditando(null);
                                                     // Só "Promo ativa" comemora: é o estado que fecha a
                                                     // tarefa. Comemorar "aguardando retorno" premiaria
@@ -325,14 +377,44 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                                                 {o.label}
                                             </button>
                                         ))}
-                                        {slot.fonte === 'cs' && (
+                                        {slot.fonte === 'cs' && podeMarcarParceiro && (
                                             <button
                                                 type="button"
-                                                onClick={() => { onMarcarCampanha(d.campanha, null); setEditando(null); }}
+                                                onClick={() => { onMarcarCampanha?.(d.campanha, null); setEditando(null); }}
                                                 className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] text-slate-400 transition hover:bg-white dark:hover:bg-slate-700"
                                             >
                                                 <span className="material-symbols-outlined text-[13px] leading-none">backspace</span>
                                                 Limpar
+                                            </button>
+                                        )}
+
+                                        {/* Marcação de CIDADE, separada das de parceiro por uma
+                                            linha: o alcance é outro — vale pra todos os parceiros
+                                            da praça, e por isso o rótulo nomeia a cidade. */}
+                                        {onMarcarCidade && (
+                                            <button
+                                                type="button"
+                                                onClick={e => {
+                                                    onMarcarCidade(d.campanha, true);
+                                                    setEditando(null);
+                                                    // Só comemora se esta marcação FECHA a conta do
+                                                    // parceiro. Esconder campanha de quem não tem nada
+                                                    // no ar não é conclusão, é lista menor.
+                                                    if (fecharia) comemorarParceiroCompleto(e.currentTarget, parceiro ?? 'Parceiro', resumo.noAr);
+                                                }}
+                                                title={`Tira "${d.campanha}" da conta de TODOS os parceiros${cidade ? ` de ${cidade}` : ' desta cidade'}.\n\nUse quando a campanha está habilitada no CMS mas a praça não oferta. Parceiro que já tiver item nela continua aparecendo normalmente, e o KPI de Captação não muda — ele sai do banco.`}
+                                                className={`flex w-full items-center gap-1.5 rounded-md px-1.5 text-left text-[11px] font-medium text-slate-500 transition hover:bg-white dark:text-slate-400 dark:hover:bg-slate-700 ${
+                                                    // Separador só quando há opção de parceiro acima.
+                                                    podeMarcarParceiro ? 'mt-1 border-t border-slate-200 pb-1 pt-1.5 dark:border-slate-700' : 'py-1'
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[13px] leading-none">location_off</span>
+                                                <span className="flex-1">Não ofertada {cidade ? `em ${cidade}` : 'nesta cidade'}</span>
+                                                {fecharia && (
+                                                    <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                                                        fecha
+                                                    </span>
+                                                )}
                                             </button>
                                         )}
                                     </div>
@@ -340,6 +422,46 @@ export default function PromoColuna({ resumo, ordemCampanhas, localidadeId, rowI
                             </div>
                         );
                     })}
+
+                    {/* Campanhas tiradas da conta pela cidade. Ficam recolhidas — o
+                        ponto da marcação é sumir — mas nunca invisíveis: sem um jeito
+                        de desfazer, uma marcação errada vira dado permanente que
+                        ninguém sabe de onde veio. */}
+                    {resumo.naoOfertadas.length > 0 && (
+                        <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-700">
+                            <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); setVerOcultas(v => !v); }}
+                                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[10px] font-semibold text-slate-400 transition hover:bg-slate-50 dark:text-slate-500 dark:hover:bg-slate-700/60"
+                            >
+                                <span className="material-symbols-outlined text-[12px] leading-none">location_off</span>
+                                <span className="flex-1">
+                                    {resumo.naoOfertadas.length} fora da conta{cidade ? ` em ${cidade}` : ''}
+                                </span>
+                                <span className="material-symbols-outlined text-[13px] leading-none">
+                                    {verOcultas ? 'expand_less' : 'expand_more'}
+                                </span>
+                            </button>
+                            {verOcultas && resumo.naoOfertadas.map(nome => (
+                                <div key={nome} className="flex items-center gap-2 rounded-md px-2 py-1">
+                                    <span className="h-2.5 w-0.5 shrink-0 rounded-full bg-slate-200 dark:bg-slate-600" />
+                                    <span className="flex-1 truncate text-[11px] text-slate-400 line-through dark:text-slate-500">
+                                        {nome}
+                                    </span>
+                                    {onMarcarCidade && (
+                                        <button
+                                            type="button"
+                                            onClick={e => { e.stopPropagation(); onMarcarCidade(nome, false); }}
+                                            title={`Voltar "${nome}" pra conta de todos os parceiros${cidade ? ` de ${cidade}` : ' desta cidade'}.`}
+                                            className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                                        >
+                                            voltar
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
                     {/* A idade do dado fica à vista: a réplica atrasa ~1 dia (medido:
                         23h em 10/11/2026), e sem isso a coluna apresenta ontem como

@@ -145,3 +145,19 @@ export function comemorarPromoAtiva(ancora: Element | null, campanha: string) {
     if (!menosMovimento() && ancora) confete(ancora);
     faixa(`Promo ativa em ${campanha}`);
 }
+
+/**
+ * Parceiro fechou a conta: tudo que a praça oferta está no ar.
+ *
+ * POR QUE AQUI E NÃO AO MARCAR "não ofertada na cidade"
+ * Comemorar o ato de esconder campanha premiaria tirar trabalho do quadro, que
+ * é o incentivo errado. O que fecha tarefa é o parceiro chegar a um estado
+ * completo — então a comemoração dispara só quando a marcação leva a linha a
+ * "tudo no ar", e nunca quando ela leva a "sem campanha" (aí não há nada no ar
+ * pra comemorar).
+ */
+export function comemorarParceiroCompleto(ancora: Element | null, parceiro: string, noAr: number) {
+    if (somLigado()) tocar();
+    if (!menosMovimento() && ancora) confete(ancora);
+    faixa(`${parceiro}: ${noAr} ${noAr === 1 ? 'campanha' : 'campanhas'} no ar — nada pendente`);
+}

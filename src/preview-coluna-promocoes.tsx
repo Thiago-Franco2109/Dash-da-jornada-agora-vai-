@@ -59,6 +59,12 @@ export function PreviewColunaPromocoes() {
     // Marcação de teste: simula o CS tendo criado a oferta AGORA, com o dado da
     // réplica 23h atrás. Tem que calar a cobrança e voltar sozinho amanhã.
     const [marcados, setMarcados] = useState<Record<string, Record<string, { status: PromoStatus; em: string }>>>({});
+    // Campanha não ofertada na cidade, em memória (no app isto mora no Supabase).
+    // Serve pra conferir o efeito que importa: a campanha sai do denominador de
+    // TODOS os parceiros daquela cidade de uma vez.
+    const [foraDaCidade, setForaDaCidade] = useState<Record<string, Set<string>>>({});
+    const naoOfertadaNaCidade = (loc: string | number | null | undefined, campanha: string) =>
+        Boolean(loc != null && foraDaCidade[String(loc)]?.has(campanha));
     const ordem = promoData.campanhas.map(c => c.nome);
 
     return (
@@ -81,9 +87,8 @@ export function PreviewColunaPromocoes() {
                                     {ESTADO_META[e].label}
                                 </span>
                             ))}
-                            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-                                <span className="h-[3px] w-[9px] rounded-full bg-slate-200 dark:bg-slate-700" />
-                                não roda na cidade
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                                — campanha que não conta pro parceiro (fora da cidade, ou tirada da conta) não aparece na trilha
                             </span>
                         </div>
 
@@ -99,7 +104,7 @@ export function PreviewColunaPromocoes() {
                             </span>
                             <span className="inline-flex items-center gap-2">cidade não mapeada
                                 <PromoColuna
-                                    resumo={{ pendente: 0, aprovado: 0, rascunho: 0, semItem: 0, caiu: 0, noAr: 0, campanhasCidade: 0, cidadeConhecida: false, pendenteDiasMax: null, detalhe: [] }}
+                                    resumo={{ pendente: 0, aprovado: 0, rascunho: 0, semItem: 0, caiu: 0, noAr: 0, campanhasCidade: 0, cidadeConhecida: false, pendenteDiasMax: null, detalhe: [], naoOfertadas: [] }}
                                     ordemCampanhas={ordem} rowIndex={0} totalRows={1}
                                 />
                             </span>
@@ -116,7 +121,7 @@ export function PreviewColunaPromocoes() {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {PARCEIROS.map((p, i) => {
-                                    const resumo = computePromoResumo(p.id, p.loc, promoData);
+                                    const resumo = computePromoResumo(p.id, p.loc, promoData, naoOfertadaNaCidade);
                                     return (
                                         <tr key={p.id}>
                                             <td className="px-4 py-4 font-semibold text-slate-800 dark:text-slate-100">{p.nome}</td>
@@ -137,6 +142,14 @@ export function PreviewColunaPromocoes() {
                                                         if (status) doParceiro[campanha] = { status, em: new Date().toISOString() };
                                                         else delete doParceiro[campanha];
                                                         return { ...m, [p.id]: doParceiro };
+                                                    })}
+                                                    cidade={p.cidade}
+                                                    parceiro={p.nome}
+                                                    onMarcarCidade={(campanha, naoOfertada) => setForaDaCidade(f => {
+                                                        const daCidade = new Set(f[p.loc] ?? []);
+                                                        if (naoOfertada) daCidade.add(campanha);
+                                                        else daCidade.delete(campanha);
+                                                        return { ...f, [p.loc]: daCidade };
                                                     })}
                                                 />
                                             </td>

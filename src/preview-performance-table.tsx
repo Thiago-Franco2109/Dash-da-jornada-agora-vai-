@@ -43,6 +43,7 @@ function mockPromoResumo(i: number): EnrichedPerformanceRow['promo_resumo'] {
         noAr: detalhe.filter(d => d.status === 'aprovado').length,
         campanhasCidade: campanhas.length,
         cidadeConhecida: true,
+        naoOfertadas: [],
         pendenteDiasMax: Math.max(0, ...detalhe.map(d => d.dias ?? 0)) || null,
         detalhe,
     };

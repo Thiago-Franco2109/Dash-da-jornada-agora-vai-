@@ -58,6 +58,17 @@ export interface PromoResumo {
     /** A espera mais longa entre as campanhas pendentes do parceiro. null = nenhuma com data. */
     pendenteDiasMax: number | null;
     detalhe: PromoCampanhaDetalhe[];
+    /**
+     * Campanhas que o CS marcou como não ofertadas NA CIDADE e em que este
+     * parceiro não tem item nenhum. Ficam FORA de toda contagem acima — é o que
+     * deixa quem já fez tudo que dava fechar em "3/3 no ar" em vez de carregar
+     * pra sempre uma campanha que a praça não oferta.
+     *
+     * Não entram em `detalhe` de propósito: todo consumidor que varre `detalhe`
+     * (contarSlots, filtros, adapter do CRM) passaria a contá-las de novo. O
+     * puxadinho mostra esta lista à parte, pra marcação ser desfeita.
+     */
+    naoOfertadas: string[];
 }
 
 /** Campanha vigente no CMS (`campanha_promocao`). `id` monta o link do CMS. */
@@ -112,11 +123,37 @@ export function computePromoResumo(
     estabId: string,
     localidadeId: string | number | null | undefined,
     data: PromoStatusData,
+    /**
+     * "Esta campanha não é ofertada nesta cidade?" — marcação do CS, por cidade
+     * (ver useCampanhaCidadeCs). Sem ela toda campanha habilitada no CMS conta,
+     * que é o comportamento de antes.
+     */
+    naoOfertadaNaCidade?: (localidadeId: string | number | null | undefined, campanha: string) => boolean,
 ): PromoResumo {
     const porCampanha = data.porParceiro[estabId] ?? {};
-    const cityCampaigns = (localidadeId != null ? data.campanhasPorLocalidade[String(localidadeId)] : undefined) ?? [];
+    const todasDaCidade = (localidadeId != null ? data.campanhasPorLocalidade[String(localidadeId)] : undefined) ?? [];
+    // O BANCO GANHA DA MARCAÇÃO, mas só com item VIVO: campanha marcada como não
+    // ofertada em que este parceiro tem item no ar (ou pendente, ou rascunho)
+    // continua aparecendo — esconder item vivo seria mentir na contagem.
+    //
+    // Item só MORTO não segura a campanha: se a praça não oferta mais, item que
+    // caiu é o esperado, e mostrar "reativar" seria justamente a cobrança falsa
+    // que a marcação existe pra calar.
+    const vivosDe = (camp: string) => {
+        const cc = porCampanha[camp];
+        return cc ? cc.rascunho + cc.pendente + cc.aprovado : 0;
+    };
+    const ocultas = new Set<string>();
+    const cityCampaigns: string[] = [];
+    for (const camp of todasDaCidade) {
+        if (naoOfertadaNaCidade?.(localidadeId, camp) && vivosDe(camp) === 0) ocultas.add(camp);
+        else cityCampaigns.push(camp);
+    }
     const idPorNome = new Map(data.campanhas.map(c => [c.nome, c.id]));
-    const todas = new Set<string>([...Object.keys(porCampanha), ...cityCampaigns]);
+    const todas = new Set<string>([
+        ...Object.keys(porCampanha).filter(c => !ocultas.has(c)),
+        ...cityCampaigns,
+    ]);
 
     let pendente = 0, aprovado = 0, rascunho = 0, semItem = 0, caiu = 0, noAr = 0;
     let pendenteDiasMax: number | null = null;
@@ -156,6 +193,7 @@ export function computePromoResumo(
         cidadeConhecida: localidadeId != null && String(localidadeId) !== '',
         pendenteDiasMax,
         detalhe,
+        naoOfertadas: [...ocultas].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     };
 }
 
